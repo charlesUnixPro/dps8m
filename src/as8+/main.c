@@ -97,21 +97,21 @@ int main(int argc, char **argv)
     argc -= optind;
     argv += optind;
     
-    if (verbose && strlen(includePath) > 0)
-        fprintf(stderr, "Include path: <%s>\n", includePath);
+    if (verbose)
+        printf("Hello, World This is as8+! (build: %s %s)\n", __DATE__, __TIME__);
     
+
     // only one file name allowed. That's the input file
     if (argc != 1)
     {
         usage();
         exit(1);
     }
+
+    if (verbose && strlen(includePath) > 0)
+        fprintf(stderr, "Include path: <%s>\n", includePath);
     
-    if (verbose)
-    {
-        printf("Hello, World This is as8+!\n");
-        printf("  last build: %s %s\n", __DATE__, __TIME__);
-    }
+    
     
     if (debug)
     {
