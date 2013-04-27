@@ -1,10 +1,10 @@
 "
 " floating point test routines ... 
 "
-"    tsx2	rd_clock
-"    staq	Date        "MM/DD HH:MM
+    tsx2	rd_clock
+    staq	Date        "MM/DD HH:MM
 
-"    call    ioa(msgHello, Date, Date+1)
+    call    ioa(msgHello, Date, Date+1)
         
     tra     main_
 
