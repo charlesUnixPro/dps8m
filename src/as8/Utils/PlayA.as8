@@ -1,0 +1,90 @@
+        name    Play        " This is the "Play" segment
+        segdef  Main        " ... and we want to share "Main"
+       
+        "segref  Utils, ioa, rd_clockA, typeA  " and we want to use these from the Utils segment
+        
+        lpri    __pr        " set up pr's so we can addess segments easily ....
+
+
+Main:   tsp2    1|3         " rd_clockA call
+        staq	Date        " MM/DD HH:MM
+        
+        tsp2    1|2
+        acc     /Date: '^g^g'\r\n/
+        nop     Date
+        nop     Date+1
+        
+        tsp2     1|2
+        acc     /This is the new ioa! ^^ ^d ^w ^n ^o ^a ^g\r\n/
+        nop     =-1234567890
+        nop     =o123456654321
+        nop     =o7654321
+        nop     =o12345670
+        nop     =aQwEr
+        nop     =habc123
+
+        tsp2    1|2
+        acc     /4-bit decimal '^4'...\r\n/
+        nop     dm4
+
+        tsp2    1|2
+        acc     /9-bit ASCII descriptor '^A'\r\n/
+        nop     d9b
+
+        tsp2    1|2
+        acc     /6-bit GEBCD descriptor '^G'\r\n/
+        nop     d6a
+
+        tsp2    seg12, *
+        acc     /Through ITS:\r\n'^S'\r\n'^S'\r\n'^4'\r\n/
+        nop     d9b
+        nop     d6a
+        nop     dm4
+        
+        tsp2    1|4     " typeA
+        desc9a  WIB, WIBsz
+
+        dis
+
+d9a:    desc9a  IBS,IBSsz
+IBS:    aci     /If this works, I'll be surprised...\r\n/
+        equ     IBSsz, 37
+        
+d9b:    desc9a  d9bs,d9bsz
+d9bs:   aci     /This is a test of the new inter-segment ioa!/
+        equ     d9bsz, 44
+
+d6a:    desc6a  d6as,d6asz
+d6as:   bci     /This is a test of the new inter-segment ioa!/
+        equ     d6asz, 44
+
+dm4:    desc4a  msg4, 12
+msg4:   ac4     /0123456789+-/
+
+d9c:    desc9a  WIB,WIBsz
+WIB:    aci     /Well, I'll be ....\r\n/
+        equ     WIBsz, 20
+
+        even
+__pr:
+        its     0,0         " pr0 -> seg 0 etc
+        its     1,0
+        its     2,0
+        its     3,0
+        its     4,0
+        its     5,0
+        its     6,0
+        its     7,0
+
+seg12:  its     1,2         " FOR A CALL TO IOA
+
+        bss     Date, 2
+
+        bool    newOrg, 02000
+        org     newOrg
+        "org     02000
+        even
+d1:     bss     ,2
+
+        end
+        

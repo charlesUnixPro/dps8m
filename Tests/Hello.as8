@@ -1,0 +1,14 @@
+"
+" Say hello to the folks!!!!
+"
+
+    call    ioa (m1)
+
+        DIS
+
+m1:
+    acc         /Hello from dps8m!!!!!\r\n/
+
+        include     Utils.as8
+        
+

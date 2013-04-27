@@ -1,0 +1,40 @@
+"
+" Register then Indirect (RI)
+"
+" Bull NOVA 9000 p 5-9
+"
+START:
+        
+ONE:    EAA    1
+        EAX1    2
+        ldA     Z1,AU*      " Y = B + 2 => 0123456
+        TRA     TWO
+
+Z1:     bss     1   "ORG     Z1+1
+        ARG     B,1    
+B:      DEC     1
+        DEC     2
+        oct	123456       " B + 2
+
+
+TWO:    EAQ     3
+        lda     Z2,n*     " Y = B1 + 3 => 0333
+        TRA     THREE
+Z2:     ARG     B1,QU
+B1:     oct     000,111,222,333
+
+
+THREE:  EAX3    3
+        EAX5    5
+        ldQ     Z3,n*     " Y = M => 042
+        TRA     end
+Z3:     ARG     B2,5*
+B2:     bss     5        "ORG     B2+5
+        ARG     C,3*
+C:      bss     3       "ORG     C+3
+        ZERO    M
+M:      oct     42
+
+end:    dis
+        
+        

@@ -1,0 +1,78 @@
+000000 xxxx 000000716000     xec     i1
+000001 xxxx 000000755000     sta     result
+000002 xxxx 000000701000     call    ioa(msg2, result)
+000003 xxxx 000007710000
+000004 xxxx 000000000000
+000005 xxxx 000000000000
+000006 xxxx 000000000000
+000007 xxxx 000000716000     xec     i2
+000010 xxxx 000000616000     dis
+000011 xxxx 000000701000 Xec1:   call    ioa(msg3)
+000012 xxxx 000015710000
+000013 xxxx 000000000000
+000014 xxxx 000000000000
+000015 xxxx 000000616000     dis
+000016 xxxx 031124150151 msgHello:  acc         "This is TestXEC ...^g^g\r\n" 
+000017 xxxx 163040151163  
+000020 xxxx 040124145163  
+000021 xxxx 164130105103  
+000022 xxxx 040056056056  
+000023 xxxx 136147136147  
+000024 xxxx 015012040040  
+000025 xxxx 015104141164 msg1:      acc         "Date: ^g^g \r\n" 
+000026 xxxx 145072040136  
+000027 xxxx 147136147040  
+000030 xxxx 015012040040  
+000031 xxxx 013122145163 msg2:      acc         "Result ^d\r\n" 
+000032 xxxx 165154164040  
+000033 xxxx 136144015012  
+000034 xxxx 014101164040 msg3:      acc         "At Xec1...\r\n" 
+000035 xxxx 130145143061  
+000036 xxxx 056056056015  
+000037 xxxx 012040040040  
+000040 xxxx 000000000000 Date:   bss     2
+000042 xxxx 000000000000 result: bss 4
+000046 xxxx 777777235000 i1:     lda     =42
+000047 xxxx 000000710000 i2:     tra     Xec1
+000050 xxxx 000000710000 i3:     tra     i0
+000051 xxxx 000000633000 rd_clock:	rccl                " read the clock
+000052 xxxx 000000757000 cv_clock:	staq	rdctime     " save clock reading
+000053 xxxx 000000742000 	stx2	datx2               " save XR's
+000054 xxxx 000000740000 	stx0	datx2+1             " ..
+000055 xxxx 000034235007 	lda     28,dl               " Initialize montab
+000056 xxxx 000000755000 	sta     montab+1			" to prime Feb
+000057 xxxx 000000237000 	ldaq	rdctime             " Get clock reading
+000060 xxxx 000001737000 	lls     1                   " Set for dvf
+000061 xxxx 777777507000 	dvf     =1000000			" Get seconds since 1900.
+000062 xxxx 000044777000 	llr     36                  " Into Q.
+000063 xxxx 000074506007 	div     60,dl               " Seconds since min to A, mins to Q.
+000064 xxxx 000000755000 	sta     rdclock.sec         " Save for inspection.
+000065 xxxx 000074506007 	div     60,dl               " Min since hr to A, hrs to Q.
+000066 xxxx 000000755000 	sta     rdclock.min
+000067 xxxx 000006627000 	eax7	6
+000070 xxxx 000000702000 	tsx2	datecv              " Convert the minutes.
+000071 xxxx 000000176000 	sbq     rdclock.zone_temp	" Adjust for GMT.
+000072 xxxx 000030506007 	div     24,dl               " Days since 1900 in q.
+000073 xxxx 000000756000 	stq     rdclock.day_of_century	" save for  later.
+000074 xxxx 000000755000 	sta     rdclock.hr          " Hours since daybreak.
+000075 xxxx 000000702000 	tsx2	datecv              " Convert the hours
+000076 xxxx 002665506007 	div     365*4+1,dl          " get leap year cycle
+000077 xxxx 002110115007 	cmpa	365*3+1,dl          " if in last year of cycle (the leap year)
+000100 xxxx 000102604000 	tmi     *+2                 " no
+000101 xxxx 000000054000 	aos     montab+1			" allow for feb 29
+000102 xxxx 000002736000 	qls     2                   " 4*# leap year cycles
+000103 xxxx 003555036007 	adlq	1901,dl
+000104 xxxx 000000756000 	stq     rdclock.year		" Save
+000105 xxxx 000044777000 	llr     36
+000106 xxxx 000555506007 	div     365,dl              " Years complete since l.y.c. =>Q
+000107 xxxx 000004116007 	cmpq	4,dl                " Dec 31st of leap year?
+000110 xxxx 000113601000 	tnz     *+3                 " No.
+000111 xxxx 000001176007 	sbq     1,dl                " Adjust year and
+000112 xxxx 000555235007 	lda     365,dl              " day numbers.
+000113 xxxx 000000056000 	asq     rdclock.year		" Add in years complete.
+000114 xxxx 000000626000 	eax6	0                   " search for correct month
+000115 xxxx 030220520201 	rpt     12,1,tmi			" .. 
+000116 xxxx 000000175016 	sba     montab,6			" subtract off days for each month
+000117 xxxx 777777075016 	ada     -1,6                " put back last entry
+000120 xxxx 000001075007 	ada     1,dl                " plus one more
+000121 x

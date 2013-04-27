@@ -1,0 +1,66 @@
+"
+" code to test the appending unit ....
+"
+
+"
+" start simple. Try to have segment 0 talk to segment 1 and vice-versa .....
+"
+        go      start
+	segment	0	        
+
+start:
+        lpri    __pr    " set up pr's so we can addess segments easily ....
+
+hello:  lda     msg0, sc
+        emCall  1
+        ttf     hello
+
+        tra     pr1|0
+    
+        org     010
+GoodBye:lda     msg1, sc
+        emCall  1
+        ttf     GoodBye
+
+        ldq     pr2|0
+        
+        lda     itswrd,*
+        ldq     itpwrd,*
+        
+        lda     =0123
+        sta     itswrd3,*
+
+        lda     =0456
+        sta     itpwrd3,*
+
+        tra     pr3|0
+L0:     
+        dis
+
+    
+"
+" data ...
+"
+msg0:   tallyb      msg0d, 33, 0   "address, count, byte offset
+msg0d:  aci         /Hello world from TestAppend0 ...../
+
+msg1:   tallyb      msg1d, 25, 0   "address, count, byte offset
+msg1d:  aci         /Back at segment 0 we are!/
+
+        even
+itswrd: its     2, 010   " same as ldq pr2|0
+itpwrd: itp     1, 010   
+
+itswrd3:its     3, 061   
+itpwrd3:itp     3, 062
+
+        "mod    16
+__pr:
+        its     0,0		pr0 -> seg 0 etc
+        its     1,0
+        its     2,0
+        its     3,0
+        its     4,0
+        its     5,0
+        its     6,0
+        its     7,0

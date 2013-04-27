@@ -1,0 +1,275 @@
+"
+" code to test the callx/exit ....
+"
+
+"
+" play with new callx/exit instructions ....
+"
+start:
+	eax2	stack
+	
+hello:  callx	printMsgC
+	arg	msg0
+
+"	callx	printMsgC
+"	arg	msg4
+
+	lda	=0111111111111
+	pusha	,2
+	ldq	=0222222222222
+	pushq	,2
+	lda	=0333333333333
+	pusha	,2
+
+	callx	subr
+	arg     msg4
+	oct 	222
+	oct     444
+    oct     616
+
+	"callx	printMsgC
+	"arg	msg2
+
+	"dis
+
+    lda	=-12052012
+	pusha	,2
+	lda	=01234567
+	pusha	,2
+    lda	=0123456765432
+	pusha	,2
+
+    callx	printMsgioa
+	arg	msg5
+
+    callx   ioa
+    arg     msg5
+    oct     0123456765432
+	oct     01234567
+    dec     -12052012
+
+	"lda	=-1	
+	"ldq	=-2
+
+	"popq	,2
+	"popa	,2
+
+        dis
+
+subr:	.entry	subr0, 2, 32    
+subr0:
+	callx	printMsgC
+	arg	msgS
+
+	eax4	-1, 2*	" fmt2 pointer for this frame => x4
+	lda     0, x4*	" @(arg 0) callx(IC+1)
+	emCall	3
+	callx	crlf
+	lda     1, x4	" inline arg 1
+	emCall	3
+	callx	crlf
+	lda     2, x4	" inline arg 2
+	emCall	3
+	callx	crlf
+    lda     3, x4	" inline arg 3
+	emCall	3
+	callx	crlf
+
+	" 0, x5 => 31, x5 is blk data
+	" -1, -2, -3 ... arg stack
+	eax5	-33, 2	" for args on stack ..... (-blksize-1)
+	lda	-1, x5	" 04747474 
+	emCall	3
+	callx	crlf
+	lda	-2, x5	" 01010101 
+	emCall	3
+	callx	crlf
+	lda	-3, x5	" 1st push
+	emCall	3
+	callx	crlf
+
+	lda     =-33
+	emCall	3
+	callx	crlf
+
+    "
+	" try to fetch offset from .entry 
+	"
+    " all this replaces  "eax5	-33, 2"
+    lda     subr
+    arl     6           " move block size lower bits
+    ana     07777,dl    " mask out everything but the #
+    ada     1,dl        " add one to it
+    neg                 " -A => A
+	"
+    "
+	exit	4, 2        " return to callerIC + 3, via x2
+
+msgS:	acc	"The value is: "
+
+
+"	tsx2	erpt	to print error messages
+"	acc	'message'
+"	nop	a,t "	parameters
+"	^w	 full word octal xxxxxx xxxxxx
+"	^o	 zero suppressed octal ...x
+"	^n	 octal with no spaces inserted xxxxxxxxxxxx
+"	^d	 decimal dddddd
+"	^a	 ASCII (4 char)
+"	^g	 GE code (6 char)
+ioa:
+    	.entry	ioa1, 2
+ioa1:   eax4    -1, 2*  " inline args => x4
+        eax5    1, x4   " x4+1 (inline arg1) => x5
+
+        lda     041, dl " make a blank tallyb word .....
+        sta     i29
+
+    	lda     0, x4*  " get 1st data word into A
+        ars     27      " determine word count
+    	als     6       " count to upper word of tally
+    	orsa    i29
+
+    	ldx6    0, x4   " address of string into X6
+    	stx6    i29    " address to upper word of tally
+
+    	" make a tallyb word with this addres, length, offset = 1
+    	" address / tally / byte type / offset
+inext:  lda     i29, sc
+        cmpa	0136, dl	" is it "^"?
+        tze     iernot      " if so, go process it
+out1:  	emCall  1
+    	ttf     inext
+        exit	1, 2
+i29:	tallyb  0, 0, 1
+
+iernot: lda     i29, sc    " get next char ...
+        cmpa	0136, dl    " is it another "^"?
+        tze     i21        " just print it ...
+        cmpa    0167, dl    " is it a "w"?
+        tze     idoW         " do full word octal
+        cmpa    0157, dl    " is it an "o"?
+        tze     idoO         " print zero suppressed octal
+        cmpa    0156, dl    " is it a "n"?
+        tze     idoN         " octal w/ no spaces inserted
+        cmpa    0144, dl    " is it a "d"?
+        tze     idoD         " decimal
+        tra     out1        " unknown just print it....
+    
+i21:    emCall      1       " output A to console
+        tra     inext
+
+idoW:   lda     0, x5       " ^w
+        emCall  3
+        adx5    1,du
+        tra     inext
+        
+idoO:   lda     0, x5       " ^o
+        emCall  4
+        adx5    1,du
+        tra     inext
+
+        "eax2    next        " set up return to main loop
+        "tra     octwd
+        "dis
+
+idoN:   lda     0, x5       " ^n
+        emCall  3
+        adx5    1,du
+        tra     inext
+
+idoD:   lda     0, x5       " ^d
+        emCall  5
+        adx5    1,du
+        tra     inext
+
+" stack version ...
+printMsgioa:
+    	.entry	pi1, 2
+pi1:	eax4    -1, 2*  " inline args => x4
+        eax5	-2, 2	" stack args => x5
+
+        lda     041, dl " make a blank tallyb word .....
+        sta     pi29
+
+    	lda     0, x4*  " get 1st data word into A
+        ars     27      " determine word count
+    	als     6       " count to upper word of tally
+    	orsa    pi29
+
+    	ldx6    0, x4   " address of string into X6
+    	stx6    pi29    " address to upper word of tally
+
+    	" make a tallyb word with this addres, length, offset = 1
+    	" address / tally / byte type / offset
+next:   lda     pi29, sc
+        cmpa	0136, dl	" is it "^"?
+        tze     ernot       " if so, go process it
+pi21:  	emCall  1
+    	ttf     next
+        exit	1, 2
+pi29:	tallyb  0, 0, 1
+
+ernot:  lda     pi29, sc    " get next char ...
+        cmpa	0136, dl    " is it another "^"?
+        tze     pi21        " just print it ...
+        cmpa    0167, dl    " is it a "w"?
+        tze     doW         " do full word octal
+        cmpa    0157, dl    " is it an "o"?
+        tze     doO         " print zero suppressed octal
+        cmpa    0156, dl    " is it a "n"?
+        tze     doN         " octal w/ no spaces inserted
+        cmpa    0144, dl    " is it a "d"?
+        tze     doD         " decimal
+        tra     pi21        " unknown just print it....
+    
+p121:   emCall      1       " output A to console
+        tra     next
+
+doW:    lda     0, x5       " ^w
+        emCall  3
+        sbx5    1,du
+        tra     next
+        
+doO:    lda     0, x5       " ^o
+        emCall  4
+        sbx5    1,du
+        tra     next
+
+        "eax2    next        " set up return to main loop
+        "tra     octwd
+        "dis
+
+doN:    lda     0, x5       " ^n
+        emCall  3
+        sbx5    1,du
+        tra     next
+
+doD:    lda     0, x5       " ^d
+        emCall  5
+        sbx5    1,du
+        tra     next
+        
+        tra     next
+
+        include octwd.incl.alm
+
+
+
+"
+" data ...
+"
+msg0:   acc     /Hello world from TestIOA ....\r\n/
+
+msg2:  acc     /Back via exit!\r\n/
+
+msg4:  acc     "This is from 'printMsg' (C)...\r\n"
+
+msg5:   acc     /Hello world from printMsgioa Full:^w Zero:^o Dec:^d....\r\n/
+
+"utility routines ...
+
+	include	Tests/Utils.as8
+
+stack:	bss	0100
+

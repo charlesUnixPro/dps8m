@@ -1,0 +1,1298 @@
+"
+" floating point test routines ... 
+"
+    tsx2	rd_clock
+    staq	Date        "MM/DD HH:MM
+
+    call    ioa(msgHello, Date, Date+1)
+        
+    tra     main_
+
+msgHello:   acc     "This is TestFP ...^g^g\r\n"
+*msg1:      acc     "Date: ^g^g \r\n"
+
+    even
+    bss     Date, 2
+
+main_:
+
+    call    exponential_(=1.0)
+    emCall  6
+    call    crlf
+
+    call    exponential_(=1.23456)
+    emCall  6
+    call    crlf
+
+    call    exponential_(=-6.54321)
+    emCall  6
+    call    crlf
+
+
+    call    log_base_e_(=3.1415926535897932)
+    emCall  6
+    call    crlf
+
+    call    log_base_10_(=3.1415926535897932)
+    emCall  6
+    call    crlf
+
+
+    call    cotangent_degrees_(=34.0)
+    emCall  6
+    call    crlf
+
+    call    cotangent_degrees_(=-34.0)
+    emCall  6
+    call    crlf
+
+    call    tangent_degrees_(=60.0)
+    emCall  6
+    call    crlf
+
+    call    tangent_degrees_(=45.0)
+    emCall  6
+    call    crlf
+
+    call    tangent_degrees_(=12.34)
+    emCall  6
+    call    crlf
+
+    call    tangent_degrees_(=-60.0)
+    emCall  6
+    call    crlf
+    
+    call    tangent_degrees_(=-45.0)
+    emCall  6
+    call    crlf
+
+    call    tangent_degrees_(=-12.34)
+    emCall  6
+    call    crlf
+
+    call    cosine_degrees_(=60.0)
+    emCall  6
+    call    crlf
+    
+    call    cosine_degrees_(=45.0)
+    emCall  6
+    call    crlf
+
+    call    cosine_degrees_(=12.34)
+    emCall  6
+    call    crlf
+
+    call    cosine_degrees_(=-60.0)
+    emCall  6
+    call    crlf
+    
+    call    cosine_degrees_(=-45.0)
+    emCall  6
+    call    crlf
+
+    call    cosine_degrees_(=-12.34)
+    emCall  6
+    call    crlf
+
+    call    sine_degrees_(=60.0)
+    emCall  6
+    call    crlf
+    
+    call    sine_degrees_(=45.0)
+    emCall  6
+    call    crlf
+
+    call    sine_degrees_(=12.34)
+    emCall  6
+    call    crlf
+
+    call    sine_degrees_(=-60.0)
+    emCall  6
+    call    crlf
+    
+    call    sine_degrees_(=-45.0)
+    emCall  6
+    call    crlf
+
+    call    sine_degrees_(=-12.34)
+    emCall  6
+    call    crlf
+
+
+    call    sqrt(=3.1415926535897932)   " 1.77245385091
+    emCall  6
+    call    crlf
+
+    call    sqrt(=2.0)   " 1.414...
+    emCall  6
+    call    crlf
+
+
+    call    ALOG10(=3.1415926535897932)     " .497149873
+    emCall  6
+    call    crlf
+
+    call    ALOG(=3.1415926535897932)      " 1.144729886
+    emCall  6
+    call    crlf
+
+    call    ALOG10(=2.71828182846)
+    emCall  6
+    call    crlf
+
+    call    ALOG(=2.71828182846)
+    emCall  6
+    call    crlf
+    
+    dis
+
+LOGS:   SAVE    
+        FLD     2, 1*       " X = (2**I) * F = ARGUMENT
+        FNO
+        TZE     ERR1        " ERROR IF X = 0
+        TMI     ERR2        " ERROR IF X NEGATIVE
+BEGIN:  FCMP    =1.0,DU
+        TZE     UNITY       " LOG(1) = 0
+        STE     I           " STORE I AT BINARY POINT 7
+        LDE     0, DU       " OBTAIN F
+        DFAD    SRHLF
+        DFST    Z
+        DFSB    SRTWO
+        DFDV    Z
+        DFST    Z           " Z = (F - SQRT(1/2))/(F + SQRT(1/2))
+        DFMP    Z           " Z^2
+        DFSB    C           " Z^2-C
+        DFDI    B           " B/(Z^2-C)
+        DFAD    A           " A+B/(Z^2-C)
+        DFMP    Z           " Z(A+B/(Z^2-C))
+        DFST    Z           " Z = Z*(A+(B/(Z^2-C))) = LOG2 (F) + 1/2
+I:      LDA     0, DU       " ==== THIS GET CHANGED ====
+        LDQ     0, DU
+        LDE     =7B25, DU   " FLOAT I
+        FSB     =0.5, DU
+        DFAD    Z           " LOG2(X) = I + LOG2(F)
+INDIC:  DFMP    *           " CONVERT TO BASE 10 OR E
+        RETURN  LOGS
+ERR1:   CALL    .FXEM.(EALN1)   " ERROR EXIT NUMBER 1 (X=0)
+UNITY:  FLD     =0.0, DU
+        RETURN  LOGS
+ERR2:   CALL    .FXEM.(EALN2)   " ERROR EXIT NUMBER 2 (X IS NEGATIVE)
+        FNEG
+        TRA     BEGIN
+        dis
+        even
+ALOG10: STC2    INDIC       " REAL COMMON LOGARITHM
+        TRA     LOGS
+        DEC     .301029996D0
+ALOG:   STC2    INDIC       " REAL NATURAL LOGARITHM
+        TRA     LOGS
+        DEC     6.93147180559D-1
+EALN1:  DEC     9.
+EALN2:  DEC     10.
+
+        even
+A:      DEC     .12920070987D1
+B:      DEC     -.26398577031D1
+C:      DEC     .16567626301D1
+SRHLF:  DEC     .707106781187D0     " sqrt(2) / 2
+SRTWO:  DEC     .1414213562374D1    " SQRT(2)
+Z:      BSS     2
+
+.FXEM.: save
+        lda     2, 1*
+        emcall  1
+        dis
+   
+    
+"
+" SQRT 
+"
+
+" ******************************************
+" *                                        *
+" * Copyright, (C) Honeywell Limited, 1985 *
+" *                                        *
+" ******************************************
+*	name	square_root_
+" Modification history:
+"	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+"	based on the GCOS routine '7nbb'.
+"   modified 4/24/2013 H Reed for as8+ & dps8m simulator
+"
+" Function:  Approximate to single precision the square root of a number.
+"
+" Entry:	through the appropriately named entry point with:
+" 	EAQ = the number whose square root is desired.
+"	PR2 = the address of an 8 word, even-word aligned scratch area.
+"	PR3 = the return address.
+"
+" Exit:	EAQ = the desired square root.
+"
+" Uses:	X0, X1
+"	X0 = temporary storage for exponent of input argument
+"	     and saves a return address from call_math_error_
+"	X1 = index to scale table
+
+
+sqrt:   save    0, 1
+        FLD     2, 1*               " X = ARGUMENT
+        FNO
+
+        tnz     sqrt.1
+        return  sqrt                " if x = 0 return (0)
+sqrt.1:	tpl     calc_square_root	" if x < 0:
+        fneg	0                   "   x = -x
+        fst     x
+"        ldq     13,dl
+*	tsx0	<call_math_error_>|[call_math_error_]
+        fld     x		"   calculate sqrt (abs(x))
+
+calc_square_root:
+        fst     x           " store EA := input arg
+        ldx0	x           " X0 := addr (x) -> expon
+                            " m = x
+        lde     =0b25,du	" addr (m) -> expon = 0
+        canx0	=1b25,du	" calculate mod (e, 2)
+        tze     2,ic		" if mod (e, 2) = 1:
+        lde     =-1b25,du	"   EA := m = .5*m
+        ldq     x           " Q := 8/expon,28/garbage
+        qrs     28          " Q := 28/0,8/expon
+        adq     =1,dl		" calculate e+1
+        qrs     1           " calculate divide (e+1, 2, 7)
+        qls     28          " position result in exponent field
+        stq     e           " store Q := e = divide (e+1, 2, 7)
+        ldq     =0          " clear Q
+        dfst	m           " store EAQ := m
+        fmp     p2          " calculate root_m = p(m)
+        fad     p1
+        fmp     m
+        fad     p0
+
+        fst     root_m
+        fdi     m           " calculate root_m = .5 * (root_m + m/root_m)
+        fad     root_m
+        fmp     =0.5,du
+
+        dfst	root_m      " calculate root_m + float (m, 63)/root_m
+        dfdi	m
+        dfad	root_m
+        ade     =-1b25,du	" root_m = .5 * (root_m + float (m, 63)/root_m)
+                            " root_x = root_m
+        ade     e           " calculate addr (root_x) -> expon =
+                            "   addr (root_x) -> expon + divide (e+1, 2, 7)
+        frd     0
+        return  sqrt        " return (root_x)
+
+        even
+        bss     root_m,2
+        bss     x,2
+        bss     m,2
+        bss     e,2
+
+p0:     dec	2.5927688d-1
+p1:     dec	1.0521212d0
+p2:     dec	-3.1632214d-1
+scale:	oct	000400000000	" 0.5
+        oct	000100000000	" 0.25*0.5 = 0.125
+        oct	000200000000	" 0.25
+        oct	000040000000	" 0.25*0.25 = 0.0625
+        
+" ******************************************
+" *                                        *
+" * Copyright, (C) Honeywell Limited, 1985 *
+" *                                        *
+" ******************************************
+	name	sine_
+" Modification history:
+"	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+"	based on GCOS routine '7nba'.
+"
+" Function:  Approximate to single precision the sine or cosine of an
+"	angle given in degrees or radians.
+"
+" Entry:	through the appropriately named entry point with:
+" 	EAQ = the angle whose sine or cosine is desired.
+"	PR2 = the address of a 12 word, even-word aligned scratch area.
+"	      4 words are used in this program and 12 are used by the
+"	      routine "principal_angle_".  The storage for sine_ and
+"	      principal_angle_ overlap.
+"	PR3 = the return address.
+"
+" Exit:	EAQ = the desired sine or cosine.
+"
+" Uses:	X0, X1, X2.
+"	X0 = saves a return address from principal_angle_ routines
+"	X1 = shift (returned by principal_angle_ routines)
+"	X2 = indicates BFP or HFP mode - all the floating point math
+"	     routines use this register for the same purpose.
+"	The principal_angle_ routines use registers X1 and X2.
+"
+
+*	segref	math_constants_,half_pi,one_degree,pi
+*	segref	principal_angle_,principal_radians_,principal_degrees_
+
+	equ	BFP,0
+*	equ	HFP,2
+*	equ	x,0
+*	equ	xx,2
+
+*	segdef	cosine_degrees_,hfp_cosine_degrees_
+*	segdef	cosine_radians_,hfp_cosine_radians_
+*	segdef	sine_degrees_,hfp_sine_degrees_
+*	segdef	sine_radians_,hfp_sine_radians_
+
+cosine_degrees_:
+    save    0,1,2,3,4
+    FLD     2, 1*               " X = ARGUMENT
+
+	eax2	BFP		" no offset for BFP constants
+    eax3    0       " cosine return
+
+cosine_degrees:
+	fad     =0.0,du		" normalize input
+	fcmg	one_eighty,x2	" if abs_angle <= 180:
+	tmi     case1_degrees	" then no angle reduction is necessary
+	tsx0	principal_degrees_
+	tra     case_degrees+1,x1	" select appropriate case
+
+cosine_radians_:
+	eax2	BFP		" no offset for BFP constants
+
+cosine_radians:
+	fad     =0.0,du		" normalize input and set indicators
+	fcmg	pi,x2		" if abs (angle) <= pi
+	tmi     case1_radians	" then no angle reduction is necessary
+	tsx0	principal_radians_
+	tra     case_radians+1,x1	" select appropriate case
+				
+sine_degrees_:
+    save    0,1,2,3,4
+    FLD     2, 1*               " X = ARGUMENT
+
+	eax2	BFP         " no offset for BFP constants
+    eax3    1           " sine return
+
+sine_degrees:
+	fad     =0.0,du         " normalize input
+	fcmg	ninety,x2		" if abs (angle) < pi/2
+	tmi     case0_degrees	" then no angle reduction is necessary
+	tsx0	principal_degrees_
+	tra     case_degrees,x1	" select appropriate case
+
+sine_radians_:
+	eax2	BFP             " no offset for BFP constants
+
+sine_radians:
+	fad     =0.0,du         " normalize input
+	fcmg	half_pi,x2      " if abs (angle) <= pi/2
+	tmoz	case0_radians	" then no angle reduction is necessary
+	tsx0	principal_radians_
+	tra     case_radians,x1	" Case select appropriate case_radians
+
+case_radians:
+	tra     case0_radians
+	tra     case1_radians
+	tra     case2_radians
+	tra     case3_radians
+	tra     case0_radians
+
+case1_radians:
+	fad     =0.0,du		" set indicators
+	tmi     2,ic		" EAQ = - abs (EAQ)
+    negl	0           " fneg underflows at o400400000000
+
+	dfad	half_pi1A,x2
+	dfad	half_pi2A,x2
+	tra     part_sine_radians
+
+case2_radians:
+	fneg	0
+	tra     part_sine_radians
+
+case3_radians:
+	fad     =0.0,du		" set indicators
+	tpl     2,ic		" EAQ = abs (EAQ)
+    fneg	0
+
+	dfsb	half_pi1A,x2
+	dfsb	half_pi2A,x2
+	tra     part_sine_radians
+
+case_degrees:
+	tra     case0_degrees
+	tra     case1_degrees
+	tra     case2_degrees
+	tra     case3_degrees
+	tra     case0_degrees
+
+case1_degrees:
+	fad     =0.0,du		" set indicators
+	tmi     2,ic		" EAQ = - abs (EAQ)
+    negl	0           " fneg underflows at o400400000000
+
+	fad     ninety,x2
+	tra     part_sine_degrees
+
+case2_degrees:
+	fneg	0
+	tra     part_sine_degrees
+
+case3_degrees:
+	fad     =0.0,du		" set indicators
+	tpl     2,ic		" EAQ = abs (EAQ)
+	fneg
+
+	fsb     ninety,x2
+"	tra	part_sine_degrees
+
+case0_degrees:			" case0_degrees is just part_sine_degrees
+
+part_sine_degrees:
+	dfcmg	eps2,x2		" if conversion to radians underflows
+	tpl     2,ic
+    fld     =0.0,du		" then use zero
+	dfmp	one_degree,x2	" convert to radians.
+"	tra	part_sine_radians
+
+case0_radians:			" case0_radians is just part_sine_radians
+
+
+" Procedure part_sine_radians (x) calculates 'sin(x)' for 'x' in the range
+" [-pi/2, pi/2] given 'x' in the EAQ.
+
+part_sine_radians:
+	dfcmg	eps3,x2		" if abs (x) < 5e-10:
+	tpl     3,ic
+    frd     0
+	"tra     pr3|0		"    sine is x for small x
+    tra     rets, x3
+	dfst	x
+	dfmp	x           " calculate xx = x*x
+	dfst	xx
+	fmp     tp5,x2		" calculate p(xx)
+	dfad	tp4,x2
+	fmp     xx
+	dfad	tp3,x2
+	fmp     xx
+	dfad	tp2,x2
+	fmp     xx
+	dfad	tp1,x2
+	dfmp	xx
+	dfad	tp0,x2
+	dfmp	x		" return x*p(xx)
+	frd     0
+"	tra     pr3|0
+
+    "
+    " different returns
+    "
+    tra     rets, x3
+
+rets:
+    return  cosine_degrees_
+    return  sine_degrees_
+
+
+
+" Constants:
+
+	even
+
+    bss     xx,2
+
+eps1:       dec	1.886591d-8
+eps2:       dec	8.418858142948452884d-38
+eps3:       dec	5.0d-10
+half_pi1A:	oct	002622077325,042055060432	" 1.570796326794896619d0
+half_pi2A:	oct	602611431424,270033407150	" 8.333742918520878328d-20
+ninety:     dec	90.0d0
+one_eighty: dec	180.0d0
+tp0:        dec	 9.999999999788d-1
+tp1:        dec	-1.6666666608826d-1
+tp2:        dec	 8.333330720556d-3
+tp3:        dec	-1.98408328231d-4
+tp4:        dec	 2.7523971068d-6
+tp5:        dec	-2.386834641d-8
+
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Bull Inc., 1987                *
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+" *                                                         *
+" ***********************************************************
+	name	principal_angle_
+" Modification history:
+"	Written by H. Hoover, M. Mabey, and B. Wong, April 1985.
+"
+" Function:  Scale an angle into the range -pi/4 to pi/4.
+"
+" Entry:  through the appropriately named entry point with:
+"	EAQ = input angle to be scaled.
+"	X0  = the return address.
+"	X2  = a two word HFP offset.  This register is by all of the
+"	      floating point math routines for the same purpose.
+"	PR2 = points to an even word aligned, 12 word long, scratch area.
+"
+" Exit:	EAQ = the scaled angle.
+"	X1  = mod ((input EAQ)/HALF_PI + 0.5), 4)
+"
+" Uses:	X1
+"	X1  = used to return mod ((input EAQ)/HALF_PI + 0.5), 4)
+
+"	equ	angle,0
+"	equ	temp,angle
+"	equ	n1,2
+"	equ	n2,3
+"	equ	t1,4
+"	equ	t2,6
+"	equ	t3,8
+"	equ	t4,10
+"	equ	HFP,2
+
+        even
+angle:  bss     temp, 2
+        bss     n1,1
+        bss     n2,1
+        bss     t1,4
+        bss     t2,6
+        bss     t3,8
+        bss     t4,10
+	"equ	HFP,2
+
+principal_degrees_:
+
+bfp_principal_degrees:
+	frd     0
+	fcmg	two_pwr_54	" is the EAQ too large
+	tpnz	angle_too_big	" Yup.
+
+	fst     angle
+	dfdv	ninety		" EAQ = EAQ/90
+	fad     =0.5,du		" EAQ = EAQ/90 + 0.5
+	dufa	almost_one
+	dufs	almost_one
+	ufa     =71b25,du		" AQ = EAQ/90 + 0.5 in integer form
+
+	eax1	0,ql
+	anx1	3,du		" X1 = mod(AQ,4)
+
+	fad     =0.0,du		" EAQ = floor(EAQ/90 + 0.5) in floating point form
+	fmp     =90.0,du	" EAQ = floor(EAQ/90 + 0.5)*90
+	fneg	0           " EAQ = -floor(EAQ/90 + 0.5)*90
+	fad     angle	" EAQ = angle-floor(EAQ/90 + 0.5)*90
+	tra     0,x0		" return to caller
+
+principal_radians_:
+bfp_principal_radians:
+	frd     0
+	fst     angle
+	fcmg	two_pwr_27      " is the EAQ too large
+	tpnz	bfp_big_angle	" Yup.
+
+	dfmp	one_over_half_pi	" EAQ = EAQ/half_pi
+	fad     =0.5,du             " EAQ = EAQ/half_pi + 0.5
+	dufa	almost_one
+	dufs	almost_one
+	ufa     =71b25,du		" AQ = EAQ/half_pi + 0.5 in integer form
+
+	eax1	0,ql
+	anx1	3,du		" X1 = mod(AQ,4)
+
+	fad     =0.0,du		" EAQ = floor(EAQ/half_pi + 0.5) in floating point form
+	fst     n1		" n1 = EAQ
+	tra     small_angle_join
+
+small_angle_join:
+	fmp     half_pi1B,x2
+	dfst	t1		" t1 = n1*half_pi1
+
+	fld     n1
+	fmp     half_pi2B,x2
+	dfst	t2		" t2 = n1*half_pi2
+
+	fld     n1
+	fmp     half_pi3,x2
+	dfst	t3		" t3 = n1*half_pi3
+
+	fld     angle		" answer = angle - t1 - t2 - t3
+	dfsb	t1
+	dfsb	t2
+	dfsb	t3
+	tra     0,x0
+
+bfp_big_angle:
+	fcmg	two_pwr_54	" is the EAQ too large?
+	tpnz	angle_too_big	" Yup.
+
+	dfmp	one_over_half_pi	" EAQ = EAQ/half_pi
+	fad     =0.5,du		" EAQ = EAQ/half_pi + 0.5
+	dufa	almost_one
+	dufs	almost_one
+	ufa     =71b25,du		" AQ = EAQ/half_pi + 0.5 in integer form
+
+	eax1	0,ql
+	anx1	=3,du		" X1 = mod(AQ,4)
+
+	fad     =0.0,du		" EAQ = floor(EAQ/half_pi + 0.5) in floating point form
+	fst     n1		" n1 = EAQ
+
+big_angle_join:
+	fsb     n1
+	fst     n2		" n2 = n - n1
+
+	fld     n1
+	fmp     half_pi1B,x2
+	dfst	t1		" t1 = n1*half_pi1
+
+	fld     n1		" calculate n1*half_pi2 + n2*half_pi1
+	fmp     half_pi2B,x2
+	dfst	t2
+	fld     n2
+	fmp     half_pi1B,x2
+	dfad	t2
+	dfst	t2		" t2 = (n1*half_pi2 + n2*half_pi1)
+
+	fld     n1		" calculate n1*half_pi3 + n2*half_pi2
+	fmp     half_pi3,x2
+	dfst	t3
+	fld     n2
+	fmp     half_pi2B,x2
+	dfad	t3
+	dfst	t3		" t3 = (n1*half_pi3 + n2*half_pi2)
+
+	fld     n1		" calculate n1*half_pi4 + n2*half_pi3
+	fmp     half_pi4,x2
+	dfst	t4
+	fld     n2
+	fmp     half_pi3,x2
+	dfad	t4
+	dfst	t4		" t4 = (n1*half_pi4 + n2*half_pi3)
+
+	fld     angle		" answer = angle - t1 - t2 - t3
+	dfsb	t1
+	dfsb	t2
+	dfsb	t3
+	dfsb	t4
+
+	tra     0,x0		" return to caller
+
+angle_too_big:
+	ldq     code,x2		" pick the appropriate error message
+	stx0	temp		" save X0
+*	tsx0	<call_math_error_>|[call_math_error_]
+	ldx0	temp		" restore X0
+
+	eax1	0		" X1 = 0
+	fld     =0.0,du		" EAQ = 0, set indicators
+	tra     0,x0		" return to caller
+
+
+" Constants:
+
+	even
+*ninety:	dec	90.0d0
+one_over_half_pi:
+	dec	6.3661977236758134307553d-1
+	oct	000505746033,344710405225
+two_pwr_27:
+	oct	070400000000,000000000000
+two_pwr_54:
+	oct	156400000000,000000000000
+half_pi1B:	oct	002622077325,000000000000
+	oct	002062207732,000000000000
+half_pi2B:	oct	706420550604,000000000000
+	oct	766050420550,000000000000
+half_pi3: oct	616646114314,000000000000
+	oct	752060432304,000000000000
+half_pi4: oct	526505600670,000000000000
+	oct	736061461213,000000000000
+code:	dec	70,0,71
+
+
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Bull Inc., 1987                *
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+" *                                                         *
+" ***********************************************************
+
+"
+"	Rewritten: 13 Feb 85 by HH to put the HFP constant values
+"		immediately after the equivalent BFP values.  This was
+"		done for the sake of the math routines that use X
+"		register offsets to differentiate between the HFP and BFP
+"		values.
+
+    even
+    
+almost_one:
+	oct	000777777777,777777777777
+
+half_pi:
+	dec	1.570796326794896619231d+00
+
+log_10_of_2:
+	dec	3.010299956639811952137d-01
+
+log_10_of_e:
+	dec	4.342944819032518276511d-01
+
+log_2_of_e:
+	dec	1.442695040888963407359d+00
+log_e_of_2:
+	dec	6.931471805599453094172d-01
+max_value:
+	oct	376777777777,777777777777
+
+
+one_degree:
+	dec	1.745329251994329576923d-02
+
+one_over_pi:
+	dec	3.183098861837906715377d-01
+
+one_radian:
+	dec	5.729577951308232087679d+01
+pi:
+	dec	3.141592653589793238462d+00
+quarter_pi:
+	dec	7.853981633974483096156d-01
+square_root_half:
+	dec	7.071067811865475244008d-01
+square_root_three:
+	dec	1.732050807568877293527d+00
+square_root_two:
+	dec	1.414213562373095048801d+00
+
+" ******************************************
+" *                                        *
+" * Copyright, (C) Honeywell Limited, 1985 *
+" *                                        *
+" ******************************************
+	name	tangent_
+" Modification history:
+"	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+"	based on GCOS routine '7nbc'.
+"
+" Function:  Approximate to single precision the tangent or cotangent of an
+"	angle given in degrees or radians.
+"
+" Entry:	through the appropriately named entry point with:
+" 	EAQ = the angle whose tangent is desired.
+"	PR2 = the address of a 12 word, even-word aligned scratch area.
+"	      6 words are used in this program and 12 are used by the
+"	      routine "principal_angle_".  The storage for tangent_ and
+"	      principal_angle_ overlap.
+"	PR3 = the return address.
+"
+" Exit:	EAQ = the desired tangent or cotangent.
+"
+" Uses:	X0, X1, X2, X3.
+"	X0 = saves a return address from principal_angle_ routines
+"	X1 = shift (returned by principal_angle_ routines)
+"	X2 = indicates BFP or HFP mode - all the floating point math
+"	     routines use this register for the same purpose.
+"	X3 = indicates Tangent or Cotangent function
+"	The principal_angle_ routines use registers X1 and X2.
+
+	"segref	math_constants_,max_value,one_degree,quarter_pi
+	"segref	principal_angle_,principal_radians_,principal_degrees_
+
+	"equ	BFP,0
+	"equ	HFP,2
+	equ	Cotangent,-1
+	equ	Tangent,1
+	"equ	sign,0
+	"equ	x,0
+	"equ	xx,2
+	"equ	q,4
+
+    even
+    bss     q,2
+    bss     sign,2
+    
+	"segdef	cotangent_degrees_,hfp_cotangent_degrees_
+	"segdef	cotangent_radians_,hfp_cotangent_radians_
+	"segdef	tangent_degrees_,hfp_tangent_degrees_
+	"segdef	tangent_radians_,hfp_tangent_radians_
+
+
+cotangent_degrees_:
+    save    0,1,2,3,4
+    FLD     2, 1*               " X = ARGUMENT
+
+	eax2	BFP		" no offset for BFP constants
+    eax4    1
+
+cotangent_degrees:
+	fad     =0.0,du		" normalize input
+	eax1	0           " initialize X1 := shift = 1
+	fcmg	forty_five,x2
+	tmoz	2,ic		" if abs (angle) > 45:
+    tsx0	principal_degrees_	"   call principal_degrees_
+
+	dfcmg	Teps1,x2		" if conversion to degrees underflows
+	tmi     infinity	"   return (infinity (degrees))
+                        " else:
+	dfmp	one_degree,x2	"   EAQ := degrees * one_degree
+
+	canx1	=1,du
+	tnz     3,ic		" if shift = 0 | shift = 2:
+    eax3	Cotangent		"   X3 := Cotangent
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, degrees*one_degree))
+                            " else if shift = 1 | shift = 3
+	eax3	Tangent		"   X3 := Cotangent
+	fneg	0           "   EAQ := -degrees*one_degree
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, -(degrees*one_degree)))
+
+
+cotangent_radians_:
+	eax2	BFP		" no offset for BFP constants
+
+cotangent_radians:
+	fad     =0.0,du		" normalize input
+	fcmg	quarter_pi,x2
+	tpl     3,ic		" if abs (angle) > quarter_pi:
+    eax3	Cotangent	"   X3 := Cotangent
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, radians)
+	tsx0	principal_radians_	" call principal_radians_
+
+	canx1	=1,du
+	tnz     3,ic		" if shift = 0 | shift = 2:
+    eax3	Cotangent		"   X3 := Cotangent
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, radians))
+                            " else if shift = 1 | shift = 3
+	eax3	Tangent		"   X3 := Cotangent (???)
+	fneg	0           "   EAQ := -radians
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, -radians))
+
+
+tangent_degrees_:
+    save    0,1,2,3,4
+    FLD     2, 1*               " X = ARGUMENT
+
+	eax2	BFP		" no offset for BFP constants
+    eax4    0
+    
+tangent_degrees:
+	fad     =0.0,du		" normalize input
+	eax1	0		" initialize X1 := shift = 1
+	fcmg	forty_five,x2
+	tmoz	2,ic		" if abs (angle) > 45:
+    tsx0	principal_degrees_	"   call principal_degrees_
+
+	dfcmg	Teps1,x2		" if conversion to radians underflows
+	tpl     2,ic
+    fld     =0.0,du     "   then use zero
+                        " else:
+	dfmp	one_degree,x2	"   EAQ := degrees * one_degree
+
+	canx1	=1,du
+	tnz     3,ic		" if shift = 0 | shift = 2:
+    eax3	Tangent		"   X3 := Tangent
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, degrees*one_degree))
+                            " else if shift = 1 | shift = 3
+	eax3	Cotangent		"   X3 := Cotangent
+	fneg	0           "   EAQ := -radians
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, -(degrees*one_degree)))
+
+
+tangent_radians_:
+	eax2	BFP		" no offset for BFP constants
+
+tangent_radians:
+	fad     =0.0,du		" normalize input
+	fcmg	quarter_pi,x2
+	tpl     3,ic		" if abs (angle) <= quarter_pi:
+    eax3	Tangent
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, radians))
+
+	tsx0	principal_radians_	" call principal_radians_
+
+	canx1	=1,du
+	tnz     3,ic		" if shift = 0 | shift = 2:
+    eax3	Tangent		"   X3 := Tangent
+	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, radians))
+                            " else if shift = 1 | shift = 3
+	eax3	Cotangent		"   X3 := Cotangent
+	fneg	0		"   EAQ := -radians
+"	tra	part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, -radians))
+
+
+" Procedure 'part_tan_or_cot' (function, x) calculates either 'tan(x)'
+" or 'cot(x)' to double precision accuracy, for 'x' in [-pi/4, pi/4].
+" Argument 'x' is given in the EAQ and the function to be calculated is
+" given in X3.  X3=-1 indicates 'cot' and X3=1 indicates 'tan'.
+
+part_tan_or_cot:
+    fcmg	Teps2		" if abs(x) < 5e-10:
+    tpl     use_polynomial
+    cmpx3	Tangent,du	"   if function = Tangent
+    tnz     3,ic
+	frd     0		"     then return (result)
+    "tra     pr3|0
+    tra     TanRets,x4
+	dfcmg	Teps3,x2		"   else if (1/result) overflows
+    tmoz	infinity		"     then return (infinity (result))
+	fdi     one,x2    	"     else return (1/result)
+	"tra     pr3|0
+    tra     TanRets,x4
+
+use_polynomial:
+	dfstr	x
+	dfmp	x		" calculate xx = x*x
+	dfstr	xx
+	dfad	q1,x2		" calculate q = q(xx)
+	dfmp	xx
+	dfad	q0,x2
+	dfstr	q
+	dfld	xx		" calculate p(xx)
+	dfmp	Tp2,x2
+	dfad	Tp1,x2
+	dfmp	xx
+	dfad	Tp0,x2
+	dfmp	x		" calculate p = x*p(xx)
+	cmpx3	Tangent,du
+	tnz     4,ic		" if function = Tangent
+    dfdv	q		" then return (p/q)
+	frd     0
+	"tra     pr3|0
+    tra     TanRets,x4
+	dfdi	q		" else return (q/p)
+	frd     0
+	"tra     pr3|0
+    tra     TanRets,x4
+
+
+
+infinity:
+	fst     sign
+	fld     max_value
+	fad     max_value		" signal overflow
+	fld     max_value
+	fszn	sign		" if sign >= 0
+	"tpl     pr3|0		" then return (max_value)
+    tra     TanRets,x4
+
+	fneg	0		" else return (-max_value)
+	"tra     pr3|0
+    tra     TanRets,x4
+
+
+TanRets:
+    return  tangent_degrees_
+    return  cotangent_degrees_
+
+" Constants:
+
+	even
+Teps1:	dec	8.418858142948452884d-38
+Teps2:	dec	5.0d-10
+Teps3:	oct	404400000000,000000000001
+forty_five:
+	dec	45.0d0
+one:	dec  1.d0
+Tp0:	dec	 6.26041119547433196d1
+Tp1:	dec	-6.97168400629442048d0
+Tp2:	dec	 6.73091025875915d-2
+q0:     dec	 6.260411195336057284d1
+q1:     dec	-2.78397212200427089d1
+
+
+" ******************************************
+" *                                        *
+" * Copyright, (C) Honeywell Limited, 1985 *
+" *                                        *
+" ******************************************
+	name	logarithm_
+" Modification history:
+"	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+"	based on GCOS routine '7naf'.
+"
+" Function:  Calculates the logarithm functions log_base_e(x), log_base_2(x),
+"	and log_base_10(x) to single precision accuracy in either BFP or
+"	HFP mode.
+"
+" Entry:	through the appropriately named entry point with:
+" 	EAQ = the argument x.
+"	PR2 = the address of a 14 word, even-word aligned scratch area.
+"	PR3 = the return address.
+"
+" Exit:	EAQ = the desired logarithm
+"
+" Uses:	X0, X1, X3
+"	X0 = saves a return address from call_math_error_
+"	     or saves a return address from log2
+"	X1 = saves a return address from part_log2_of_ratio
+"	X3 = address of second argument for part_log2_of_ratio
+
+	"segref	math_constants_,hfp_log_10_of_2,hfp_log_e_of_2,log_10_of_2,log_e_of_2,max_value
+
+    even
+    bss xe, 2
+    bss xm, 2
+    bss bias, 2
+    bss shift, 2
+    bss	x_plus_y,2
+	bss	z,2
+	bss	zz,2
+
+"	equ	xe,0
+"	equ	xm,2
+"	equ	bias,4
+"	equ	shift,6
+"	equ	x_plus_y,8
+"	equ	z,10
+"	equ	zz,12
+
+	"segdef	log_base_10_,hfp_log_base_10_
+	"segdef	log_base_2_,hfp_log_base_2_
+	"segdef	log_base_e_,hfp_log_base_e_
+
+
+log_base_10_:
+    save    0,1,3
+    FLD     2, 1*               " X = ARGUMENT
+
+	tsx0	log2		" calculate log2 (x)
+	dfmp	log_10_of_2	" EAQ := log_10_of_2 * log2 (x)
+	frd     0
+	"tra     pr3|0		" return to caller
+
+    return  log_base_10_
+
+log_base_2_:
+    save    0,1,3
+    FLD     2, 1*               " X = ARGUMENT
+
+	tsx0	log2		" calculate log2 (x)
+	frd     0
+"	tra     pr3|0		" return to caller
+
+    return  log_base_2_
+
+log_base_e_:
+    save    0,1,3
+    FLD     2, 1*               " X = ARGUMENT
+
+	tsx0	log2		" calculate log2 (x)
+	dfmp	log_e_of_2	" EAQ := log_e_of_2 * log2 (x)
+	frd     0
+	"tra     pr3|0		" return to caller
+
+    return  log_base_e_
+    
+log_of_negative:
+	ldq     10,dl
+*	tsx0	<call_math_error_>|[call_math_error_]
+	fld     max_value
+	fneg	0
+	tra     pr3|0
+
+log_of_zero:
+	ldq     9,dl
+*	tsx0	<call_math_error_>|[call_math_error_]
+	fld     max_value
+	fneg	0
+	tra     pr3|0
+
+log2:
+	fad     =0.0,du		" normalize input and set indicators
+	tmi     log_of_negative
+	tze     log_of_zero
+
+	fcmp	Lsquare_root_two	" check for x in the range [.707,1.414]
+	tpl     6,ic
+    fcmp	Lsquare_root_half
+    tmi     4,ic		" if square_root_half >= x & x <= square_root_two
+    eax3	Lone		"   X3 := addr (1.0)
+	eax1	0,x0		"   copy return address
+	tra     part_log2_of_ratio	"   result = part_log2_of_ratio (x, 1)
+                        " else
+	ste     xe          "   store addr (x) -> expon in xe
+	lde     =0,du		"   addr (xm) -> expon = 0
+	fst     xm
+	lda     xe          "   A := 8/xe,10/0,18/garbage
+	lrs     72-18		"   AQ := 62/xe,10/0
+	lde     =61b25,du		"   EAQ := unnormalized float(xe)
+	fsb     =0.5,du		"   EAQ := float(xe) - 0.5
+	fst     bias
+	fld     xm
+	eax3	Lsquare_root_half	"   X3 := addr (square_root_half)
+	tsx1	part_log2_of_ratio	"   EAQ := part_log2_of_ratio (x, square_root_half)
+    fad     bias            "   EAQ := part_log2_of_ratio (x, square_root_half) + bias  (= log2(x))
+	tra     0,x0		"   return result
+
+
+" part_log2_of_ratio (x, y) calculates log2(x/y), where x/y is in the
+" range [0.5*2**0.5, 2**0.5], given x in the EAQ and the address of y in X3.
+
+part_log2_of_ratio:
+
+	dfad	0,x3		" EAQ := x + y
+	dfst	x_plus_y
+	dfsb	0,x3		" EAQ := x
+	dfsb	0,x3		" EAQ := x - y
+	dfdv	x_plus_y	" calculate z = (x - y) / (x + y)
+	fcmg	Leps
+	tpnz	3,ic		" if abs(z) < 4.1968417d-11
+    dfmp	Lp0         "   EAQ := z * p0
+	tra     0,x1		"   return to caller
+	dfst	z
+	fmp     z           " calculate zz = z*z
+	fst     zz          " calculate p(zz)
+	fmp     Lp3
+	dfad	Lp2
+	fmp     zz
+	dfad	Lp1
+	fmp     zz
+	dfad	Lp0
+	dfmp	z           " calculate z*p(zz)
+
+	tra     0,x1		" return to caller
+
+	even
+Leps:	dec     4.1968417d-11
+Lone:	dec     1.0d0
+Lp0:    dec     .288539007275213810d01
+Lp1:    dec     .961800759210250522d00
+Lp2:    dec     .576584541348266310d00
+Lp3:    dec     .434255940790007142d0
+Lsquare_root_half:
+        dec     7.071067811865475244008d-01
+Lsquare_root_two:
+        dec     1.414213562373095048801d+00
+
+
+" ******************************************
+" *                                        *
+" * Copyright, (C) Honeywell Limited, 1985 *
+" *                                        *
+" ******************************************
+	name	exponential_
+" Modification history:
+"	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+"	based on GCOS routine '7naz'.
+"
+" Function:  Calculates the exponential function 'e**x' to single precision
+"	accuracy in either BFP or HFP mode.
+"
+" Entry:	through the appropriately named entry point with:
+" 	EAQ = the argument x.
+"	PR2 = the address of a 4 word, even-word aligned scratch area.
+"	PR3 = the return address.
+"
+" Exit:	EAQ = the desired exponential
+"
+" Uses:	X0
+"	X0 = index to the table "scale"
+
+
+	"segref	math_constants_,almost_one,hfp_almost_one,log_2_of_e,max_value
+
+	"equ	iy,0
+	"equ 	z,2
+
+    even
+    bss iy, 2
+
+	"bool	M0.5H,001400	" yields HFP -0.5 under 'du' modification
+	"bool	P1.0H,002040	" yields HFP +1.0 under 'du' modification
+	"bool	P2.0H,002100	" yields HFP +2.0 under 'du' modification
+
+	"segdef	exponential_,hfp_exponential_
+
+
+exponential_:
+    save    0, 1
+    FLD     2, 1*               " X = ARGUMENT
+
+    
+	fcmp	lb          " if x <= -89.415987: 
+	"tpnz	3,ic
+    tpnz    e3
+    fld     =0.0,du     "    result = 0
+	"tra     pr3|0		"    return
+    return  exponential_
+e3:	fcmp	ub          " if x >= 88.0296926 goto overflow_error
+	tpl     overflow_error
+	dfmp	log_2_of_e	" y = x*log_2_of_e
+	fad     =1.0,du		" EAQ := y + 1
+
+	ufa     =7b25,du	" AQ := 8/floor(y+1),64/fraction part of y
+	sta     iy
+	ora     =o776000,du	" AQ := 8/-1,64/fraction part of y
+	lde     =7b25,du	" EAQ := ry = unnormalized y - floor(y+1)
+	fad     =0.0,du		" EAQ := ry = normalized y - floor(y+1)
+                        " result = part_exp2 (ry)
+
+" The function part_exp2 calculates 2**z, given z in the range [-1, 0)
+" in the EAQ.
+
+part_exp2:
+	fcmg	Eeps
+	"tpl     3,ic		" if abs (z) < 1.56417309e-19:
+    tpl     pe2
+    fld     =1.0,du     "    result = 1.0
+	"tra     pr3|0		"    return
+    return  exponential_
+
+pe2:frd     0
+	fst     z
+
+	fmp     Ep7		" result = p(z)
+	dfad	Ep6
+	fmp     z
+	dfad	Ep5
+	fmp     z
+	dfad	Ep4
+	fmp     z
+	dfad	Ep3
+	fmp     z
+	dfad	Ep2
+	fmp     z
+	dfad	Ep1
+	fmp     z
+	dfad	Ep0
+
+	ade     iy		" addr (result) -> expon = addr (result) -> expon + iy
+	"tra     pr3|0		" return result in EAQ
+    return  exponential_
+
+
+overflow_error:
+	fld     max_value
+	fad     max_value		" cause an overflow
+	fld     max_value
+	"tra     pr3|0		" return to caller
+    return  exponential_
+
+
+	even
+
+Eeps:	dec	1.56417309d-19
+Ep0:	dec	0.999999999959788989221d00
+Ep1:	dec	0.693147175773076184335d00
+Ep2:	dec	0.240226411617528907564d00
+Ep3:	dec	0.555033746338694398430d-01
+Ep4:	dec	0.961531912935043645900d-02
+Ep5:	dec	0.132743818109838796600d-02
+Ep6:	dec	0.147007243118869978000d-03
+Ep7:	dec	0.107493818486964670000d-04
+
+ub:	dec	8.802969265d01		" 2**127 - 2**100 = e**88.0296926
+lb:	dec	-8.9415987d01		" 2**(-129) = e**-89.415987
+
+" XXX only seems to be used by hfp version
+"scale:	oct	002040000000		" 1
+"	oct	000400000000		" 0.5
+"	oct	000200000000		" 0.25
+"	oct	000100000000		" 0.125
+"	oct	000040000000		" 0.0625
+
+        include     Utils.as8
+        include     rdclock.as8
+
+

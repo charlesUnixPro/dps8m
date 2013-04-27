@@ -1,0 +1,188 @@
+Sat Apr 20 20:14:37 PDT 2013
+Added scaled, fixed-point literal support
+
+Sat Feb  9 15:46:42 PST 2013
+
+Added the 'decNumber' decimal arithmetic library to SVN.
+
+
+Sat Jan 12 23:32:12 PST 2013
+
+How to make dps8/as8
+
+Has been tested on 64-bit Ununtu 12.10,8.04.4, Gentoo 4.3.6-r1 and OS/X 10.8
+
+1) untar the dps8.tar.gz file ...
+
+tar zxvf dps8.tar.gz
+
+The Resulting directory structure should look something like this:
+
+total 0
+drwxr-xr-x   5 doon  staff  170 Nov 22 11:21 as8
+drwxr-xr-x  19 doon  staff  646 Jan  6 13:46 dps8
+drwxr-xr-x  27 doon  staff  918 Dec 21 05:56 simhv39-0
+
+./as8:
+total 0
+drwxr-xr-x  46 doon  staff  1564 Jan  6 10:56 Tests
+drwxr-xr-x  11 doon  staff   374 Jan  5 14:28 src
+
+./as8/Tests:
+total 464
+-rw-r--r--   1 doon  staff     39 Nov  9 16:25 Am2.as8
+-rw-r--r--@  1 doon  staff   1555 Dec 22 22:24 GMAP_course.as8
+-rw-r--r--@  1 doon  staff   2788 Nov 16 21:28 Init.incl.as8
+-rw-r--r--   1 doon  staff     72 Jan  1 15:52 Test1
+-rw-r--r--@  1 doon  staff   1276 Nov 16 21:28 Test1.as8
+-rw-r--r--   1 doon  staff   2072 Nov 22 09:55 Test1.oct
+-rw-r--r--   1 doon  staff     83 Jan  1 15:52 Test2
+-rw-r--r--@  1 doon  staff    738 Dec 29 09:40 Test2.as8
+-rw-r--r--   1 doon  staff   1191 Nov 22 09:55 Test2.oct
+-rw-r--r--   1 doon  staff     72 Jan  1 15:52 Test3
+-rw-r--r--   1 doon  staff    682 Nov 16 21:28 Test3.as8
+-rw-r--r--   1 doon  staff   2323 Nov 22 09:55 Test3.oct
+-rw-r--r--   1 doon  staff     72 Jan  1 15:53 Test4
+-rw-r--r--@  1 doon  staff    385 Dec 29 09:45 Test4.as8
+-rw-r--r--   1 doon  staff    783 Nov 22 09:55 Test4.oct
+-rw-r--r--   1 doon  staff    287 Nov 16 21:28 Test5.as8
+-rw-r--r--   1 doon  staff   3576 Dec 15 21:24 Test5.oct
+-rw-r--r--@  1 doon  staff   7441 Nov 16 21:28 TestAddrMods.as8
+-rw-r--r--@  1 doon  staff  13480 Nov 26 16:36 TestAddrMods.oct
+-rw-r--r--   1 doon  staff    391 Jan  1 15:51 TestAppend
+-rw-r--r--@  1 doon  staff   1258 Dec 25 11:55 TestAppend0.as8
+-rw-r--r--@  1 doon  staff    569 Nov 22 22:48 TestAppend1.as8
+-rw-r--r--@  1 doon  staff    636 Nov 24 14:54 TestAppend2.as8
+-rw-r--r--@  1 doon  staff    907 Nov 29 20:42 TestAppend3.as8
+-rw-r--r--   1 doon  staff    155 Jan  1 15:54 TestCSR
+-rw-r--r--@  1 doon  staff   7965 Dec 29 08:59 TestCSR (Old).as8
+-rw-r--r--@  1 doon  staff   2116 Jan  1 14:16 TestCSR.as8
+-rw-r--r--@  1 doon  staff  18704 Jan  4 14:46 TestCSR.oct
+-rw-r--r--@  1 doon  staff    164 Jan  6 10:55 TestEIS.as8
+-rw-r--r--   1 doon  staff  11657 Jan  6 10:56 TestEIS.oct
+-rw-r--r--@  1 doon  staff   2044 Dec 25 10:18 TestFP.as8
+-rw-r--r--   1 doon  staff   4528 Dec 25 21:09 TestFP.oct
+-rw-r--r--@  1 doon  staff   6173 Dec 29 09:37 TestIoa (old).as8
+-rw-r--r--   1 doon  staff    162 Jan  1 15:51 TestPP
+-rw-r--r--@  1 doon  staff   1322 Dec 29 09:37 TestPP (old).as8
+-rw-r--r--   1 doon  staff    176 Jan  1 15:51 TestString
+-rw-r--r--@  1 doon  staff    406 Dec 10 20:47 TestString.as8
+-rw-r--r--@  1 doon  staff   1070 Dec 29 08:54 Utils (old).as8
+-rw-r--r--@  1 doon  staff   5939 Dec 29 09:48 Utils.as8
+drwxr-xr-x  12 doon  staff    408 Dec 31 15:05 alm
+-rw-r--r--@  1 doon  staff   6604 Dec 31 17:22 rdclock.as8
+-rw-r--r--   1 doon  staff   6613 Jan  1 17:01 rdclock.oct
+-rw-r--r--   1 doon  staff     35 Nov 25 16:30 string.as8
+
+./as8/Tests/alm:
+total 2840
+-rw-r--r--@ 1 doon  staff  275591 Dec 30 09:48 apnd.list
+-rw-r--r--@ 1 doon  staff  224227 Dec 30 09:45 boot.list
+-rw-r--r--@ 1 doon  staff    3012 Dec 29 11:28 bosequ.incl.alm
+-rw-r--r--@ 1 doon  staff    3280 Dec 29 11:40 conv.incl.alm
+-rw-r--r--@ 1 doon  staff    2583 Dec 29 11:42 eis_micro_ops.incl.alm
+-rw-r--r--@ 1 doon  staff   10758 Dec 27 10:59 error.incl.alm
+-rw-r--r--@ 1 doon  staff    3120 Dec 28 13:38 octwd.incl.alm
+-rw-r--r--@ 1 doon  staff    5769 Dec 29 10:21 rdclock.incl.alm
+-rw-r--r--@ 1 doon  staff  439343 Dec 31 15:05 setup.list
+-rw-r--r--@ 1 doon  staff  468883 Dec 29 11:47 util.list
+
+./as8/src:
+total 344
+-rw-r--r--@ 1 doon  staff  13493 Dec 29 20:43 ExprEval.c
+-rw-r--r--@ 1 doon  staff    482 Dec 29 21:24 Makefile
+-rw-r--r--@ 1 doon  staff  14118 Jan  5 14:28 as.c
+-rw-r--r--@ 1 doon  staff   4083 Jan  1 14:58 as.h
+-rw-r--r--  1 doon  staff   3113 Nov 22 09:55 as8.1
+-rw-r--r--@ 1 doon  staff  17831 Jan  5 14:27 asMisc.c
+-rw-r--r--@ 1 doon  staff  37947 Dec 31 16:32 asUtils.c
+-rw-r--r--  1 doon  staff   2485 Nov 22 09:55 main.c
+-rw-r--r--@ 1 doon  staff  63325 Jan  1 00:00 pseudoOps.c
+
+./dps8:
+total 984
+-rw-r--r--@ 1 doon  staff    1499 Jan  3 21:33 Makefile
+-rw-r--r--@ 1 doon  staff   57063 Jan  6 12:16 dps8.h
+-rw-r--r--@ 1 doon  staff   40454 Dec 27 22:28 dps8_addrmods.c
+-rw-r--r--@ 1 doon  staff   59049 Jan  4 09:40 dps8_append.c
+-rw-r--r--  1 doon  staff    1528 Nov 22 11:15 dps8_bar.c
+-rw-r--r--@ 1 doon  staff   22240 Jan  5 14:28 dps8_cpu.c
+-rw-r--r--@ 1 doon  staff   27849 Jan  6 13:46 dps8_eis.c
+-rw-r--r--@ 1 doon  staff  123336 Dec 29 09:11 dps8_ins.c
+-rw-r--r--  1 doon  staff    8011 Nov 22 09:55 dps8_iom.c
+-rw-r--r--@ 1 doon  staff    9433 Nov 24 13:54 dps8_loader.c
+-rw-r--r--  1 doon  staff     146 Nov 22 09:55 dps8_lp.c
+-rw-rw-rw-@ 1 doon  staff   45850 Dec 20 21:40 dps8_math.c
+-rw-r--r--  1 doon  staff     146 Nov 22 09:55 dps8_mt.c
+-rw-r--r--@ 1 doon  staff   24779 Jan  5 11:46 dps8_opcodetable.c
+-rw-r--r--  1 doon  staff     150 Nov 22 09:55 dps8_stddev.c
+-rw-r--r--@ 1 doon  staff    8895 Dec 31 23:17 dps8_sys.c
+-rw-r--r--@ 1 doon  staff   28711 Jan  5 14:26 dps8_utils.c
+
+./simhv39-0:
+total 1648
+-rwxr-xr-x  1 doon  staff    5263 Nov 22 09:52 0readme_39.txt
+-rwxr-xr-x  1 doon  staff   35138 Nov 22 09:54 0readme_ethernet.txt
+-rwxr-xr-x  1 doon  staff     530 Nov 22 09:52 build_mingw.bat
+-rwxr-xr-x  1 doon  staff     580 Nov 22 09:51 build_mingw_ether.bat
+-rwxr-xr-x  1 doon  staff   60270 Nov 22 09:53 descrip.mms
+-rwxr-xr-x  1 doon  staff   29326 Nov 22 09:55 makefile
+-rwxr-xr-x  1 doon  staff  178556 Nov 22 11:17 scp.c
+-rwxr-xr-x  1 doon  staff    5460 Nov 22 09:54 scp.h
+-rwxr-xr-x  1 doon  staff   36906 Nov 22 09:54 sim_console.c
+-rwxr-xr-x  1 doon  staff    3852 Nov 22 09:54 sim_console.h
+-rwxr-xr-x  1 doon  staff   27310 Nov 22 09:53 sim_defs.h
+-rwxr-xr-x  1 doon  staff  119426 Nov 22 09:54 sim_ether.c
+-rwxr-xr-x  1 doon  staff   16179 Nov 22 09:54 sim_ether.h
+-rwxr-xr-x  1 doon  staff    9720 Nov 22 09:52 sim_fio.c
+-rwxr-xr-x  1 doon  staff    2171 Nov 22 09:52 sim_fio.h
+-rwxr-xr-x  1 doon  staff  126821 Nov 22 09:54 sim_rev.h
+-rwxr-xr-x  1 doon  staff   10591 Nov 22 09:54 sim_sock.c
+-rwxr-xr-x  1 doon  staff    4199 Nov 22 09:54 sim_sock.h
+-rwxr-xr-x  1 doon  staff   36980 Nov 22 09:53 sim_tape.c
+-rwxr-xr-x  1 doon  staff    6630 Nov 22 09:54 sim_tape.h
+-rwxr-xr-x  1 doon  staff   20192 Nov 22 09:52 sim_timer.c
+-rwxr-xr-x  1 doon  staff    3571 Nov 22 09:53 sim_timer.h
+-rwxr-xr-x  1 doon  staff   41906 Nov 22 09:51 sim_tmxr.c
+-rwxr-xr-x  1 doon  staff    5949 Nov 22 09:51 sim_tmxr.h
+lrwxr-xr-x  1 doon  staff       4 Dec 15 20:54 simh -> simh
+
+2) build the assembler - as8
+
+(from root directory of where tar file was extracted)
+
+cd as8/src
+make
+
+There will be some warnings, but should build & link OK. 
+
+
+3) build the simulator dps8
+
+(from root directory of where tar file was extracted)
+
+cd dps8
+make
+
+4) Testing the simulator
+
+
+(from root directory of where tar file was extracted)
+
+cd dps8
+
+./dps8
+
+dps 8/m simulator V3.9-0
+sim> load Hello.oct
+226 (000342) words loaded
+sim> g 0
+Hello from dps8m!!!!!
+
+cpuCycles = 142
+
+DIS instruction, IC: 000004 (616000)
+sim> q
+Goodbye
+
+

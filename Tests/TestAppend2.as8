@@ -1,0 +1,42 @@
+"
+" code to test the appending unit ....
+"
+
+"
+" start simple. Try to have segment 0 talk to segment 1 and vice-versa .....
+"
+        go      start
+	segment	2
+        
+start:
+	lda	four
+	ldq	five
+	lxl0	six
+
+hello:  lda msg0,   sc
+        emcall      1
+        ttf         hello
+        tra         L0
+
+L0:     
+        lda pr0|0
+        
+        lda =0616
+        sta pr3|060
+        
+        lda pr3|060
+        emcall      2
+        
+        tra pr0|010
+
+        dis
+    
+"
+" data ...
+"
+msg0:   tallyb      msg0d, 26, 0   "address, count, byte offset
+msg0d:  aci         /From Segment 2 This is .../
+
+four:	dec	4
+five:	dec	5
+six:	dec	6

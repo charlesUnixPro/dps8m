@@ -1,0 +1,1427 @@
+!SIZE 002700
+000000 xxxx 002445702000     tsx2	rd_clock
+000001 xxxx 000020757000     staq	Date        "MM/DD HH:MM
+000002 xxxx 002127701000     call    ioa(msgHello, Date, Date+1)
+000003 xxxx 000010710000 
+000004 xxxx 000000000000 
+000005 xxxx 000011000000 
+000006 xxxx 000020000000 
+000007 xxxx 000021000000 
+000010 xxxx 000022710000     tra     main_
+000011 xxxx 030124150151 msgHello:   acc     "This is TestFP ...^g^g\r\n"
+000012 xxxx 163040151163 
+000013 xxxx 040124145163 
+000014 xxxx 164106120040 
+000015 xxxx 056056056136 
+000016 xxxx 147136147015 
+000017 xxxx 012040040040 
+000020 xxxx 000000000000     bss     Date, 2
+000022 xxxx 002002701000     call    exponential_(=1.0)
+000023 xxxx 000026710000 
+000024 xxxx 000000000000 
+000025 xxxx 002634000000 
+000026 xxxx 000006420400     emCall  6
+000027 xxxx 002112701000     call    crlf
+000030 xxxx 000032710000 
+000031 xxxx 000000000000 
+000032 xxxx 002002701000     call    exponential_(=1.23456)
+000033 xxxx 000036710000 
+000034 xxxx 000000000000 
+000035 xxxx 002635000000 
+000036 xxxx 000006420400     emCall  6
+000037 xxxx 002112701000     call    crlf
+000040 xxxx 000042710000 
+000041 xxxx 000000000000 
+000042 xxxx 002002701000     call    exponential_(=-6.54321)
+000043 xxxx 000046710000 
+000044 xxxx 000000000000 
+000045 xxxx 002636000000 
+000046 xxxx 000006420400     emCall  6
+000047 xxxx 002112701000     call    crlf
+000050 xxxx 000052710000 
+000051 xxxx 000000000000 
+000052 xxxx 001655701000     call    log_base_e_(=3.1415926535897932)
+000053 xxxx 000056710000 
+000054 xxxx 000000000000 
+000055 xxxx 002637000000 
+000056 xxxx 000006420400     emCall  6
+000057 xxxx 002112701000     call    crlf
+000060 xxxx 000062710000 
+000061 xxxx 000000000000 
+000062 xxxx 001616701000     call    log_base_10_(=3.1415926535897932)
+000063 xxxx 000066710000 
+000064 xxxx 000000000000 
+000065 xxxx 002640000000 
+000066 xxxx 000006420400     emCall  6
+000067 xxxx 002112701000     call    crlf
+000070 xxxx 000072710000 
+000071 xxxx 000000000000 
+000072 xxxx 001344701000     call    cotangent_degrees_(=34.0)
+000073 xxxx 000076710000 
+000074 xxxx 000000000000 
+000075 xxxx 002641000000 
+000076 xxxx 000006420400     emCall  6
+000077 xxxx 002112701000     call    crlf
+000100 xxxx 000102710000 
+000101 xxxx 000000000000 
+000102 xxxx 001344701000     call    cotangent_degrees_(=-34.0)
+000103 xxxx 000106710000 
+000104 xxxx 000000000000 
+000105 xxxx 002642000000 
+000106 xxxx 000006420400     emCall  6
+000107 xxxx 002112701000     call    crlf
+000110 xxxx 000112710000 
+000111 xxxx 000000000000 
+000112 xxxx 001423701000     call    tangent_degrees_(=60.0)
+000113 xxxx 000116710000 
+000114 xxxx 000000000000 
+000115 xxxx 002643000000 
+000116 xxxx 000006420400     emCall  6
+000117 xxxx 002112701000     call    crlf
+000120 xxxx 000122710000 
+000121 xxxx 000000000000 
+000122 xxxx 001423701000     call    tangent_degrees_(=45.0)
+000123 xxxx 000126710000 
+000124 xxxx 000000000000 
+000125 xxxx 002644000000 
+000126 xxxx 000006420400     emCall  6
+000127 xxxx 002112701000     call    crlf
+000130 xxxx 000132710000 
+000131 xxxx 000000000000 
+000132 xxxx 001423701000     call    tangent_degrees_(=12.34)
+000133 xxxx 000136710000 
+000134 xxxx 000000000000 
+000135 xxxx 002645000000 
+000136 xxxx 000006420400     emCall  6
+000137 xxxx 002112701000     call    crlf
+000140 xxxx 000142710000 
+000141 xxxx 000000000000 
+000142 xxxx 001423701000     call    tangent_degrees_(=-60.0)
+000143 xxxx 000146710000 
+000144 xxxx 000000000000 
+000145 xxxx 002646000000 
+000146 xxxx 000006420400     emCall  6
+000147 xxxx 002112701000     call    crlf
+000150 xxxx 000152710000 
+000151 xxxx 000000000000 
+000152 xxxx 001423701000     call    tangent_degrees_(=-45.0)
+000153 xxxx 000156710000 
+000154 xxxx 000000000000 
+000155 xxxx 002647000000 
+000156 xxxx 000006420400     emCall  6
+000157 xxxx 002112701000     call    crlf
+000160 xxxx 000162710000 
+000161 xxxx 000000000000 
+000162 xxxx 001423701000     call    tangent_degrees_(=-12.34)
+000163 xxxx 000166710000 
+000164 xxxx 000000000000 
+000165 xxxx 002650000000 
+000166 xxxx 000006420400     emCall  6
+000167 xxxx 002112701000     call    crlf
+000170 xxxx 000172710000 
+000171 xxxx 000000000000 
+000172 xxxx 000626701000     call    cosine_degrees_(=60.0)
+000173 xxxx 000176710000 
+000174 xxxx 000000000000 
+000175 xxxx 002651000000 
+000176 xxxx 000006420400     emCall  6
+000177 xxxx 002112701000     call    crlf
+000200 xxxx 000202710000 
+000201 xxxx 000000000000 
+000202 xxxx 000626701000     call    cosine_degrees_(=45.0)
+000203 xxxx 000206710000 
+000204 xxxx 000000000000 
+000205 xxxx 002652000000 
+000206 xxxx 000006420400     emCall  6
+000207 xxxx 002112701000     call    crlf
+000210 xxxx 000212710000 
+000211 xxxx 000000000000 
+000212 xxxx 000626701000     call    cosine_degrees_(=12.34)
+000213 xxxx 000216710000 
+000214 xxxx 000000000000 
+000215 xxxx 002653000000 
+000216 xxxx 000006420400     emCall  6
+000217 xxxx 002112701000     call    crlf
+000220 xxxx 000222710000 
+000221 xxxx 000000000000 
+000222 xxxx 000626701000     call    cosine_degrees_(=-60.0)
+000223 xxxx 000226710000 
+000224 xxxx 000000000000 
+000225 xxxx 002654000000 
+000226 xxxx 000006420400     emCall  6
+000227 xxxx 002112701000     call    crlf
+000230 xxxx 000232710000 
+000231 xxxx 000000000000 
+000232 xxxx 000626701000     call    cosine_degrees_(=-45.0)
+000233 xxxx 000236710000 
+000234 xxxx 000000000000 
+000235 xxxx 002655000000 
+000236 xxxx 000006420400     emCall  6
+000237 xxxx 002112701000     call    crlf
+000240 xxxx 000242710000 
+000241 xxxx 000000000000 
+000242 xxxx 000626701000     call    cosine_degrees_(=-12.34)
+000243 xxxx 000246710000 
+000244 xxxx 000000000000 
+000245 xxxx 002656000000 
+000246 xxxx 000006420400     emCall  6
+000247 xxxx 002112701000     call    crlf
+000250 xxxx 000252710000 
+000251 xxxx 000000000000 
+000252 xxxx 000663701000     call    sine_degrees_(=60.0)
+000253 xxxx 000256710000 
+000254 xxxx 000000000000 
+000255 xxxx 002657000000 
+000256 xxxx 000006420400     emCall  6
+000257 xxxx 002112701000     call    crlf
+000260 xxxx 000262710000 
+000261 xxxx 000000000000 
+000262 xxxx 000663701000     call    sine_degrees_(=45.0)
+000263 xxxx 000266710000 
+000264 xxxx 000000000000 
+000265 xxxx 002660000000 
+000266 xxxx 000006420400     emCall  6
+000267 xxxx 002112701000     call    crlf
+000270 xxxx 000272710000 
+000271 xxxx 000000000000 
+000272 xxxx 000663701000     call    sine_degrees_(=12.34)
+000273 xxxx 000276710000 
+000274 xxxx 000000000000 
+000275 xxxx 002661000000 
+000276 xxxx 000006420400     emCall  6
+000277 xxxx 002112701000     call    crlf
+000300 xxxx 000302710000 
+000301 xxxx 000000000000 
+000302 xxxx 000663701000     call    sine_degrees_(=-60.0)
+000303 xxxx 000306710000 
+000304 xxxx 000000000000 
+000305 xxxx 002662000000 
+000306 xxxx 000006420400     emCall  6
+000307 xxxx 002112701000     call    crlf
+000310 xxxx 000312710000 
+000311 xxxx 000000000000 
+000312 xxxx 000663701000     call    sine_degrees_(=-45.0)
+000313 xxxx 000316710000 
+000314 xxxx 000000000000 
+000315 xxxx 002663000000 
+000316 xxxx 000006420400     emCall  6
+000317 xxxx 002112701000     call    crlf
+000320 xxxx 000322710000 
+000321 xxxx 000000000000 
+000322 xxxx 000663701000     call    sine_degrees_(=-12.34)
+000323 xxxx 000326710000 
+000324 xxxx 000000000000 
+000325 xxxx 002664000000 
+000326 xxxx 000006420400     emCall  6
+000327 xxxx 002112701000     call    crlf
+000330 xxxx 000332710000 
+000331 xxxx 000000000000 
+000332 xxxx 000526701000     call    sqrt(=3.1415926535897932)   " 1.77245385091
+000333 xxxx 000336710000 
+000334 xxxx 000000000000 
+000335 xxxx 002665000000 
+000336 xxxx 000006420400     emCall  6
+000337 xxxx 002112701000     call    crlf
+000340 xxxx 000342710000 
+000341 xxxx 000000000000 
+000342 xxxx 000526701000     call    sqrt(=2.0)   " 1.414...
+000343 xxxx 000346710000 
+000344 xxxx 000000000000 
+000345 xxxx 002666000000 
+000346 xxxx 000006420400     emCall  6
+000347 xxxx 002112701000     call    crlf
+000350 xxxx 000352710000 
+000351 xxxx 000000000000 
+000352 xxxx 000470701000     call    ALOG10(=3.1415926535897932)     " .497149873
+000353 xxxx 000356710000 
+000354 xxxx 000000000000 
+000355 xxxx 002667000000 
+000356 xxxx 000006420400     emCall  6
+000357 xxxx 002112701000     call    crlf
+000360 xxxx 000362710000 
+000361 xxxx 000000000000 
+000362 xxxx 000474701000     call    ALOG(=3.1415926535897932)      " 1.144729886
+000363 xxxx 000366710000 
+000364 xxxx 000000000000 
+000365 xxxx 002670000000 
+000366 xxxx 000006420400     emCall  6
+000367 xxxx 002112701000     call    crlf
+000370 xxxx 000372710000 
+000371 xxxx 000000000000 
+000372 xxxx 000470701000     call    ALOG10(=2.71828182846)
+000373 xxxx 000376710000 
+000374 xxxx 000000000000 
+000375 xxxx 002671000000 
+000376 xxxx 000006420400     emCall  6
+000377 xxxx 002112701000     call    crlf
+000400 xxxx 000402710000 
+000401 xxxx 000000000000 
+000402 xxxx 000474701000     call    ALOG(=2.71828182846)
+000403 xxxx 000406710000 
+000404 xxxx 000000000000 
+000405 xxxx 002672000000 
+000406 xxxx 000006420400     emCall  6
+000407 xxxx 002112701000     call    crlf
+000410 xxxx 000412710000 
+000411 xxxx 000000000000 
+000412 xxxx 000000616000     dis
+000413 xxxx 000416710000 LOGS:   SAVE    
+000414 xxxx 000000000000 
+000415 xxxx 000414630000 
+000416 xxxx 000414754000 
+000417 xxxx 000414741000 
+000420 xxxx 000002431031         FLD     2, 1*       " X = (2**I) * F = ARGUMENT
+000421 xxxx 000000573000         FNO
+000422 xxxx 000452600000         TZE     ERR1        " ERROR IF X = 0
+000423 xxxx 000460604000         TMI     ERR2        " ERROR IF X NEGATIVE
+000424 xxxx 002400515003 BEGIN:  FCMP    =1.0,DU
+000425 xxxx 000456600000         TZE     UNITY       " LOG(1) = 0
+000426 xxxx 000443456000         STE     I           " STORE I AT BINARY POINT 7
+000427 xxxx 000000411003         LDE     0, DU       " OBTAIN F
+000430 xxxx 000510477000         DFAD    SRHLF
+000431 xxxx 000514457000         DFST    Z
+000432 xxxx 000512577000         DFSB    SRTWO
+000433 xxxx 000514567000         DFDV    Z
+000434 xxxx 000514457000         DFST    Z           " Z = (F - SQRT(1/2))/(F + SQRT(1/2))
+000435 xxxx 000514463000         DFMP    Z           " Z^2
+000436 xxxx 000506577000         DFSB    C           " Z^2-C
+000437 xxxx 000504527000         DFDI    B           " B/(Z^2-C)
+000440 xxxx 000502477000         DFAD    A           " A+B/(Z^2-C)
+000441 xxxx 000514463000         DFMP    Z           " Z(A+B/(Z^2-C))
+000442 xxxx 000514457000         DFST    Z           " Z = Z*(A+(B/(Z^2-C))) = LOG2 (F) + 1/2
+000443 xxxx 000000235003 I:      LDA     0, DU       " ==== THIS GET CHANGED ====
+000444 xxxx 000000236003         LDQ     0, DU
+000445 xxxx 016000411003         LDE     =7B25, DU   " FLOAT I
+000446 xxxx 000400575003         FSB     =0.5, DU
+000447 xxxx 000514477000         DFAD    Z           " LOG2(X) = I + LOG2(F)
+000450 xxxx 000450463000 INDIC:  DFMP    *           " CONVERT TO BASE 10 OR E
+000451 xxxx 000415710000         RETURN  LOGS
+000452 xxxx 000516701000 ERR1:   CALL    .FXEM.(EALN1)   " ERROR EXIT NUMBER 1 (X=0)
+000453 xxxx 000456710000 
+000454 xxxx 000000000000 
+000455 xxxx 000500000000 
+000456 xxxx 400000431003 UNITY:  FLD     =0.0, DU
+000457 xxxx 000415710000         RETURN  LOGS
+000460 xxxx 000516701000 ERR2:   CALL    .FXEM.(EALN2)   " ERROR EXIT NUMBER 2 (X IS NEGATIVE)
+000461 xxxx 000464710000 
+000462 xxxx 000000000000 
+000463 xxxx 000501000000 
+000464 xxxx 000000513000         FNEG
+000465 xxxx 000424710000         TRA     BEGIN
+000466 xxxx 000000616000         dis
+000467 xxxx 000000011000         even "(allocating 1 nop)
+000470 xxxx 000450750000 ALOG10: STC2    INDIC       " REAL COMMON LOGARITHM
+000471 xxxx 000413710000         TRA     LOGS
+000472 xxxx 776464202324         DEC     .301029996D0
+000473 xxxx 175727157154 
+000474 xxxx 000450750000 ALOG:   STC2    INDIC       " REAL NATURAL LOGARITHM
+000475 xxxx 000413710000         TRA     LOGS
+000476 xxxx 000542710277         DEC     6.93147180559D-1
+000477 xxxx 575030531171 
+000500 xxxx 010440000000 EALN1:  DEC     9.
+000501 xxxx 010500000000 EALN2:  DEC     10.
+000502 xxxx 002512601750 A:      DEC     .12920070987D1
+000503 xxxx 530734427226 
+000504 xxxx 005256062222 B:      DEC     -.26398577031D1
+000505 xxxx 154274032423 
+000506 xxxx 002650103142 C:      DEC     .16567626301D1
+000507 xxxx 014073125631 
+000510 xxxx 000552023631 SRHLF:  DEC     .707106781187D0     " sqrt(2) / 2
+000511 xxxx 477513560151 
+000512 xxxx 002552023631 SRTWO:  DEC     .1414213562374D1    " SQRT(2)
+000513 xxxx 477513560151 
+000514 xxxx 000000000000 Z:      BSS     2
+000516 xxxx 000521710000 .FXEM.: save
+000517 xxxx 000000000000 
+000520 xxxx 000517630000 
+000521 xxxx 000517754000 
+000522 xxxx 000517741000 
+000523 xxxx 000002235031         lda     2, 1*
+000524 xxxx 000001420400         emcall  1
+000525 xxxx 000000616000         dis
+000526 xxxx 000533710000 sqrt:   save    0, 1
+000527 xxxx 000000000000 
+000530 xxxx 000000220003 
+000531 xxxx 000001221003 
+000532 xxxx 000527630000 
+000533 xxxx 000527754000 
+000534 xxxx 000527741000 
+000535 xxxx 000530740000 
+000536 xxxx 000531741000 
+000537 xxxx 000002431031         FLD     2, 1*               " X = ARGUMENT
+000540 xxxx 000000573000         FNO
+000541 xxxx 000543601000         tnz     sqrt.1
+000542 xxxx 000530710000         return  sqrt                " if x = 0 return (0)
+000543 xxxx 000547605000 sqrt.1:	tpl     calc_square_root	" if x < 0:
+000544 xxxx 000000513000         fneg	0                   "   x = -x
+000545 xxxx 000606455000         fst     x
+000546 xxxx 000606431000         fld     x		"   calculate sqrt (abs(x))
+000547 xxxx 000606455000         fst     x           " store EA := input arg
+000550 xxxx 000606220000         ldx0	x           " X0 := addr (x) -> expon
+000551 xxxx 000000411003         lde     =0b25,du	" addr (m) -> expon = 0
+000552 xxxx 002000300003         canx0	=1b25,du	" calculate mod (e, 2)
+000553 xxxx 000002600004         tze     2,ic		" if mod (e, 2) = 1:
+000554 xxxx 776000411003         lde     =-1b25,du	"   EA := m = .5*m
+000555 xxxx 000606236000         ldq     x           " Q := 8/expon,28/garbage
+000556 xxxx 000034732000         qrs     28          " Q := 28/0,8/expon
+000557 xxxx 000001076007         adq     =1,dl		" calculate e+1
+000560 xxxx 000001732000         qrs     1           " calculate divide (e+1, 2, 7)
+000561 xxxx 000034736000         qls     28          " position result in exponent field
+000562 xxxx 000612756000         stq     e           " store Q := e = divide (e+1, 2, 7)
+000563 xxxx 002673236000         ldq     =0          " clear Q
+000564 xxxx 000610457000         dfst	m           " store EAQ := m
+000565 xxxx 000620461000         fmp     p2          " calculate root_m = p(m)
+000566 xxxx 000616475000         fad     p1
+000567 xxxx 000610461000         fmp     m
+000570 xxxx 000614475000         fad     p0
+000571 xxxx 000604455000         fst     root_m
+000572 xxxx 000610525000         fdi     m           " calculate root_m = .5 * (root_m + m/root_m)
+000573 xxxx 000604475000         fad     root_m
+000574 xxxx 000400461003         fmp     =0.5,du
+000575 xxxx 000604457000         dfst	root_m      " calculate root_m + float (m, 63)/root_m
+000576 xxxx 000610527000         dfdi	m
+000577 xxxx 000604477000         dfad	root_m
+000600 xxxx 776000415003         ade     =-1b25,du	" root_m = .5 * (root_m + float (m, 63)/root_m)
+000601 xxxx 000612415000         ade     e           " calculate addr (root_x) -> expon =
+000602 xxxx 000000471000         frd     0
+000603 xxxx 000530710000         return  sqrt        " return (root_x)
+000604 xxxx 000000000000         bss     root_m,2
+000606 xxxx 000000000000         bss     x,2
+000610 xxxx 000000000000         bss     m,2
+000612 xxxx 000000000000         bss     e,2
+000614 xxxx 776411377603 p0:     dec	2.5927688d-1
+000615 xxxx 406536706351 
+000616 xxxx 002415257502 p1:     dec	1.0521212d0
+000617 xxxx 413332156142 
+000620 xxxx 777274054062 p2:     dec	-3.1632214d-1
+000621 xxxx 066300621037 
+000622 xxxx 000400000000 scale:	oct	000400000000	" 0.5
+000623 xxxx 000100000000         oct	000100000000	" 0.25*0.5 = 0.125
+000624 xxxx 000200000000         oct	000200000000	" 0.25
+000625 xxxx 000040000000         oct	000040000000	" 0.25*0.25 = 0.0625
+000626 xxxx 000636710000     save    0,1,2,3,4
+000627 xxxx 000000000000 
+000630 xxxx 000000220003 
+000631 xxxx 000001221003 
+000632 xxxx 000002222003 
+000633 xxxx 000003223003 
+000634 xxxx 000004224003 
+000635 xxxx 000627630000 
+000636 xxxx 000627754000 
+000637 xxxx 000627741000 
+000640 xxxx 000630740000 
+000641 xxxx 000631741000 
+000642 xxxx 000632742000 
+000643 xxxx 000633743000 
+000644 xxxx 000634744000 
+000645 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+000646 xxxx 000000622000 	eax2	BFP		" no offset for BFP constants
+000647 xxxx 000000623000     eax3    0       " cosine return
+000650 xxxx 400000475003 	fad     =0.0,du		" normalize input
+000651 xxxx 001034425012 	fcmg	one_eighty,x2	" if abs_angle <= 180:
+000652 xxxx 000750604000 	tmi     case1_degrees	" then no angle reduction is necessary
+000653 xxxx 001112700000 	tsx0	principal_degrees_
+000654 xxxx 000744710011 	tra     case_degrees+1,x1	" select appropriate case
+000655 xxxx 000000622000 	eax2	BFP		" no offset for BFP constants
+000656 xxxx 400000475003 	fad     =0.0,du		" normalize input and set indicators
+000657 xxxx 001326425012 	fcmg	pi,x2		" if abs (angle) <= pi
+000660 xxxx 000725604000 	tmi     case1_radians	" then no angle reduction is necessary
+000661 xxxx 001132700000 	tsx0	principal_radians_
+000662 xxxx 000721710011 	tra     case_radians+1,x1	" select appropriate case
+000663 xxxx 000673710000     save    0,1,2,3,4
+000664 xxxx 000000000000 
+000665 xxxx 000000220003 
+000666 xxxx 000001221003 
+000667 xxxx 000002222003 
+000670 xxxx 000003223003 
+000671 xxxx 000004224003 
+000672 xxxx 000664630000 
+000673 xxxx 000664754000 
+000674 xxxx 000664741000 
+000675 xxxx 000665740000 
+000676 xxxx 000666741000 
+000677 xxxx 000667742000 
+000700 xxxx 000670743000 
+000701 xxxx 000671744000 
+000702 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+000703 xxxx 000000622000 	eax2	BFP         " no offset for BFP constants
+000704 xxxx 000001623000     eax3    1           " sine return
+000705 xxxx 400000475003 	fad     =0.0,du         " normalize input
+000706 xxxx 001032425012 	fcmg	ninety,x2		" if abs (angle) < pi/2
+000707 xxxx 000763604000 	tmi     case0_degrees	" then no angle reduction is necessary
+000710 xxxx 001112700000 	tsx0	principal_degrees_
+000711 xxxx 000743710011 	tra     case_degrees,x1	" select appropriate case
+000712 xxxx 000000622000 	eax2	BFP             " no offset for BFP constants
+000713 xxxx 400000475003 	fad     =0.0,du         " normalize input
+000714 xxxx 001304425012 	fcmg	half_pi,x2      " if abs (angle) <= pi/2
+000715 xxxx 000767604400 	tmoz	case0_radians	" then no angle reduction is necessary
+000716 xxxx 001132700000 	tsx0	principal_radians_
+000717 xxxx 000720710011 	tra     case_radians,x1	" Case select appropriate case_radians
+000720 xxxx 000767710000 	tra     case0_radians
+000721 xxxx 000725710000 	tra     case1_radians
+000722 xxxx 000733710000 	tra     case2_radians
+000723 xxxx 000735710000 	tra     case3_radians
+000724 xxxx 000767710000 	tra     case0_radians
+000725 xxxx 400000475003 	fad     =0.0,du		" set indicators
+000726 xxxx 000002604004 	tmi     2,ic		" EAQ = - abs (EAQ)
+000727 xxxx 000000533000     negl	0           " fneg underflows at o400400000000
+000730 xxxx 001026477012 	dfad	half_pi1A,x2
+000731 xxxx 001030477012 	dfad	half_pi2A,x2
+000732 xxxx 000767710000 	tra     part_sine_radians
+000733 xxxx 000000513000 	fneg	0
+000734 xxxx 000767710000 	tra     part_sine_radians
+000735 xxxx 400000475003 	fad     =0.0,du		" set indicators
+000736 xxxx 000002605004 	tpl     2,ic		" EAQ = abs (EAQ)
+000737 xxxx 000000513000     fneg	0
+000740 xxxx 001026577012 	dfsb	half_pi1A,x2
+000741 xxxx 001030577012 	dfsb	half_pi2A,x2
+000742 xxxx 000767710000 	tra     part_sine_radians
+000743 xxxx 000763710000 	tra     case0_degrees
+000744 xxxx 000750710000 	tra     case1_degrees
+000745 xxxx 000755710000 	tra     case2_degrees
+000746 xxxx 000757710000 	tra     case3_degrees
+000747 xxxx 000763710000 	tra     case0_degrees
+000750 xxxx 400000475003 	fad     =0.0,du		" set indicators
+000751 xxxx 000002604004 	tmi     2,ic		" EAQ = - abs (EAQ)
+000752 xxxx 000000533000     negl	0           " fneg underflows at o400400000000
+000753 xxxx 001032475012 	fad     ninety,x2
+000754 xxxx 000763710000 	tra     part_sine_degrees
+000755 xxxx 000000513000 	fneg	0
+000756 xxxx 000763710000 	tra     part_sine_degrees
+000757 xxxx 400000475003 	fad     =0.0,du		" set indicators
+000760 xxxx 000002605004 	tpl     2,ic		" EAQ = abs (EAQ)
+000761 xxxx 000000513000 	fneg
+000762 xxxx 001032575012 	fsb     ninety,x2
+000763 xxxx 001022427012 	dfcmg	eps2,x2		" if conversion to radians underflows
+000764 xxxx 000002605004 	tpl     2,ic
+000765 xxxx 400000431003     fld     =0.0,du		" then use zero
+000766 xxxx 001320463012 	dfmp	one_degree,x2	" convert to radians.
+000767 xxxx 001024427012 	dfcmg	eps3,x2		" if abs (x) < 5e-10:
+000770 xxxx 000003605004 	tpl     3,ic
+000771 xxxx 000000471000     frd     0
+000772 xxxx 001013710013     tra     rets, x3
+000773 xxxx 000606457000 	dfst	x
+000774 xxxx 000606463000 	dfmp	x           " calculate xx = x*x
+000775 xxxx 001016457000 	dfst	xx
+000776 xxxx 001050461012 	fmp     tp5,x2		" calculate p(xx)
+000777 xxxx 001046477012 	dfad	tp4,x2
+001000 xxxx 001016461000 	fmp     xx
+001001 xxxx 001044477012 	dfad	tp3,x2
+001002 xxxx 001016461000 	fmp     xx
+001003 xxxx 001042477012 	dfad	tp2,x2
+001004 xxxx 001016461000 	fmp     xx
+001005 xxxx 001040477012 	dfad	tp1,x2
+001006 xxxx 001016463000 	dfmp	xx
+001007 xxxx 001036477012 	dfad	tp0,x2
+001010 xxxx 000606463000 	dfmp	x		" return x*p(xx)
+001011 xxxx 000000471000 	frd     0
+001012 xxxx 001013710013     tra     rets, x3
+001013 xxxx 000630710000     return  cosine_degrees_
+001014 xxxx 000665710000     return  sine_degrees_
+001015 xxxx 000000011000 	even "(allocating 1 nop)
+001016 xxxx 000000000000     bss     xx,2
+001020 xxxx 716504072231 eps1:       dec	1.886591d-8
+001021 xxxx 175750642261 
+001022 xxxx 412712273406 eps2:       dec	8.418858142948452884d-38
+001023 xxxx 461701757347 
+001024 xxxx 704422701372 eps3:       dec	5.0d-10
+001025 xxxx 023326451313 
+001026 xxxx 002622077325 half_pi1A:	oct	002622077325,042055060432	" 1.570796326794896619d0
+001027 xxxx 042055060432 
+001030 xxxx 602611431424 half_pi2A:	oct	602611431424,270033407150	" 8.333742918520878328d-20
+001031 xxxx 270033407150 
+001032 xxxx 016550000000 ninety:     dec	90.0d0
+001033 xxxx 000000000000 
+001034 xxxx 020550000000 one_eighty: dec	180.0d0
+001035 xxxx 000000000000 
+001036 xxxx 000777777777 tp0:        dec	 9.999999999788d-1
+001037 xxxx 776426056601 
+001040 xxxx 775252525252 tp1:        dec	-1.6666666608826d-1
+001041 xxxx 764246126070 
+001042 xxxx 764421042055 tp2:        dec	 8.333330720556d-3
+001043 xxxx 645325433621 
+001044 xxxx 751137720534 tp3:        dec	-1.98408328231d-4
+001045 xxxx 017765224715 
+001046 xxxx 734561327223 tp4:        dec	 2.7523971068d-6
+001047 xxxx 742173067177 
+001050 xxxx 717145743634 tp5:        dec	-2.386834641d-8
+001051 xxxx 001005375050 
+001052 xxxx 000000000000 angle:  bss     temp, 2
+001054 xxxx 000000000000         bss     n1,1
+001055 xxxx 000000000000         bss     n2,1
+001056 xxxx 000000000000         bss     t1,4
+001062 xxxx 000000000000         bss     t2,6
+001070 xxxx 000000000000         bss     t3,8
+001100 xxxx 000000000000         bss     t4,10
+001112 xxxx 000000471000 	frd     0
+001113 xxxx 001254425000 	fcmg	two_pwr_54	" is the EAQ too large
+001114 xxxx 001240605400 	tpnz	angle_too_big	" Yup.
+001115 xxxx 001052455000 	fst     angle
+001116 xxxx 001032567000 	dfdv	ninety		" EAQ = EAQ/90
+001117 xxxx 000400475003 	fad     =0.5,du		" EAQ = EAQ/90 + 0.5
+001120 xxxx 001302437000 	dufa	almost_one
+001121 xxxx 001302537000 	dufs	almost_one
+001122 xxxx 216000435003 	ufa     =71b25,du		" AQ = EAQ/90 + 0.5 in integer form
+001123 xxxx 000000621006 	eax1	0,ql
+001124 xxxx 000003361003 	anx1	3,du		" X1 = mod(AQ,4)
+001125 xxxx 400000475003 	fad     =0.0,du		" EAQ = floor(EAQ/90 + 0.5) in floating point form
+001126 xxxx 016550461003 	fmp     =90.0,du	" EAQ = floor(EAQ/90 + 0.5)*90
+001127 xxxx 000000513000 	fneg	0           " EAQ = -floor(EAQ/90 + 0.5)*90
+001130 xxxx 001052475000 	fad     angle	" EAQ = angle-floor(EAQ/90 + 0.5)*90
+001131 xxxx 000000710010 	tra     0,x0		" return to caller
+001132 xxxx 000000471000 	frd     0
+001133 xxxx 001052455000 	fst     angle
+001134 xxxx 001252425000 	fcmg	two_pwr_27      " is the EAQ too large
+001135 xxxx 001165605400 	tpnz	bfp_big_angle	" Yup.
+001136 xxxx 001246463000 	dfmp	one_over_half_pi	" EAQ = EAQ/half_pi
+001137 xxxx 000400475003 	fad     =0.5,du             " EAQ = EAQ/half_pi + 0.5
+001140 xxxx 001302437000 	dufa	almost_one
+001141 xxxx 001302537000 	dufs	almost_one
+001142 xxxx 216000435003 	ufa     =71b25,du		" AQ = EAQ/half_pi + 0.5 in integer form
+001143 xxxx 000000621006 	eax1	0,ql
+001144 xxxx 000003361003 	anx1	3,du		" X1 = mod(AQ,4)
+001145 xxxx 400000475003 	fad     =0.0,du		" EAQ = floor(EAQ/half_pi + 0.5) in floating point form
+001146 xxxx 001054455000 	fst     n1		" n1 = EAQ
+001147 xxxx 001150710000 	tra     small_angle_join
+001150 xxxx 001256461012 	fmp     half_pi1B,x2
+001151 xxxx 001056457000 	dfst	t1		" t1 = n1*half_pi1
+001152 xxxx 001054431000 	fld     n1
+001153 xxxx 001262461012 	fmp     half_pi2B,x2
+001154 xxxx 001062457000 	dfst	t2		" t2 = n1*half_pi2
+001155 xxxx 001054431000 	fld     n1
+001156 xxxx 001266461012 	fmp     half_pi3,x2
+001157 xxxx 001070457000 	dfst	t3		" t3 = n1*half_pi3
+001160 xxxx 001052431000 	fld     angle		" answer = angle - t1 - t2 - t3
+001161 xxxx 001056577000 	dfsb	t1
+001162 xxxx 001062577000 	dfsb	t2
+001163 xxxx 001070577000 	dfsb	t3
+001164 xxxx 000000710010 	tra     0,x0
+001165 xxxx 001254425000 	fcmg	two_pwr_54	" is the EAQ too large?
+001166 xxxx 001240605400 	tpnz	angle_too_big	" Yup.
+001167 xxxx 001246463000 	dfmp	one_over_half_pi	" EAQ = EAQ/half_pi
+001170 xxxx 000400475003 	fad     =0.5,du		" EAQ = EAQ/half_pi + 0.5
+001171 xxxx 001302437000 	dufa	almost_one
+001172 xxxx 001302537000 	dufs	almost_one
+001173 xxxx 216000435003 	ufa     =71b25,du		" AQ = EAQ/half_pi + 0.5 in integer form
+001174 xxxx 000000621006 	eax1	0,ql
+001175 xxxx 000003361003 	anx1	=3,du		" X1 = mod(AQ,4)
+001176 xxxx 400000475003 	fad     =0.0,du		" EAQ = floor(EAQ/half_pi + 0.5) in floating point form
+001177 xxxx 001054455000 	fst     n1		" n1 = EAQ
+001200 xxxx 001054575000 	fsb     n1
+001201 xxxx 001055455000 	fst     n2		" n2 = n - n1
+001202 xxxx 001054431000 	fld     n1
+001203 xxxx 001256461012 	fmp     half_pi1B,x2
+001204 xxxx 001056457000 	dfst	t1		" t1 = n1*half_pi1
+001205 xxxx 001054431000 	fld     n1		" calculate n1*half_pi2 + n2*half_pi1
+001206 xxxx 001262461012 	fmp     half_pi2B,x2
+001207 xxxx 001062457000 	dfst	t2
+001210 xxxx 001055431000 	fld     n2
+001211 xxxx 001256461012 	fmp     half_pi1B,x2
+001212 xxxx 001062477000 	dfad	t2
+001213 xxxx 001062457000 	dfst	t2		" t2 = (n1*half_pi2 + n2*half_pi1)
+001214 xxxx 001054431000 	fld     n1		" calculate n1*half_pi3 + n2*half_pi2
+001215 xxxx 001266461012 	fmp     half_pi3,x2
+001216 xxxx 001070457000 	dfst	t3
+001217 xxxx 001055431000 	fld     n2
+001220 xxxx 001262461012 	fmp     half_pi2B,x2
+001221 xxxx 001070477000 	dfad	t3
+001222 xxxx 001070457000 	dfst	t3		" t3 = (n1*half_pi3 + n2*half_pi2)
+001223 xxxx 001054431000 	fld     n1		" calculate n1*half_pi4 + n2*half_pi3
+001224 xxxx 001272461012 	fmp     half_pi4,x2
+001225 xxxx 001100457000 	dfst	t4
+001226 xxxx 001055431000 	fld     n2
+001227 xxxx 001266461012 	fmp     half_pi3,x2
+001230 xxxx 001100477000 	dfad	t4
+001231 xxxx 001100457000 	dfst	t4		" t4 = (n1*half_pi4 + n2*half_pi3)
+001232 xxxx 001052431000 	fld     angle		" answer = angle - t1 - t2 - t3
+001233 xxxx 001056577000 	dfsb	t1
+001234 xxxx 001062577000 	dfsb	t2
+001235 xxxx 001070577000 	dfsb	t3
+001236 xxxx 001100577000 	dfsb	t4
+001237 xxxx 000000710010 	tra     0,x0		" return to caller
+001240 xxxx 001276236012 	ldq     code,x2		" pick the appropriate error message
+001241 xxxx 001052740000 	stx0	temp		" save X0
+001242 xxxx 001052220000 	ldx0	temp		" restore X0
+001243 xxxx 000000621000 	eax1	0		" X1 = 0
+001244 xxxx 400000431003 	fld     =0.0,du		" EAQ = 0, set indicators
+001245 xxxx 000000710010 	tra     0,x0		" return to caller
+001246 xxxx 000505746033 	dec	6.3661977236758134307553d-1
+001247 xxxx 344710405225 
+001250 xxxx 000505746033 	oct	000505746033,344710405225
+001251 xxxx 344710405225 
+001252 xxxx 070400000000 	oct	070400000000,000000000000
+001253 xxxx 000000000000 
+001254 xxxx 156400000000 	oct	156400000000,000000000000
+001255 xxxx 000000000000 
+001256 xxxx 002622077325 half_pi1B:	oct	002622077325,000000000000
+001257 xxxx 000000000000 
+001260 xxxx 002062207732 	oct	002062207732,000000000000
+001261 xxxx 000000000000 
+001262 xxxx 706420550604 half_pi2B:	oct	706420550604,000000000000
+001263 xxxx 000000000000 
+001264 xxxx 766050420550 	oct	766050420550,000000000000
+001265 xxxx 000000000000 
+001266 xxxx 616646114314 half_pi3: oct	616646114314,000000000000
+001267 xxxx 000000000000 
+001270 xxxx 752060432304 	oct	752060432304,000000000000
+001271 xxxx 000000000000 
+001272 xxxx 526505600670 half_pi4: oct	526505600670,000000000000
+001273 xxxx 000000000000 
+001274 xxxx 736061461213 	oct	736061461213,000000000000
+001275 xxxx 000000000000 
+001276 xxxx 000000000106 code:	dec	70,0,71
+001277 xxxx 000000000000 
+001300 xxxx 000000000107 
+001301 xxxx 000000011000     even "(allocating 1 nop)
+001302 xxxx 000777777777 	oct	000777777777,777777777777
+001303 xxxx 777777777777 
+001304 xxxx 002622077325 	dec	1.570796326794896619231d+00
+001305 xxxx 042055060432 
+001306 xxxx 776464202324 	dec	3.010299956639811952137d-01
+001307 xxxx 117571775714 
+001310 xxxx 776674557305 	dec	4.342944819032518276511d-01
+001311 xxxx 223345034312 
+001312 xxxx 002561250731 	dec	1.442695040888963407359d+00
+001313 xxxx 225602774136 
+001314 xxxx 000542710277 	dec	6.931471805599453094172d-01
+001315 xxxx 575071736326 
+001316 xxxx 376777777777 	oct	376777777777,777777777777
+001317 xxxx 777777777777 
+001320 xxxx 766435750650 	dec	1.745329251994329576923d-02
+001321 xxxx 451235162127 
+001322 xxxx 776505746033 	dec	3.183098861837906715377d-01
+001323 xxxx 344710405225 
+001324 xxxx 014712273406 	dec	5.729577951308232087679d+01
+001325 xxxx 461701757341 
+001326 xxxx 004622077325 	dec	3.141592653589793238462d+00
+001327 xxxx 042055060432 
+001330 xxxx 000622077325 	dec	7.853981633974483096156d-01
+001331 xxxx 042055060432 
+001332 xxxx 000552023631 	dec	7.071067811865475244008d-01
+001333 xxxx 477473631102 
+001334 xxxx 002673317272 	dec	1.732050807568877293527d+00
+001335 xxxx 054114524717 
+001336 xxxx 002552023631 	dec	1.414213562373095048801d+00
+001337 xxxx 477473631102 
+001340 xxxx 000000000000     bss     q,2
+001342 xxxx 000000000000     bss     sign,2
+001344 xxxx 001354710000     save    0,1,2,3,4
+001345 xxxx 000000000000 
+001346 xxxx 000000220003 
+001347 xxxx 000001221003 
+001350 xxxx 000002222003 
+001351 xxxx 000003223003 
+001352 xxxx 000004224003 
+001353 xxxx 001345630000 
+001354 xxxx 001345754000 
+001355 xxxx 001345741000 
+001356 xxxx 001346740000 
+001357 xxxx 001347741000 
+001360 xxxx 001350742000 
+001361 xxxx 001351743000 
+001362 xxxx 001352744000 
+001363 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+001364 xxxx 000000622000 	eax2	BFP		" no offset for BFP constants
+001365 xxxx 000001624000     eax4    1
+001366 xxxx 400000475003 	fad     =0.0,du		" normalize input
+001367 xxxx 000000621000 	eax1	0           " initialize X1 := shift = 1
+001370 xxxx 001562425012 	fcmg	forty_five,x2
+001371 xxxx 000002604404 	tmoz	2,ic		" if abs (angle) > 45:
+001372 xxxx 001112700000     tsx0	principal_degrees_	"   call principal_degrees_
+001373 xxxx 001554427012 	dfcmg	Teps1,x2		" if conversion to degrees underflows
+001374 xxxx 001541604000 	tmi     infinity	"   return (infinity (degrees))
+001375 xxxx 001320463012 	dfmp	one_degree,x2	"   EAQ := degrees * one_degree
+001376 xxxx 000001301003 	canx1	=1,du
+001377 xxxx 000003601004 	tnz     3,ic		" if shift = 0 | shift = 2:
+001400 xxxx 777777623000     eax3	Cotangent		"   X3 := Cotangent
+001401 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, degrees*one_degree))
+001402 xxxx 000001623000 	eax3	Tangent		"   X3 := Cotangent
+001403 xxxx 000000513000 	fneg	0           "   EAQ := -degrees*one_degree
+001404 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, -(degrees*one_degree)))
+001405 xxxx 000000622000 	eax2	BFP		" no offset for BFP constants
+001406 xxxx 400000475003 	fad     =0.0,du		" normalize input
+001407 xxxx 001330425012 	fcmg	quarter_pi,x2
+001410 xxxx 000003605004 	tpl     3,ic		" if abs (angle) > quarter_pi:
+001411 xxxx 777777623000     eax3	Cotangent	"   X3 := Cotangent
+001412 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, radians)
+001413 xxxx 001132700000 	tsx0	principal_radians_	" call principal_radians_
+001414 xxxx 000001301003 	canx1	=1,du
+001415 xxxx 000003601004 	tnz     3,ic		" if shift = 0 | shift = 2:
+001416 xxxx 777777623000     eax3	Cotangent		"   X3 := Cotangent
+001417 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, radians))
+001420 xxxx 000001623000 	eax3	Tangent		"   X3 := Cotangent (???)
+001421 xxxx 000000513000 	fneg	0           "   EAQ := -radians
+001422 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, -radians))
+001423 xxxx 001433710000     save    0,1,2,3,4
+001424 xxxx 000000000000 
+001425 xxxx 000000220003 
+001426 xxxx 000001221003 
+001427 xxxx 000002222003 
+001430 xxxx 000003223003 
+001431 xxxx 000004224003 
+001432 xxxx 001424630000 
+001433 xxxx 001424754000 
+001434 xxxx 001424741000 
+001435 xxxx 001425740000 
+001436 xxxx 001426741000 
+001437 xxxx 001427742000 
+001440 xxxx 001430743000 
+001441 xxxx 001431744000 
+001442 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+001443 xxxx 000000622000 	eax2	BFP		" no offset for BFP constants
+001444 xxxx 000000624000     eax4    0
+001445 xxxx 400000475003 	fad     =0.0,du		" normalize input
+001446 xxxx 000000621000 	eax1	0		" initialize X1 := shift = 1
+001447 xxxx 001562425012 	fcmg	forty_five,x2
+001450 xxxx 000002604404 	tmoz	2,ic		" if abs (angle) > 45:
+001451 xxxx 001112700000     tsx0	principal_degrees_	"   call principal_degrees_
+001452 xxxx 001554427012 	dfcmg	Teps1,x2		" if conversion to radians underflows
+001453 xxxx 000002605004 	tpl     2,ic
+001454 xxxx 400000431003     fld     =0.0,du     "   then use zero
+001455 xxxx 001320463012 	dfmp	one_degree,x2	"   EAQ := degrees * one_degree
+001456 xxxx 000001301003 	canx1	=1,du
+001457 xxxx 000003601004 	tnz     3,ic		" if shift = 0 | shift = 2:
+001460 xxxx 000001623000     eax3	Tangent		"   X3 := Tangent
+001461 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, degrees*one_degree))
+001462 xxxx 777777623000 	eax3	Cotangent		"   X3 := Cotangent
+001463 xxxx 000000513000 	fneg	0           "   EAQ := -radians
+001464 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, -(degrees*one_degree)))
+001465 xxxx 000000622000 	eax2	BFP		" no offset for BFP constants
+001466 xxxx 400000475003 	fad     =0.0,du		" normalize input
+001467 xxxx 001330425012 	fcmg	quarter_pi,x2
+001470 xxxx 000003605004 	tpl     3,ic		" if abs (angle) <= quarter_pi:
+001471 xxxx 000001623000     eax3	Tangent
+001472 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, radians))
+001473 xxxx 001132700000 	tsx0	principal_radians_	" call principal_radians_
+001474 xxxx 000001301003 	canx1	=1,du
+001475 xxxx 000003601004 	tnz     3,ic		" if shift = 0 | shift = 2:
+001476 xxxx 000001623000     eax3	Tangent		"   X3 := Tangent
+001477 xxxx 001502710000 	tra     part_tan_or_cot	"   return (part_tan_or_cot (Tangent, radians))
+001500 xxxx 777777623000 	eax3	Cotangent		"   X3 := Cotangent
+001501 xxxx 000000513000 	fneg	0		"   EAQ := -radians
+001502 xxxx 001556425000     fcmg	Teps2		" if abs(x) < 5e-10:
+001503 xxxx 001514605000     tpl     use_polynomial
+001504 xxxx 000001103003     cmpx3	Tangent,du	"   if function = Tangent
+001505 xxxx 000003601004     tnz     3,ic
+001506 xxxx 000000471000 	frd     0		"     then return (result)
+001507 xxxx 001551710014     tra     TanRets,x4
+001510 xxxx 001560427012 	dfcmg	Teps3,x2		"   else if (1/result) overflows
+001511 xxxx 001541604400     tmoz	infinity		"     then return (infinity (result))
+001512 xxxx 001564525012 	fdi     one,x2    	"     else return (1/result)
+001513 xxxx 001551710014     tra     TanRets,x4
+001514 xxxx 000606472000 	dfstr	x
+001515 xxxx 000606463000 	dfmp	x		" calculate xx = x*x
+001516 xxxx 001016472000 	dfstr	xx
+001517 xxxx 001576477012 	dfad	q1,x2		" calculate q = q(xx)
+001520 xxxx 001016463000 	dfmp	xx
+001521 xxxx 001574477012 	dfad	q0,x2
+001522 xxxx 001340472000 	dfstr	q
+001523 xxxx 001016433000 	dfld	xx		" calculate p(xx)
+001524 xxxx 001572463012 	dfmp	Tp2,x2
+001525 xxxx 001570477012 	dfad	Tp1,x2
+001526 xxxx 001016463000 	dfmp	xx
+001527 xxxx 001566477012 	dfad	Tp0,x2
+001530 xxxx 000606463000 	dfmp	x		" calculate p = x*p(xx)
+001531 xxxx 000001103003 	cmpx3	Tangent,du
+001532 xxxx 000004601004 	tnz     4,ic		" if function = Tangent
+001533 xxxx 001340567000     dfdv	q		" then return (p/q)
+001534 xxxx 000000471000 	frd     0
+001535 xxxx 001551710014     tra     TanRets,x4
+001536 xxxx 001340527000 	dfdi	q		" else return (q/p)
+001537 xxxx 000000471000 	frd     0
+001540 xxxx 001551710014     tra     TanRets,x4
+001541 xxxx 001342455000 	fst     sign
+001542 xxxx 001316431000 	fld     max_value
+001543 xxxx 001316475000 	fad     max_value		" signal overflow
+001544 xxxx 001316431000 	fld     max_value
+001545 xxxx 001342430000 	fszn	sign		" if sign >= 0
+001546 xxxx 001551710014     tra     TanRets,x4
+001547 xxxx 000000513000 	fneg	0		" else return (-max_value)
+001550 xxxx 001551710014     tra     TanRets,x4
+001551 xxxx 001425710000     return  tangent_degrees_
+001552 xxxx 001346710000     return  cotangent_degrees_
+001553 xxxx 000000011000 	even "(allocating 1 nop)
+001554 xxxx 412712273406 Teps1:	dec	8.418858142948452884d-38
+001555 xxxx 461701757347 
+001556 xxxx 704422701372 Teps2:	dec	5.0d-10
+001557 xxxx 023326451313 
+001560 xxxx 404400000000 Teps3:	oct	404400000000,000000000001
+001561 xxxx 000000000001 
+001562 xxxx 014550000000 	dec	45.0d0
+001563 xxxx 000000000000 
+001564 xxxx 002400000000 one:	dec  1.d0
+001565 xxxx 000000000000 
+001566 xxxx 014764652342 Tp0:	dec	 6.26041119547433196d1
+001567 xxxx 460137304603 
+001570 xxxx 007101637667 Tp1:	dec	-6.97168400629442048d0
+001571 xxxx 425655210475 
+001572 xxxx 772423545326 Tp2:	dec	 6.73091025875915d-2
+001573 xxxx 453071362122 
+001574 xxxx 014764652342 q0:     dec	 6.260411195336057284d1
+001575 xxxx 456547154111 
+001576 xxxx 013102441001 q1:     dec	-2.78397212200427089d1
+001577 xxxx 733050625573 
+001600 xxxx 000000000000     bss xe, 2
+001602 xxxx 000000000000     bss xm, 2
+001604 xxxx 000000000000     bss bias, 2
+001606 xxxx 000000000000     bss shift, 2
+001610 xxxx 000000000000     bss	x_plus_y,2
+001612 xxxx 000000000000 	bss	z,2
+001614 xxxx 000000000000 	bss	zz,2
+001616 xxxx 001624710000     save    0,1,3
+001617 xxxx 000000000000 
+001620 xxxx 000000220003 
+001621 xxxx 000001221003 
+001622 xxxx 000002223003 
+001623 xxxx 001617630000 
+001624 xxxx 001617754000 
+001625 xxxx 001617741000 
+001626 xxxx 001620740000 
+001627 xxxx 001621741000 
+001630 xxxx 001622743000 
+001631 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+001632 xxxx 001705700000 	tsx0	log2		" calculate log2 (x)
+001633 xxxx 001306463000 	dfmp	log_10_of_2	" EAQ := log_10_of_2 * log2 (x)
+001634 xxxx 000000471000 	frd     0
+001635 xxxx 001620710000     return  log_base_10_
+001636 xxxx 001644710000     save    0,1,3
+001637 xxxx 000000000000 
+001640 xxxx 000000220003 
+001641 xxxx 000001221003 
+001642 xxxx 000002223003 
+001643 xxxx 001637630000 
+001644 xxxx 001637754000 
+001645 xxxx 001637741000 
+001646 xxxx 001640740000 
+001647 xxxx 001641741000 
+001650 xxxx 001642743000 
+001651 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+001652 xxxx 001705700000 	tsx0	log2		" calculate log2 (x)
+001653 xxxx 000000471000 	frd     0
+001654 xxxx 001640710000     return  log_base_2_
+001655 xxxx 001663710000     save    0,1,3
+001656 xxxx 000000000000 
+001657 xxxx 000000220003 
+001660 xxxx 000001221003 
+001661 xxxx 000002223003 
+001662 xxxx 001656630000 
+001663 xxxx 001656754000 
+001664 xxxx 001656741000 
+001665 xxxx 001657740000 
+001666 xxxx 001660741000 
+001667 xxxx 001661743000 
+001670 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+001671 xxxx 001705700000 	tsx0	log2		" calculate log2 (x)
+001672 xxxx 001314463000 	dfmp	log_e_of_2	" EAQ := log_e_of_2 * log2 (x)
+001673 xxxx 000000471000 	frd     0
+001674 xxxx 001657710000     return  log_base_e_
+001675 xxxx 000012236007 	ldq     10,dl
+001676 xxxx 001316431000 	fld     max_value
+001677 xxxx 000000513000 	fneg	0
+001700 xxxx 300000710100 	tra     pr3|0
+001701 xxxx 000011236007 	ldq     9,dl
+001702 xxxx 001316431000 	fld     max_value
+001703 xxxx 000000513000 	fneg	0
+001704 xxxx 300000710100 	tra     pr3|0
+001705 xxxx 400000475003 	fad     =0.0,du		" normalize input and set indicators
+001706 xxxx 001675604000 	tmi     log_of_negative
+001707 xxxx 001701600000 	tze     log_of_zero
+001710 xxxx 001776515000 	fcmp	Lsquare_root_two	" check for x in the range [.707,1.414]
+001711 xxxx 000006605004 	tpl     6,ic
+001712 xxxx 001774515000     fcmp	Lsquare_root_half
+001713 xxxx 000004604004     tmi     4,ic		" if square_root_half >= x & x <= square_root_two
+001714 xxxx 001762623000     eax3	Lone		"   X3 := addr (1.0)
+001715 xxxx 000000621010 	eax1	0,x0		"   copy return address
+001716 xxxx 001734710000 	tra     part_log2_of_ratio	"   result = part_log2_of_ratio (x, 1)
+001717 xxxx 001600456000 	ste     xe          "   store addr (x) -> expon in xe
+001720 xxxx 000000411003 	lde     =0,du		"   addr (xm) -> expon = 0
+001721 xxxx 001602455000 	fst     xm
+001722 xxxx 001600235000 	lda     xe          "   A := 8/xe,10/0,18/garbage
+001723 xxxx 000066733000 	lrs     72-18		"   AQ := 62/xe,10/0
+001724 xxxx 172000411003 	lde     =61b25,du		"   EAQ := unnormalized float(xe)
+001725 xxxx 000400575003 	fsb     =0.5,du		"   EAQ := float(xe) - 0.5
+001726 xxxx 001604455000 	fst     bias
+001727 xxxx 001602431000 	fld     xm
+001730 xxxx 001774623000 	eax3	Lsquare_root_half	"   X3 := addr (square_root_half)
+001731 xxxx 001734701000 	tsx1	part_log2_of_ratio	"   EAQ := part_log2_of_ratio (x, square_root_half)
+001732 xxxx 001604475000     fad     bias            "   EAQ := part_log2_of_ratio (x, square_root_half) + bias  (= log2(x))
+001733 xxxx 000000710010 	tra     0,x0		"   return result
+001734 xxxx 000000477013 	dfad	0,x3		" EAQ := x + y
+001735 xxxx 001610457000 	dfst	x_plus_y
+001736 xxxx 000000577013 	dfsb	0,x3		" EAQ := x
+001737 xxxx 000000577013 	dfsb	0,x3		" EAQ := x - y
+001740 xxxx 001610567000 	dfdv	x_plus_y	" calculate z = (x - y) / (x + y)
+001741 xxxx 001760425000 	fcmg	Leps
+001742 xxxx 000003605404 	tpnz	3,ic		" if abs(z) < 4.1968417d-11
+001743 xxxx 001764463000     dfmp	Lp0         "   EAQ := z * p0
+001744 xxxx 000000710011 	tra     0,x1		"   return to caller
+001745 xxxx 001612457000 	dfst	z
+001746 xxxx 001612461000 	fmp     z           " calculate zz = z*z
+001747 xxxx 001614455000 	fst     zz          " calculate p(zz)
+001750 xxxx 001772461000 	fmp     Lp3
+001751 xxxx 001770477000 	dfad	Lp2
+001752 xxxx 001614461000 	fmp     zz
+001753 xxxx 001766477000 	dfad	Lp1
+001754 xxxx 001614461000 	fmp     zz
+001755 xxxx 001764477000 	dfad	Lp0
+001756 xxxx 001612463000 	dfmp	z           " calculate z*p(zz)
+001757 xxxx 000000710011 	tra     0,x1		" return to caller
+001760 xxxx 674561120744 Leps:	dec     4.1968417d-11
+001761 xxxx 744762611260 
+001762 xxxx 002400000000 Lone:	dec     1.0d0
+001763 xxxx 000000000000 
+001764 xxxx 004561250730 Lp0:    dec     .288539007275213810d01
+001765 xxxx 772543241373 
+001766 xxxx 000754342230 Lp1:    dec     .961800759210250522d00
+001767 xxxx 541156441462 
+001770 xxxx 000447154133 Lp2:    dec     .576584541348266310d00
+001771 xxxx 107411741772 
+001772 xxxx 776674533133 Lp3:    dec     .434255940790007142d0
+001773 xxxx 371132642555 
+001774 xxxx 000552023631         dec     7.071067811865475244008d-01
+001775 xxxx 477473631102 
+001776 xxxx 002552023631         dec     1.414213562373095048801d+00
+001777 xxxx 477473631102 
+002000 xxxx 000000000000     bss iy, 2
+002002 xxxx 002007710000     save    0, 1
+002003 xxxx 000000000000 
+002004 xxxx 000000220003 
+002005 xxxx 000001221003 
+002006 xxxx 002003630000 
+002007 xxxx 002003754000 
+002010 xxxx 002003741000 
+002011 xxxx 002004740000 
+002012 xxxx 002005741000 
+002013 xxxx 000002431031     FLD     2, 1*               " X = ARGUMENT
+002014 xxxx 002110515000 	fcmp	lb          " if x <= -89.415987: 
+002015 xxxx 002020605400     tpnz    e3
+002016 xxxx 400000431003     fld     =0.0,du     "    result = 0
+002017 xxxx 002004710000     return  exponential_
+002020 xxxx 002106515000 e3:	fcmp	ub          " if x >= 88.0296926 goto overflow_error
+002021 xxxx 002057605000 	tpl     overflow_error
+002022 xxxx 001312463000 	dfmp	log_2_of_e	" y = x*log_2_of_e
+002023 xxxx 002400475003 	fad     =1.0,du		" EAQ := y + 1
+002024 xxxx 016000435003 	ufa     =7b25,du	" AQ := 8/floor(y+1),64/fraction part of y
+002025 xxxx 002000755000 	sta     iy
+002026 xxxx 776000275003 	ora     =o776000,du	" AQ := 8/-1,64/fraction part of y
+002027 xxxx 016000411003 	lde     =7b25,du	" EAQ := ry = unnormalized y - floor(y+1)
+002030 xxxx 400000475003 	fad     =0.0,du		" EAQ := ry = normalized y - floor(y+1)
+002031 xxxx 002064425000 	fcmg	Eeps
+002032 xxxx 002035605000     tpl     pe2
+002033 xxxx 002400431003     fld     =1.0,du     "    result = 1.0
+002034 xxxx 002004710000     return  exponential_
+002035 xxxx 000000471000 pe2:frd     0
+002036 xxxx 001612455000 	fst     z
+002037 xxxx 002104461000 	fmp     Ep7		" result = p(z)
+002040 xxxx 002102477000 	dfad	Ep6
+002041 xxxx 001612461000 	fmp     z
+002042 xxxx 002100477000 	dfad	Ep5
+002043 xxxx 001612461000 	fmp     z
+002044 xxxx 002076477000 	dfad	Ep4
+002045 xxxx 001612461000 	fmp     z
+002046 xxxx 002074477000 	dfad	Ep3
+002047 xxxx 001612461000 	fmp     z
+002050 xxxx 002072477000 	dfad	Ep2
+002051 xxxx 001612461000 	fmp     z
+002052 xxxx 002070477000 	dfad	Ep1
+002053 xxxx 001612461000 	fmp     z
+002054 xxxx 002066477000 	dfad	Ep0
+002055 xxxx 002000415000 	ade     iy		" addr (result) -> expon = addr (result) -> expon + iy
+002056 xxxx 002004710000     return  exponential_
+002057 xxxx 001316431000 	fld     max_value
+002060 xxxx 001316475000 	fad     max_value		" cause an overflow
+002061 xxxx 001316431000 	fld     max_value
+002062 xxxx 002004710000     return  exponential_
+002063 xxxx 000000011000 	even "(allocating 1 nop)
+002064 xxxx 604561250730 Eeps:	dec	1.56417309d-19
+002065 xxxx 645767466564 
+002066 xxxx 000777777777 Ep0:	dec	0.999999999959788989221d00
+002067 xxxx 775171146647 
+002070 xxxx 000542710277 Ep1:	dec	0.693147175773076184335d00
+002071 xxxx 064122746305 
+002072 xxxx 774753767514 Ep2:	dec	0.240226411617528907564d00
+002073 xxxx 542060151212 
+002074 xxxx 770706536015 Ep3:	dec	0.555033746338694398430d-01
+002075 xxxx 336576334575 
+002076 xxxx 764473046222 Ep4:	dec	0.961531912935043645900d-02
+002077 xxxx 315773407052 
+002100 xxxx 756533765571 Ep5:	dec	0.132743818109838796600d-02
+002101 xxxx 150540215277 
+002102 xxxx 750464227646 Ep6:	dec	0.147007243118869978000d-03
+002103 xxxx 455135010071 
+002104 xxxx 740550540762 Ep7:	dec	0.107493818486964670000d-04
+002105 xxxx 530201244720 
+002106 xxxx 016540074637 ub:	dec	8.802969265d01		" 2**127 - 2**100 = e**88.0296926
+002107 xxxx 000053475651 
+002110 xxxx 017232254036 lb:	dec	-8.9415987d01		" 2**(-129) = e**-89.415987
+002111 xxxx 007734054130 
+002112 xxxx 002115710000 crlf:	save
+002113 xxxx 000000000000 
+002114 xxxx 002113630000 
+002115 xxxx 002113754000 
+002116 xxxx 002113741000 
+002117 xxxx 002126755000         sta     saveA
+002120 xxxx 002674235000         lda     =012
+002121 xxxx 000001420400         emCall  1
+002122 xxxx 002675235000         lda     =015
+002123 xxxx 000001420400         emcall  1
+002124 xxxx 002126235000         lda     saveA
+002125 xxxx 002114710000         return  crlf
+002126 xxxx 000000000000 saveA:  bss     1
+002127 xxxx 002136710000 ioa:    save    2, 4, 5, 6
+002130 xxxx 000000000000 
+002131 xxxx 000000222003 
+002132 xxxx 000001224003 
+002133 xxxx 000002225003 
+002134 xxxx 000003226003 
+002135 xxxx 002130630000 
+002136 xxxx 002130754000 
+002137 xxxx 002130741000 
+002140 xxxx 002131742000 
+002141 xxxx 002132744000 
+002142 xxxx 002133745000 
+002143 xxxx 002134746000 
+002144 xxxx 000002624031 ioa1:   eax4    2, 1*   " 1st arg is control string
+002145 xxxx 000003625011         eax5    3, 1    " next arg is the 1st of the numeric args. x5 points to next argument
+002146 xxxx 000000626015         eax6    0, x5
+002147 xxxx 000041235007         lda     041, dl " make a blank tallyb word .....
+002150 xxxx 002165755000         sta     i29
+002151 xxxx 000000235014     	lda     0, x4   " get 1st data word into A
+002152 xxxx 000033731000         ars     27      " determine word count
+002153 xxxx 000006735000     	als     6       " count to upper word of tally
+002154 xxxx 002165255000     	orsa    i29
+002155 xxxx 000000626014     	eax6    0, x4   " address of string into X6
+002156 xxxx 002165746000     	stx6    i29     " address to upper word of tally
+002157 xxxx 002165235052 inext:  lda     i29, sc
+002160 xxxx 000136115007         cmpa    =o000136,dl		" ^
+002161 xxxx 002166600000         tze     iernot      " if so, go process it
+002162 xxxx 000001420400 out1:  	emCall  1
+002163 xxxx 002157607000     	ttf     inext
+002164 xxxx 002131710000         return  ioa
+002165 xxxx 000000000041 i29:	tallyb  0, 0, 1
+002166 xxxx 002165235052 iernot: lda     i29, sc         " get next char ...
+002167 xxxx 000136115007         cmpa    =o000136,dl     " is it another "^"?
+002170 xxxx 002206600000         tze     i21             " No, just print it ...
+002171 xxxx 000167115007         cmpa    =o000167,dl     " is it a "w"?
+002172 xxxx 002210600000         tze     idoW            " do full word octal
+002173 xxxx 000157115007         cmpa    =o000157,dl     " is it an "o"?
+002174 xxxx 002236600000         tze     idoO            " print zero suppressed octal
+002175 xxxx 000156115007         cmpa    =o000156,dl     " is it a "n"?
+002176 xxxx 002261600000         tze     idoN            " octal w/ no spaces inserted
+002177 xxxx 000144115007         cmpa    =o000144,dl     " is it a "d"?
+002200 xxxx 002310600000         tze     idoD            " decimal
+002201 xxxx 000141115007         cmpa    =o000141,dl     " is it a ^a?
+002202 xxxx 002316600000         tze     idoA            " 4 char ascii display
+002203 xxxx 000147115007         cmpa    =o000147,dl     " is it a ^g?
+002204 xxxx 002327600000         tze     idoG            " 6 char GE BCD display
+002205 xxxx 002162710000         tra     out1        " unknown just print it....
+002206 xxxx 000001420400 i21:    emCall  1           " output A to console
+002207 xxxx 002157710000         tra     inext
+002210 xxxx 000000235035 idoW:   lda     0, 5*       " ^w - full-word octal xxxxxx xxxxxx
+002211 xxxx 002405702000         tsx2    octwd
+002212 xxxx 002306757000         staq    ioaSafe     " bcd in AQ
+002213 xxxx 000044773000         lrl     36          " A => Q
+002214 xxxx 000006622000         eax2    6
+002215 xxxx 000000235007 idoW2:  lda     =0, dl
+002216 xxxx 000006737000         lls     6
+002217 xxxx 000002420400         emCall  2           " output GE code char to console
+002220 xxxx 777777622012         eax2    -1, 2
+002221 xxxx 002215601000         tnz     idoW2
+002222 xxxx 002306237000         ldaq    ioaSafe
+002223 xxxx 000000235007         lda     =0, dl      " 0 => A
+002224 xxxx 000020235007         lda     =020 ,dl     " bcd ' ' => A
+002225 xxxx 000002420400         emcall  2
+002226 xxxx 000006622000         eax2    6
+002227 xxxx 000000235007 idoW3:  lda     =0,dl
+002230 xxxx 000006737000         lls     6
+002231 xxxx 000002420400         emCall  2
+002232 xxxx 777777622012         eax2    -1, 2
+002233 xxxx 002227601000         tnz     idoW3
+002234 xxxx 000001065003         adx5    1,du
+002235 xxxx 002157710000         tra     inext
+002236 xxxx 000000235035 idoO:   lda     0, 5*           " ^o - Zero-suppressed octal
+002237 xxxx 002405702000         tsx2    octwd
+002240 xxxx 002306757000         staq    ioaSafe         " bcd in AQ
+002241 xxxx 002257235000         lda     idOTly
+002242 xxxx 002260755000         sta     idOT
+002243 xxxx 002260235052 idO1:   lda     idOT, sc        " get char into A
+002244 xxxx 000000115007         cmpa    =0, dl          " a zero?
+002245 xxxx 002253601000         tnz     idONZ + 1       " nope
+002246 xxxx 002243607000         ttf     idO1            " Yes, a Zero. Go for more
+002247 xxxx 000002420400         emCall  2               " output a single 0
+002250 xxxx 000001065003         adx5    1,du
+002251 xxxx 002157710000         tra     inext
+002252 xxxx 002260235052 idONZ:  lda     idOT, sc        " get char into A
+002253 xxxx 000002420400         emCall  2
+002254 xxxx 002252607000         ttf     idONZ           " Yes, a Zero. Go for more
+002255 xxxx 000001065003         adx5    1,du
+002256 xxxx 002157710000         tra     inext
+002257 xxxx 002306001400 idOTly: tally   ioaSafe, 12, 0
+002260 xxxx 000000000000 idOT:   bss     1
+002261 xxxx 000000235035 idoN:   lda     0, 5*       " ^n - octal w/ no spaces inserted
+002262 xxxx 002405702000         tsx2    octwd
+002263 xxxx 002306757000         staq    ioaSafe     " bcd in AQ
+002264 xxxx 000044773000         lrl     36          " A => Q
+002265 xxxx 000006622000         eax2    6
+002266 xxxx 000000235007 idoN2:  lda     =0,dl
+002267 xxxx 000006737000         lls     6
+002270 xxxx 000002420400         emCall  2           " output GE code char to console
+002271 xxxx 777777622012         eax2    -1, 2
+002272 xxxx 002266601000         tnz     idoN2
+002273 xxxx 002306237000         ldaq    ioaSafe
+002274 xxxx 000000235007         lda     =0, dl      " 0 => A
+002275 xxxx 000006622000         eax2    6
+002276 xxxx 000000235007 idoN3:  lda     =0, dl
+002277 xxxx 000006737000         lls     6
+002300 xxxx 000002420400         emCall  2
+002301 xxxx 777777622012         eax2    -1, 2
+002302 xxxx 002276601000         tnz     idoN3
+002303 xxxx 000001065003         adx5    1,du
+002304 xxxx 002157710000         tra     inext
+002305 xxxx 000000011000         even "(allocating 1 nop)
+002306 xxxx 000000000000 ioaSafe:  bss 2
+002310 xxxx 000000236035 idoD:   ldq     0, 5*       " ^d
+002311 xxxx 002340701000         call    toDec
+002312 xxxx 002314710000 
+002313 xxxx 000000000000 
+002314 xxxx 000001065003         adx5    1,du
+002315 xxxx 002157710000         tra     inext
+002316 xxxx 000000236035 idoA:   ldq     0, 5*      " ^a (4 ascii chars into Q)
+002317 xxxx 000004622000         eax2    4
+002320 xxxx 000000235007 idoA2:  lda     =0,dl
+002321 xxxx 000011737000         lls     9
+002322 xxxx 000001420400         emCall  1
+002323 xxxx 777777622012         eax2    -1, 2
+002324 xxxx 002320601000         tnz     idoA2
+002325 xxxx 000001065003         adx5    1,du        " into next argument
+002326 xxxx 002157710000         tra     inext
+002327 xxxx 000000236035 idoG:   ldq     0, 5*        " ^g (6 GE BCD chars into Q)
+002330 xxxx 000006622000         eax2    6
+002331 xxxx 000000235007 idoG2:  lda     =0,dl
+002332 xxxx 000006737000         lls     6
+002333 xxxx 000002420400         emCall  2
+002334 xxxx 777777622012         eax2    -1, 2
+002335 xxxx 002331601000         tnz     idoG2
+002336 xxxx 000001065003         adx5    1,du        " into next argument
+002337 xxxx 002157710000         tra     inext
+002340 xxxx 002343710000 toDec:  save    "2,3,4,5,6,7
+002341 xxxx 000000000000 
+002342 xxxx 002341630000 
+002343 xxxx 002341754000 
+002344 xxxx 002341741000 
+002345 xxxx 002676116000         cmpq    =-34359738368       " the weird one?
+002346 xxxx 002352601000         tnz     toDec2
+002347 xxxx 002404235000         lda     decMTly             " just print it and be done with it
+002350 xxxx 002400755000         sta     decTly
+002351 xxxx 002370710000         tra     toDec1
+002352 xxxx 002374756000 toDec2: stq     decNo
+002353 xxxx 000000116007         cmpq    =0,dl       " Q < 0?
+002354 xxxx 002356605000         tpl     toDec0      " No
+002355 xxxx 002374336000         lcq     decNo       " -decNo => Q
+002356 xxxx 000012506007 toDec0: div     =10,dl      " divide Q by 10, remainder in A
+002357 xxxx 000060075007         ada     =o060,dl    " add ascii '0' (=1A0) to A
+002360 xxxx 002400755045         sta     decTly, scr " start writing characters backwards
+002361 xxxx 000000076007         adq     =0,dl       " set flags to test if Q == 0
+002362 xxxx 002356601000         tnz     toDec0      " if Q == 0 then we're essentially done with conversion
+002363 xxxx 002374235000         lda     decNo
+002364 xxxx 000000115007         cmpa    =0,dl
+002365 xxxx 002370605000         tpl     toDec1
+002366 xxxx 000055235007         lda     =o055,dl    " (-) => A
+002367 xxxx 002400755045         sta     decTly, scr " write (-) sign
+002370 xxxx 002400235052 toDec1: lda     decTly, sc
+002371 xxxx 000001420400         emCall  1
+002372 xxxx 002370607000         ttf     toDec1
+002373 xxxx 002342710000         return  toDec
+002374 xxxx 000000000000 decNo:  dec     0
+002375 xxxx 000000000000 decBuf: bss     3
+002400 xxxx 002377000040 decTly: tallyb  decBuf+2, , 0
+002401 xxxx 055063064063 decMM:  aci     "-34359738368"  " -2^^35
+002402 xxxx 065071067063 
+002403 xxxx 070063066070 
+002404 xxxx 002401001440 decMTly:tallyb  decMM, 12, 0
+002405 xxxx 002422742000 octwd:	stx2	octx2
+002406 xxxx 000006622000 	eax2	6
+002407 xxxx 000003736000 	qls     3
+002410 xxxx 000003777000 	llr     3
+002411 xxxx 777777622012 	eax2	-1,2
+002412 xxxx 002407605400 	tpnz	*-3
+002413 xxxx 002444756000 	stq     octtemp
+002414 xxxx 000006622000 	eax2	6
+002415 xxxx 000003736000 	qls     3
+002416 xxxx 000003777000 	llr     3
+002417 xxxx 777777622012 	eax2	-1,2
+002420 xxxx 002415605400 	tpnz	*-3
+002421 xxxx 002444235000 	lda     octtemp
+002422 xxxx 002422622000 octx2:	eax2	*
+002423 xxxx 000000710012 	tra     0,2
+002424 xxxx 002442742000 hexwd:	stx2	hexx2
+002425 xxxx 000044773000 	lrl     36          "shift to Q
+002426 xxxx 000006622000 	eax2	6           "	process 6 characters
+002427 xxxx 000000235007 hexloop:	lda	=0,dl	"	clear A
+002430 xxxx 000004737000 	lls     4           "shift in 4 bits
+002431 xxxx 000011115007 	cmpa	=9,dl		"greater than 9?
+002432 xxxx 002434604400 	tmoz	*+2
+002433 xxxx 000007035007 	adla	=7,dl       "if so, change to letter
+002434 xxxx 000006773000 	lrl     6
+002435 xxxx 002444235000 	lda     octtemp		"get temporary
+002436 xxxx 000006737000 	lls     6           "insert new character
+002437 xxxx 002444755000 	sta     octtemp		"and store
+002440 xxxx 777777622012 	eax2	-1,2		"decrement index
+002441 xxxx 002427605400 	tpnz	hexloop
+002442 xxxx 002442622000 hexx2:	eax2	*
+002443 xxxx 000000710012 	tra     0,2		"return to caller
+002444 xxxx 000000000000 octtemp:	oct	0
+002445 xxxx 000000633000 rd_clock:	rccl                " read the clock
+002446 xxxx 002570757000 cv_clock:	staq	rdctime     " save clock reading
+002447 xxxx 002541742000 	stx2	datx2               " save XR's
+002450 xxxx 002542740000 	stx0	datx2+1             " ..
+002451 xxxx 000034235007 	lda     28,dl               " Initialize montab
+002452 xxxx 002573755000 	sta     montab+1			" to prime Feb
+002453 xxxx 002570237000 	ldaq	rdctime             " Get clock reading
+002454 xxxx 000001737000 	lls     1                   " Set for dvf
+002455 xxxx 002677507000 	dvf     =1000000			" Get seconds since 1900.
+002456 xxxx 000044777000 	llr     36                  " Into Q.
+002457 xxxx 000074506007 	div     60,dl               " Seconds since min to A, mins to Q.
+002460 xxxx 002554755000 	sta     rdclock.sec         " Save for inspection.
+002461 xxxx 000074506007 	div     60,dl               " Min since hr to A, hrs to Q.
+002462 xxxx 002553755000 	sta     rdclock.min
+002463 xxxx 000006627000 	eax7	6
+002464 xxxx 002544702000 	tsx2	datecv              " Convert the minutes.
+002465 xxxx 002564176000 	sbq     rdclock.zone_temp	" Adjust for GMT.
+002466 xxxx 000030506007 	div     24,dl               " Days since 1900 in q.
+002467 xxxx 002563756000 	stq     rdclock.day_of_century	" save for  later.
+002470 xxxx 002552755000 	sta     rdclock.hr          " Hours since daybreak.
+002471 xxxx 002544702000 	tsx2	datecv              " Convert the hours
+002472 xxxx 002665506007 	div     365*4+1,dl          " get leap year cycle
+002473 xxxx 002110115007 	cmpa	365*3+1,dl          " if in last year of cycle (the leap year)
+002474 xxxx 002476604000 	tmi     *+2                 " no
+002475 xxxx 002573054000 	aos     montab+1			" allow for feb 29
+002476 xxxx 000002736000 	qls     2                   " 4*# leap year cycles
+002477 xxxx 003555036007 	adlq	1901,dl
+002500 xxxx 002562756000 	stq     rdclock.year		" Save
+002501 xxxx 000044777000 	llr     36
+002502 xxxx 000555506007 	div     365,dl              " Years complete since l.y.c. =>Q
+002503 xxxx 000004116007 	cmpq	4,dl                " Dec 31st of leap year?
+002504 xxxx 002507601000 	tnz     *+3                 " No.
+002505 xxxx 000001176007 	sbq     1,dl                " Adjust year and
+002506 xxxx 000555235007 	lda     365,dl              " day numbers.
+002507 xxxx 002562056000 	asq     rdclock.year		" Add in years complete.
+002510 xxxx 000000626000 	eax6	0                   " search for correct month
+002511 xxxx 030220520201 	rpt     12,1,tmi			" ..
+002512 xxxx 002572175016 	sba     montab,6			" subtract off days for each month
+002513 xxxx 777777075016 	ada     -1,6                " put back last entry
+002514 xxxx 000001075007 	ada     1,dl                " plus one more
+002515 xxxx 002557755000 	sta     rdclock.day_of_month	" Day of month
+002516 xxxx 002544702000 	tsx2	datecv              " convert day
+002517 xxxx 000000635016 	eaa     0,6
+002520 xxxx 002572135003 	sbla	montab,du			" get index into month table
+002521 xxxx 000022771000 	arl     18                  "..
+002522 xxxx 002555755000 	sta     rdclock.month		" Save month number
+002523 xxxx 002617236005 	ldq     rdc.months-1,al		" Get name of month.
+002524 xxxx 002556756000 	stq     rdclock.month_name
+002525 xxxx 002544702000 	tsx2	datecv              " convert month
+002526 xxxx 000000024400 	mvne	(),(),()			" edit the date and time
+002527 xxxx 002567070010 	desc4ns	date,8
+002530 xxxx 002606000014 	desc9a	datedit,12
+002531 xxxx 002570020014 	desc6a	rdctime,12
+002532 xxxx 002563236000 	ldq     rdclock.day_of_century
+002533 xxxx 000002076007 	adq     2,dl                " Bump Tuesday into place.
+002534 xxxx 000007506007 	div     7,dl
+002535 xxxx 002560755000 	sta     rdclock.day_of_week
+002536 xxxx 002611236005 	ldq     rdc.days,al         " Get name of day.
+002537 xxxx 002561756000 	stq     rdclock.day_name
+002540 xxxx 002570237000 	ldaq	rdctime             " get conversion in AQ
+002541 xxxx 002541622000 datx2:	eax2	*			" restore XR's
+002542 xxxx 002542620000 	eax0    *               " ..
+002543 xxxx 000000710012 	tra     0,2             " return to caller
+002544 xxxx 002566755000 datecv:	sta	datenum			" save number
+002545 xxxx 000017301400 	btd     (),(x7)         " convert into proper place
+002546 xxxx 002566000004 	desc9a	datenum,4
+002547 xxxx 002567070002 	desc4ns	date,2
+002550 xxxx 777776627017 	eax7	-2,7			" move offset index
+002551 xxxx 000000710012 	tra     0,2             " and return
+002552 xxxx 000000000000 	bss	,1
+002553 xxxx 000000000000 	bss	,1
+002554 xxxx 000000000000 	bss	,1
+002555 xxxx 000000000000 	bss	,1
+002556 xxxx 000000000000 	bss	,1
+002557 xxxx 000000000000 	bss	,1
+002560 xxxx 000000000000 	bss	,1
+002561 xxxx 000000000000 	bss	,1
+002562 xxxx 000000000000 	bss	,1
+002563 xxxx 000000000000 	bss	,1
+002564 xxxx 000000000007     dec     7   "8
+002565 xxxx 160163164040     aci     'pst '
+002566 xxxx 000000000000 datenum:	bss	,1
+002567 xxxx 000000000000 date:	bss	,1
+002570 xxxx 000000000000 rdctime:	bss	,2
+002572 xxxx 000000000037 montab:	dec	31,28,31,30,31,30,31,31,30,31,30,31
+002573 xxxx 000000000034 
+002574 xxxx 000000000037 
+002575 xxxx 000000000036 
+002576 xxxx 000000000037 
+002577 xxxx 000000000036 
+002600 xxxx 000000000037 
+002601 xxxx 000000000037 
+002602 xxxx 000000000036 
+002603 xxxx 000000000037 
+002604 xxxx 000000000036 
+002605 xxxx 000000000037 
+002606 xxxx 401020102260 datedit:	vfd	9/lte+1,o9/20,9/mvzb+2,9/insp,o9/61,9/mvc+2,9/insm+1,9/mvc+2
+002607 xxxx 061322021322 
+002610 xxxx 260015322021 	vfd	9/insp,o9/15,9/mvc+2,9/insm+1
+002611 xxxx 163165156040 rdc.days: aci	'sun mon tue wed thurfri sat '
+002612 xxxx 155157156040 
+002613 xxxx 164165145040 
+002614 xxxx 167145144040 
+002615 xxxx 164150165162 
+002616 xxxx 146162151040 
+002617 xxxx 163141164040 
+002620 xxxx 152141156040 	aci	'jan feb mar apr may jun jul aug septoct nov dec '
+002621 xxxx 146145142040 
+002622 xxxx 155141162040 
+002623 xxxx 141160162040 
+002624 xxxx 155141171040 
+002625 xxxx 152165156040 
+002626 xxxx 152165154040 
+002627 xxxx 141165147040 
+002630 xxxx 163145160164 
+002631 xxxx 157143164040 
+002632 xxxx 156157166040 
+002633 xxxx 144145143040 
+002634 xxxx 002400000000 single-precision literal (=1.000000)
+002635 xxxx 002474030177 single-precision literal (=1.234560)
+002636 xxxx 007135170060 single-precision literal (=-6.543210)
+002637 xxxx 004622077325 single-precision literal (=3.141593)
+002640 xxxx 004622077325 single-precision literal (=3.141593)
+002641 xxxx 014420000000 single-precision literal (=34.000000)
+002642 xxxx 015360000000 single-precision literal (=-34.000000)
+002643 xxxx 014740000000 single-precision literal (=60.000000)
+002644 xxxx 014550000000 single-precision literal (=45.000000)
+002645 xxxx 010612702436 single-precision literal (=12.340000)
+002646 xxxx 015040000000 single-precision literal (=-60.000000)
+002647 xxxx 015230000000 single-precision literal (=-45.000000)
+002650 xxxx 011165075341 single-precision literal (=-12.340000)
+002651 xxxx 014740000000 single-precision literal (=60.000000)
+002652 xxxx 014550000000 single-precision literal (=45.000000)
+002653 xxxx 010612702436 single-precision literal (=12.340000)
+002654 xxxx 015040000000 single-precision literal (=-60.000000)
+002655 xxxx 015230000000 single-precision literal (=-45.000000)
+002656 xxxx 011165075341 single-precision literal (=-12.340000)
+002657 xxxx 014740000000 single-precision literal (=60.000000)
+002660 xxxx 014550000000 single-precision literal (=45.000000)
+002661 xxxx 010612702436 single-precision literal (=12.340000)
+002662 xxxx 015040000000 single-precision literal (=-60.000000)
+002663 xxxx 015230000000 single-precision literal (=-45.000000)
+002664 xxxx 011165075341 single-precision literal (=-12.340000)
+002665 xxxx 004622077325 single-precision literal (=3.141593)
+002666 xxxx 004400000000 single-precision literal (=2.000000)
+002667 xxxx 004622077325 single-precision literal (=3.141593)
+002670 xxxx 004622077325 single-precision literal (=3.141593)
+002671 xxxx 004533741242 single-precision literal (=2.718282)
+002672 xxxx 004533741242 single-precision literal (=2.718282)
+002673 xxxx 000000000000 decimal literal (=0)
+002674 xxxx 000000000012 octal literal (=o12)
+002675 xxxx 000000000015 octal literal (=o15)
+002676 xxxx 400000000000 decimal literal (=-34359738368)
+002677 xxxx 000003641100 decimal literal (=1000000)

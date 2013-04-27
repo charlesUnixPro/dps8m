@@ -1,0 +1,3 @@
+#/bin/sh
+
+tar zcvf - docs src/README src/as8 src/as8+ src/dps8 src/simh/*.[ch] src/decNumber/* > dps8.tar.gz

@@ -1,0 +1,4 @@
+load Tests/TestEIS.oct
+set debug stderr
+;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
+g 0

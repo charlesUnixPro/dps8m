@@ -1,0 +1,43 @@
+
+"
+"  XEC test code ...
+"
+    tsx2    rd_clock
+    staq    Date        "MM/DD HH:MM
+
+    call    ioa(msgHello, Date, Date+1)
+
+    
+i0:
+    xec     i1
+    sta     result
+    
+    call    ioa(msg2, result)
+
+    xec     i2
+
+    dis
+
+Xec1:   call    ioa(msg3)
+
+    dis
+
+msgHello:  acc         "This is TestXEC ...^g^g\r\n"
+msg1:      acc         "Date: ^g^g \r\n"
+msg2:      acc         "Result ^d\r\n"
+msg3:      acc         "At Xec1...\r\n"
+
+
+        even
+Date:   bss     2
+result: bss 4
+
+i1:     lda     =42
+i2:     tra     Xec1
+i3:     tra     i0
+i4:
+
+        include     rdclock.as8
+        include     Utils.as8
+        
+

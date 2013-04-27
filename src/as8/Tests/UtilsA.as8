@@ -1,0 +1,816 @@
+" Begin include file ...... Utils(New).as8
+
+" Begin include file ...... error.incl.alm
+" Last modified 5/3/77 by Noel I. Morris
+" Modified November 1981 by C. Hornig to not use IOM rel mode.
+" Modified February 2013 by H. Reed to work with as8 under dps8/simh simulator
+    
+        name        UtilsA
+        segdef      A0, A1, rd_clockA, ioa
+
+        tra     A0
+        tra     A1
+        tra     ioa
+        tra     rd_clockA
+        tra     typeA
+        
+A0:     spri2   save2
+
+        sprp2   save2p
+        
+        "rtcd    save2
+        
+        tsx2	rd_clock
+        staq	Date        "MM/DD HH:MM
+        staq    pr0|02000
+        
+        tsx2    erpt
+        acc     /Date : '^g^g'\r\n/
+        nop     Date
+        nop     Date+1
+
+        "nop     dte
+
+        tsx2    erpt
+        acc     /froms0=^d\r\n/
+        nop     froms0
+
+        tsx2    read
+        
+        lprp2   save2p
+exit:   rtcd    save2
+
+        dis
+        
+        even
+        bss     Date, 2
+dte:    desc6a  Date, 12
+
+            even
+save2:      bss     ,2
+save2p:     bss     ,2
+save3p:     bss     ,2
+
+desc1:      bss     ,1
+descTmp:    bss     ,1
+
+froms0:     dec     123
+saveT:      dec     -1
+
+
+A1:     spri2   save2
+        sprp2   save2p
+        stx2    saveX2
+        
+        tsx2    erpt
+        acc     /This is A1... ^d ^d ^a ^w | ^w ^w\r\n/
+        nop     pr2|0,*
+        nop     pr2|1,*
+        nop     pr2|2,*
+        nop     pr2|3,*
+        nop     save2
+        nop     save2+1
+
+
+"*** sprpi ***
+"C(PRn.BITNO) → C(Y)0,5 
+"C(PRn.SNR)3,14 → C(Y)6,17 
+"C(PRn.WORDNO) → C(Y)18,35
+
+        "
+        " let's assume argument is in the calling segment and that pr2 SNR is correct
+        "
+        
+        lda     pr2|3,*     " save string descriptor
+        sta     desc1
+
+
+        " 
+        " let's modify pr2 to have the correct offset
+        "        
+        epp2    0,au        " correct offset should now be in pr2
+        sprp2   descTmp     " but segment gets changed to TPR.TSR
+
+        " fix segment number changed by epp. Need to xfer chars 1 & 2 of save2p to descTmp
+        lda     save2p
+        stca    descTmp, 030
+        
+        lprp2   descTmp
+        
+        tsx2    erpt
+        acc     /desc1:1: ^w, PR2: saved: ^w, modified:^w\r\n/
+        nop     desc1
+        nop     save2p
+        nop     descTmp
+
+        eax2    37
+
+        mlr     (pr,rl),()
+        desc9a  pr2|0,x2 
+        desc9a  buff,37
+
+        tsx2    erpt
+        acc     /1: ^A/
+        nop     pr23
+
+        "
+        " since we into self-modifying code, lets see how far we can take this ...
+        "
+        
+        "lprp2   save2p      " restore pr2
+        "lda     pr2|3,*     " save string descriptor
+        "sta     desc1       " address length
+        
+        lda     desc1
+        " 
+        " let's modify pr2 to have the correct offset
+        "        
+        epp2    0,au        " correct offset should now be in pr2
+        sprp2   descTmp     " but segment gets changed to TPR.TSR
+
+        " fix segment number changed by epp. Need to xfer chars 1 & 2 of save2p to descTmp
+        lda     save2p      " get packed representation of PR2
+        stca    descTmp,030 " move SNR bits 6-17 into descTmp
+        lprp2   descTmp     " load PR2 with pointer to descriptor
+
+        lda     desc1       " get descriptor
+        eax2    0,al        " move descriptor length into x2
+        sxl2    pr24        " save length (in x2) into descriptor
+
+        mlr     (pr,rl),(id)    " copy string into buff
+        desc9a  pr2|0,x2
+        arg     pr24
+
+        tsx2    erpt
+        acc     /2: ^A/
+        nop     pr24
+
+saveX2: eax2	*           "restore X2. Self-modifying code is so 1960's-ish!
+
+        lprp2   save2p
+        rtcd    save2
+
+pr23:   desc9a  buff, 37               "pr2|3,37
+pr24:   desc9a  buff, 0                 " fill in length
+buff:   bss     ,25
+
+
+rd_clockA:
+        spri2   save2
+        tsx2	rd_clock
+        rtcd    save2
+
+typeA:  spri2   save2
+        
+        sprp2   save2p      " save a packed version of pr2
+        sprp3   save3p      " save a packed version of pr3
+        lprp3   save2p      " get PR2's segment number into PR3
+
+        sreg    saveX       " save registers
+        
+        lda     pr2|0       " get descriptor ADDR=au, CNT=al
+        
+        eawp3   0,au        " put address into PR3's WORDNO
+        ana     =077,dl     " only 6-bits
+
+        stca    typeA2, 3   " save 6-bits of length in descriptor
+        stca    typeA3, 3   " save 6-bits of length in descriptor
+
+        eax6    1
+        asx6    save2+1		"set correct pr2 return value ere we meet a horrible death
+
+        mlr     (pr),(id)   " grab all characters
+typeA2: desc9a  pr3|0,0     " ... from descriptor following the tsp2 call
+        arg     typeA3      " ... and save for descriptor
+
+        tsx2    type        " write it out
+typeA3: desc9a  typeChr,0
+
+        lreg    saveX       " restore regsiters
+
+        lprp3   save3p      " restore PR3
+        lprp2   save2p      " restore PR2
+
+        rtcd    save2
+
+typeChr:bss     ,16
+
+        eight
+saveX:  bss     ,8
+
+"	tsp2	snr|ioa     " to print messages
+"	acc	'message'
+"	nop	a,t "	parameters
+"	^w	 full word octal
+"	^o	 zero suppressed octal
+"	^n	 octal with no spaces inserted
+"	^d	 decimal
+"	^a	 ASCII (4 char)
+"	^g	 GE code (6 char)
+"   ^S   arbitrary alphanumeric descriptor
+"   ^A   ASCII (9-bit) descriptor
+"   ^G   GEBCD (6-bit) descriptor
+"   ^4   decimal (4-bit) descroptor
+
+ioa:    spri2   save2       " save pr2 for return to caller
+        sprp2   save2p      " save a packed version of pr2
+        sprp3   save3p      " save a packed version of pr3
+        lprp3   save2p      " get PR2's segment number into PR3
+        
+        stx3	ioax3       " save X3
+        stx6	ioax6       " save X6
+
+        lda     pr2|0       " get character count from string
+        arl     27          " ..
+        eax7    0,al		" length of string in X7
+        stx7    erlen		" save length
+        eax6    1           " X6 is offset into input string
+
+        arl     2           " divide character count by 4
+        eax3    1,al		" round
+
+"
+
+ioaloop:cmpx6	erlen		"is input string exhausted?
+        tpnz    ioaend      "if so, exit
+
+        mlr     (pr,x6),(),fill(0)      " grab one character
+        desc9a  pr2|0,1
+        desc9a	errarg,4
+
+        eax6    1,6         "step offset over character
+
+        lda     errarg      "pick up character
+        cmpa    =1a^,du		"is it "^"?
+        tze     ioa2		"if so, go process it
+
+        tsx2    type
+        zero    errarg,1    " write char to console
+
+        tra     ioaloop        " and loop
+
+ioa2:	scm     (),(pr,x6)   "search table of keys
+        desc9a	ioakey,10
+        desc9a  pr2|0,1
+        arg     ertally
+        
+        ttn     ioaloop		" tra if not legal key
+"        ttf     erok		" tra if legal key
+"
+"
+" just so we can write a ^ with ^^
+"
+"        tsx2    type
+"        zero    errin,1     " write illegal key to console
+"        tra     erloop
+"
+"erok:
+        eax6    1,6         " step over key
+
+        lda     pr2|0,3     " pick up argument pointer
+        eawp3   0,au        " put address into PR3's WORDNO
+        lda     pr3|0       " ****** THIS INSTRUCTION NO LONGER GETS MODIFIED ******
+        sta     errarg      " and save for conversion
+        eax3    1,3         " step to next parameter
+        ldq     ertally		" get character key index
+        tra     ioatbl,ql*  " dispatch on key
+
+ioa_4:  lda     errarg      " desc4a descriptor is in errarg. Adjust PR3 to point to the strings contents
+        eawp3   0,au        " put address into PR3's WORDNO
+        ana     =077,dl     " only 6-bit
+        eax4    0,al        " put count into X4
+        stca    ioa_4d, 3   " save length in desc4a output descriptor
+
+        mvt     (pr,rl),()  " copy 4-bit decimal and translate to ASCII
+        desc4a  pr3|0,x4
+        desc9a	errtemp,64
+        arg     decastab
+
+
+        tsx2    type
+ioa_4d: desc9a  errtemp,64
+
+        tra     ioaloop
+
+ioa_A:  lda     errarg              " desc9a descriptor is in errarg. Adjust PR3 to point to the strings contents
+        eawp3   0,au                " put address into PR3's WORDNO
+        ana     =077,dl             " only 6-bits
+        eax4    0,al                " put count into X4
+        mlr     (pr,rl),(),fill(040)" copy ASCII string
+        desc9a  pr3|0,x4
+        desc9a	errtemp,64
+        
+ioastrip:	tsx2	stripa              " strip trailing blanks
+        desc9a	errtemp,64
+        tra     ioatrim                 " and trim leading blanks
+
+ioa_G:	lda     errarg                  " desc6a descriptor is in errarg. Adjust PR3 to point to the strings contents
+        eawp3   0,au                    " put address into PR3's WORDNO
+        ana     =077,dl                 " only 12-bits
+        eax4    0,al                    " put count into X4
+
+        mvt     (pr,rl),(),fill(020)    " copy GEBCD and translate to ASCII
+        desc6a  pr3|0,x4
+        desc9a	errtemp,64
+        arg     geastabu
+
+        tra     ioastrip	"join common code
+
+ioa_a:  tsx2    type
+        zero    errarg,4    " write 4 chars to console
+
+        tra     ioaloop
+
+ioa_g:  mvt     (),()
+        desc6a	errarg,6
+        desc9a	errtemp,6
+        arg     geastabu
+
+        tsx2    type
+        zero    errtemp, 6
+
+        tra     ioaloop
+
+ioa_d:	btd     (),()       " convert decimal number
+        desc9a	errarg,4    " 36-bit integer
+        desc4ls	errnum,12   " max 12-digits (incl sign)
+
+        mvne	(),(),()	" edit the output
+        desc4ls	errnum,12
+        desc9a	eredit_d,9
+        desc9a	errtemp,12  " max 12-digits
+
+        lda     =12,dl      "length of output is 12 characters
+        tra     ioatrim     "trim leading blanks from output
+
+ioa_n:	eax7    (eredit_n-eredit_o)*4  "set offset for conversion with no blank
+        tra     ioa_ow		"join common code
+
+ioa_o:	eax7    1           "set offset of 1 to skip ses micro-op
+        tra     ioa_ow		"common code for "^o" and "^w"
+
+ioa_S:  ldq     errarg      " get string descriptor
+        anq     =o060000,dl " mask off everything but TA
+        tze     ioa_A       " 00 => 9-bit
+        cmpq    =o020000,dl
+        tze     ioa_G       " 01 => 6-bit
+        cmpq    =o040000,dl
+        tze     ioa_4       " 10 => 4-bit
+        
+        tra     ioaloop
+
+ioa_w:	eax7    0           "offset of 0 to turn off zero suppression
+
+ioa_ow:	tsx2	octwd		"convert octal
+        staq	errnum		"save word
+
+        mve     (),(x7),()  "insert a blank in the middle
+        desc6a	errnum,12
+        desc9a	eredit_o,7
+        desc6a	errtempo,13
+
+        mvt     (),()
+        desc6a	errtempo,13
+        desc9a	errtemp,13
+        arg     geastab
+
+        lda     13,dl		"length is 13
+        tra     ioatrim		"copy into output
+
+ioatrim:tct     (rl)        "search for last non-blank
+        desc9a	errtemp,al
+        arg     abtable
+        arg     ertally
+
+        ldq     ertally		"offset of first non-blank in Q
+        sba     ertally		"compute # of non-blank characters
+
+ioamov:	als     18          "place in AU
+        sta     ertally		"and save
+        tze     ioanomov		"skip zero length move
+
+        mlr     (rl,ql),(rl,x5)	"copy the string
+        desc9a	errtemp,au
+        desc9a	erbuf,au
+
+ioanomov:
+        " construct a tally word suitable for type
+
+        lda     ertally     " get count
+        alr     18          " shift into al
+        stca	ioact,07     " store in erct
+
+        tsx2	type		" print output
+ioact:	desc9a	erbuf,*
+
+        tra     ioaloop		" and loop
+
+ioaend: asx3	save2+1		"set correct X3 return value (if used parameters != supplied parameters then this may meet a horrible death)
+ioax6:	eax6	*           "restore X6
+ioax3:	eax3	*           "restore X3
+        lprp3   save3p
+        lprp2   save2p
+        rtcd    save2       " and return
+
+ioakey: aci	"AGwondagS4"
+
+ioatbl: tra     ioa_A
+        tra     ioa_G
+        tra     ioa_w
+        tra     ioa_o
+        tra     ioa_n
+        tra     ioa_d
+        tra     ioa_a
+        tra     ioa_g
+        tra     ioa_S
+        tra     ioa_4
+  
+ioatmp:	bss	,16
+
+
+"	tsx2	erpt	to print error messages
+"	acc	'message'
+"	nop	a,t "	parameters
+"	^w	 full word octal
+"	^o	 zero suppressed octal
+"	^n	 octal with no spaces inserted
+"	^d	 decimal
+"	^a	 ASCII (4 char)
+"	^g	 GE code (6 char)
+"   ^S   arbitrary alphanumeric descriptor
+"   ^A   ASCII (9-bit) descriptor
+"   ^G   GEBCD (6-bit) descriptor
+"   ^4   decimal (4-bit) descroptor
+
+erpt:	stx3	errx3       "save X3
+
+        stx2    errin		"set address of message descriptor
+        lda     0,2         "get character count from string
+        arl     27          " ..
+        eax7    0,al		"length of string in X7
+        stx7    erlen		"save length
+        eax6    1           "X6 is offset into input string
+
+        arl     2           "divide character count by 4
+        eax3    1,al		"round
+        adlx3	errin		"X3 -> first parameter
+
+"
+
+erloop:	cmpx6	erlen		"is input string exhausted?
+        tpnz    erpend      "if so, print completed message
+
+        mlr     (id,x6),(),fill(0)      " grab one character
+        arg     errin
+        desc9a	errarg,4
+
+        eax6    1,6         "step offset over character
+
+        lda     errarg      "pick up character
+        cmpa    =1a^,du		"is it "^"?
+        tze     ernot		"if so, go process it
+
+        tsx2    type
+        zero    errarg,1    "write char to console
+
+        tra     erloop      "and loop
+
+ernot:	scm     (),(rl,id,x6)   "search table of keys
+        desc9a	erkey,10
+        arg     errin
+        arg     ertally
+        
+        ttn     erloop		" tra if not legal key
+"        ttf     erok		" tra if legal key
+"
+"
+" just so we can write a ^ with ^^
+"
+"        tsx2    type
+"        zero    errin,1     " write illegal key to console
+"        tra     erloop
+"
+"erok:
+        eax6    1,6         " step over key
+
+        lda     0,3         " pick up argument pointer
+        stba	*+1,64      " set following lda instruction
+        lda     0|0         " ****** THIS INSTRUCTION GETS MODIFIED ******
+        "lda     0
+        sta     errarg      " and save for conversion
+        eax3    1,3         " step to next parameter
+
+        ldq     ertally		" get character key index
+        tra     ertable,ql* " dispatch on key
+
+" 
+err_4:  tsx2	setar		"set AR bit if necessary
+        mvt     (id),()
+        arg     errarg
+        desc9a	errtemp,64
+        arg     decastab
+
+        lda     errarg
+        ana     =o7777,dl	"	extract string length
+        stca    err_4d, 3
+        
+        tsx2    type
+err_4d: desc9a  errtemp,64
+
+        tra     erloop
+
+err_A:  tsx2	setar               "set AR bit if necessary
+        mlr     (id),(),fill(40)	"copy ASCII string
+        arg     errarg
+        desc9a	errtemp,64
+        
+errstrip:	tsx2	stripa          "strip trailing blanks
+        desc9a	errtemp,64
+        tra     errtrim             "and trim leading blanks
+
+err_G:	tsx2	setar		"set AR bit if necessary
+        mvt     (id),(),fill(020)	"copy GEBCD and translate to ASCII
+        arg     errarg
+        desc9a	errtemp,64
+        arg     geastabu
+
+        tra     errstrip	"join common code
+
+
+err_a:  tsx2    type
+        zero    errarg,4    " write 4 chars to console
+
+        tra     erloop
+        
+err_g:  mvt     (),()
+        desc6a	errarg,6
+        desc9a	errtemp,6
+        arg     geastabu
+
+        tsx2    type
+        zero    errtemp, 6
+        
+        tra     erloop
+
+err_d:	btd     (),()       " convert decimal number
+        desc9a	errarg,4    " 36-bit integer
+        desc4ls	errnum,12   " max 12-digits (incl sign)
+
+        mvne	(),(),()	" edit the output
+        desc4ls	errnum,12
+        desc9a	eredit_d,9
+        desc9a	errtemp,12  " max 12-digits
+
+        lda     =12,dl      "length of output is 12 characters
+        tra     errtrim     "trim leading blanks from output
+
+err_n:	eax7    (eredit_n-eredit_o)*4  "set offset for conversion with no blank
+        tra     err_ow		"join common code
+
+err_o:	eax7    1           "set offset of 1 to skip ses micro-op
+        tra     err_ow		"common code for "^o" and "^w"
+
+err_S:  ldq     errarg      " get string descriptor
+        anq     =o060000,dl " mask off everything but TA
+        tze     err_A       " 00 => 9-bit
+        cmpq    =o020000,dl
+        tze     err_G       " 01 => 6-bit
+        cmpq    =o040000,dl
+        tze     err_4       " 10 => 4-bit
+        
+        tra     erloop
+
+err_w:	eax7    0           "offset of 0 to turn off zero suppression
+
+err_ow:	tsx2	octwd		"convert octal
+        staq	errnum		"save word
+
+        mve     (),(x7),()  "insert a blank in the middle
+        desc6a	errnum,12
+        desc9a	eredit_o,7
+        desc6a	errtempo,13
+
+        mvt     (),()
+        desc6a	errtempo,13
+        desc9a	errtemp,13
+        arg     geastab
+
+        lda     13,dl		"length is 13
+        tra     errtrim		"copy into output
+
+errtrim:tct     (rl)        "search for last non-blank
+        desc9a	errtemp,al
+        arg     abtable
+        arg     ertally
+
+        ldq     ertally		"offset of first non-blank in Q
+        sba     ertally		"compute # of non-blank characters
+
+errmov:	als     18          "place in AU
+        sta     ertally		"and save
+        tze     ernomov		"skip zero length move
+
+        mlr     (rl,ql),(rl,x5)	"copy the string
+        desc9a	errtemp,au
+        desc9a	erbuf,au
+
+ernomov:
+        " construct a tally word suitable for type
+
+        lda     ertally     " get count
+        alr     18          " shift into al
+        stca	erct,07     " store in erct
+
+        tsx2	type		" print output
+erct:	zero	erbuf,*
+
+        tra     erloop		" and loop
+
+erpend:	eax2	0,3         "set correct X2 return value
+errx3:	eax3	*           "restore X3
+        tra     0,2         "and return
+
+
+"   tsx2	type		to type line on oprs console
+"   zero	buf,n
+
+type:   stx2	typex2          "here to write tty
+        ldq     0,2             "get address and length
+
+        stcq	tlydesc,70      "place address into tally descriptor
+
+        anq     =o7777,dl       "mask the length
+        qls     6
+        orq     =o40,dl
+        stcq	tlydesc,07      "and place in tally word
+
+type2:  lda     tlydesc, sc
+        emcall  1
+        ttf     type2
+
+typex2:	eax2	*
+        tra     1,2
+
+tally:  vfd 18/0, 12/0, 1/1, 5/0        " addr/count
+
+tallySC:    bss ,1
+tlydesc:    bss ,1
+
+
+eredit_d:	vfd	9/lte+1,o9/40,9/lte+3,o9/40,9/lte+4,o9/55,9/mfls+10,9/enf
+            vfd	9/mvc+1
+eredit_o:	vfd	9/ses+if0,9/lte+1,o9/20,9/mvzb+6,9/insm+1,9/mvzb+5,9/mvc+1,9/ses+if0
+eredit_n:	vfd	9/lte+1,o9/20,9/insm+1,9/mvzb+11,9/mvc+1,9/ses+if0,9/ses+if0
+
+
+erbuf:      bss	,16
+            even
+errnum:     bss	,2
+errtemp:	bss	,16
+errtempo:	bss	,16
+ertally:	bss	,1
+errarg:     bss	,1
+errin:      desc9a	*,1
+erlen:      bss	,1
+
+erkey:      aci	"AGwondagS4"
+
+ertable:tra     err_A
+        tra     err_G
+        tra     err_w
+        tra     err_o
+        tra     err_n
+        tra     err_d
+        tra     err_a
+        tra     err_g
+        tra     err_S
+        tra     err_4
+        
+
+setar:	ldq     =o100,dl    "get AR bit for MF1
+        cana	=o700000,du	"high-order bits ON
+        tze     resetar		"if not, reset AR bit
+        orsq	0,2         "if so, set AR bit
+        tra     0,2         "and return
+
+resetar:erq     =-1         "complement Q
+        ansq	0,2         "reset AR bit
+        tra     0,2         "and return
+
+" 
+
+
+"	lda	ascii code
+"	tsx2	asge	to convert to GE code
+"	sta	GE code
+
+asge:	ana     =o177177177177	"make it  legit ASCII
+        sta     wd9             "setup to loop through word
+
+        mvt     (),(),fill(040)	"move and translate
+        desc9a	wd9,4
+        desc6a	wd6,6
+        arg     asgetab
+
+        lda     wd6             "get ge word
+        tra     0,2
+
+wd4:    oct     0
+wd6:	oct     0
+        even
+wd9:	oct     0, 0
+
+
+asgetab:	
+    oct	020020020020,020020020020   "00
+	oct	020020020020,020020020020   "10
+	oct	020020020020,020020020020   "20
+	oct	020020020020,020020020020   "30
+	oct	020057076013,053074032057   "40
+	oct	035055054060,073052033061   "50
+	oct	000001002003,004005006007   "60
+	oct	010011015056,036075016020   "70
+	oct	014021022023,024025026027   "100
+	oct	030031041042,043044045046   "110
+	oct	047050051062,063064065066   "120
+	oct	067070071012,020034020072   "130
+	oct	037021022023,024025026027   "140
+	oct	030031041042,043044045046   "150
+	oct	047050051062,063064065066   "160
+	oct	067070071020,040020020020   "170
+
+
+"	lda	 decimal code
+"	tsx2	decas	to convert to ASCII
+"	sta	ASCII code
+
+decas:	sta	wd4		"setup char tally words
+
+	mvt	(),()
+	desc4a	wd4,8
+	desc9a	wd9,8
+	arg     decastab
+
+	lda     wd9		 "get comverted word
+	tra     0,2
+
+decastab:	aci	/0123456789+++-++/
+
+
+
+
+    include     alm/bosequ.incl.alm
+    include     alm/rdclock.incl.alm
+
+" for rdclock.incl.alm
+getconf:	tra     0,2		"if found return
+
+    include     alm/octwd.incl.alm
+    include     alm/eis_micro_ops.incl.alm
+    include     alm/conv.incl.alm
+    include     alm/strip.incl.alm
+    
+"
+" clock/Time stuff ...
+"
+ckhe:
+	even
+clockr:	oct     0,0         "clock reading
+clocks:	oct     0
+
+cldate:	stx2	clret		"Save return addr.
+        ldaq	clockr      "Get clock value to be converted.
+        tsx2	cv_clock	"Use rdclock pkg to convert it.
+clret:	tra	*
+
+
+read:   stx2	readret		"Save return addr.
+        rscr	4*8         "Read clock from low-order memory.
+        "lrl     0          "RSCR doesn't set indicators.
+        "tze	clockflt
+
+        staq	clockr      "Convert to clock setting.
+        lrl     16
+        stq     clocks
+
+        tsx2	cldate      "Convert to date,
+        tsx2	print       "and print it.
+
+readret:tra     *
+
+print:	stx2	pret
+        tsx2	erpt            "Print line with clock reading, setting, and date.
+        "acc	'^o,^w ^w ^a, ^d ^a ^d ^d:^d:^d ^a'
+        acc	             '^a, ^d ^a ^d ^d:^d:^d ^a\r\n'
+        "arg	clockr
+        "arg	clockr+1
+        "arg	clocks
+        arg     rdclock.day_name
+        arg     rdclock.day_of_month
+        arg     rdclock.month_name
+        arg     rdclock.year
+        arg     rdclock.hr
+        arg     rdclock.min
+        arg     rdclock.sec
+        arg     rdclock.zone_name
+pret:	tra     *

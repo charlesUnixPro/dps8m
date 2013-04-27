@@ -1,0 +1,81 @@
+!SEGMENT 5
+!GO 000127
+000000 xxxx 000000000000 FAULT_SDF:  bss     2   "  shutdown fault
+000002 xxxx 000000000000 FAULT_STR:  bss     2   " store fault
+000004 xxxx 000000000000 FAULT_MME:  bss     2   " master mode entry
+000006 xxxx 000000000000 FAULT_F1:   bss     2   " fault tag 1
+000010 xxxx 000000000000 FAULT_TRO:  bss     2   " timer runout fault
+000012 xxxx 000000000000 FAULT_CMD:  bss     2   " command
+000014 xxxx 000000000000 FAULT_DRL:  bss     2   " derail
+000016 xxxx 000000000000 FAULT_LUF:  bss     2   " lockup
+000020 xxxx 000000000000 FAULT_COM:  bss     2   " connect
+000022 xxxx 000000000000 FAULT_PAR:  bss     2   " parity
+000024 xxxx 000000000000 FAULT_IPR:  bss     2   " illegal proceedure
+000026 xxxx 000000000000 FAULT_ONC:  bss     2   " operation not complete
+000030 xxxx 000000000000 FAULT_SUF:  bss     2   " startup
+000032 xxxx 000000000000 FAULT_OFL:  bss     2   " overflow
+000034 xxxx 000000000000 FAULT_DIV:  bss     2   " divide check
+000036 xxxx 000000000000 FAULT_EXF:  bss     2   " execute
+000040 xxxx 000000000000 FAULT_DF0:  bss     2   " directed fault 1
+000042 xxxx 000000000000 FAULT_DF1:  bss     2   " directed fault 1
+000044 xxxx 000000000000 FAULT_DF2:  bss     2   " directed fault 1
+000046 xxxx 000000000000 FAULT_DF3:  bss     2   " directed fault 1
+000050 xxxx 000000000000 FAULT_ACV:  bss     2   " access violation
+000052 xxxx 000000000000 FAULT_MME2: bss     2   " Master mode entry 2
+000054 xxxx 000000000000 FAULT_MME3: bss     2   " Master mode entry 3
+000056 xxxx 000000000000 FAULT_MME4: bss     2   " Master mode entry 4
+000060 xxxx 000000000000 FAULT_F2:   bss     2   " fault tag 2
+000062 xxxx 000000000000 FAULT_F3:   bss     2   " fault tag 3
+000064 xxxx 000000000000 FAULT_UN1:  bss     2   " unassigned
+000066 xxxx 000000000000 FAULT_UN2:  bss     2   " unassigned
+000070 xxxx 000000000000 FAULT_UN3:  bss     2   " unassigned
+000072 xxxx 000000000000 FAULT_UN4:  bss     2   " unassigned
+000074 xxxx 000000000000 FAULT_UN5:  bss     2   " unassigned
+000076 xxxx 000000000000 FAULT_TRB:  bss     2   " Trouble
+000100 xxxx 000000000043 	its	0,0		pr0 -> seg 0 etc 
+000101 xxxx 000000000000
+000102 xxxx 000001000043 	its	1,0 
+000103 xxxx 000000000000
+000104 xxxx 000002000043 	its	2,0 
+000105 xxxx 000000000000
+000106 xxxx 000003000043 	its	3,0 
+000107 xxxx 000000000000
+000110 xxxx 000004000043 	its	4,0 
+000111 xxxx 000000000000
+000112 xxxx 000005000043 	its	5,0 
+000113 xxxx 000000000000
+000114 xxxx 000006000043 	its	6,0 
+000115 xxxx 000000000000
+000116 xxxx 000007000043 	its	7,0 
+000117 xxxx 000000000000
+000120 xxxx 000100173000     lpri    __pr
+000121 xxxx 000000000001 	dec	1,2,3,4,5,6
+000122 xxxx 000000000002
+000123 xxxx 000000000003
+000124 xxxx 000000000004
+000125 xxxx 000000000005
+000126 xxxx 000000000006
+000127 xxxx 000110235007 start:	lda	0110,dl
+000130 xxxx 000001420400 	emCall	1
+000131 xxxx 000010622004 	eax2	msg-*,ic
+000132 xxxx 000000235012 L0:	lda	0,x2
+000133 xxxx 000005600004 	tze	L1-*+1,ic
+000134 xxxx 000001420400 	emCall	1
+000135 xxxx 000001062003 	adx2	1,du
+000136 xxxx 777774710004 	tra	L0-*,ic
+000137 xxxx 000000616000 L1:	dis	0
+000140 xxxx 777777710004 	tra	L1-*,ic
+000141 xxxx 000000000145 msg:	oct	145,154,154,157,54,40,127,157,162,154,144,41,012,0
+000142 xxxx 000000000154
+000143 xxxx 000000000154
+000144 xxxx 000000000157
+000145 xxxx 000000000054
+000146 xxxx 000000000040
+000147 xxxx 000000000127
+000150 xxxx 000000000157
+000151 xxxx 000000000162
+000152 xxxx 000000000154
+000153 xxxx 000000000144
+000154 xxxx 000000000041
+000155 xxxx 000000000012
+000156 xxxx 000000000000

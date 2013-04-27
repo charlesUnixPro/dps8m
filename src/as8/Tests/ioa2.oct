@@ -1,0 +1,428 @@
+000000 xxxx 000057702000     tsx2    erpt
+000001 xxxx 026110145154     acc     /Hello this is erpt .../ 
+000002 xxxx 154157040164  
+000003 xxxx 150151163040  
+000004 xxxx 151163040145  
+000005 xxxx 162160164040  
+000006 xxxx 056056056040  
+000007 xxxx 000057702000     tsx2    erpt
+000010 xxxx 035047136167     acc     /'^w' '^o' '^n' '^d' '^a' '^g'/ 
+000011 xxxx 047040047136  
+000012 xxxx 157047040047  
+000013 xxxx 136156047040  
+000014 xxxx 047136144047  
+000015 xxxx 040047136141  
+000016 xxxx 047040047136  
+000017 xxxx 147047040040  
+000020 xxxx 000036011000     nop     O1
+000021 xxxx 000036011000     nop     O1
+000022 xxxx 000036011000     nop     O1
+000023 xxxx 000035011000     nop     N12345
+000024 xxxx 000037011000     nop     A1
+000025 xxxx 000040011000     nop     G1
+000026 xxxx 000057702000     tsx2     erpt
+000027 xxxx 011047136101     acc     /'^A' '^G'/ 
+000030 xxxx 047040047136  
+000031 xxxx 107047040040  
+000032 xxxx 000050011000     nop     dsc11
+000033 xxxx 000056011000     nop     dsc16
+000034 xxxx 000000616000     dis
+000035 xxxx 777777747707 N12345: dec     -12345
+000036 xxxx 000123454321 O1:     oct     123454321
+000037 xxxx 141102143061 A1:     aci     /aBc1/ 
+000040 xxxx 212223010203 G1:     bci     /ABC123/ 
+000041 xxxx 124150151163 et:     aci     /This is 26 characters ..../ 
+000042 xxxx 040151163040  
+000043 xxxx 062066040143  
+000044 xxxx 150141162141  
+000045 xxxx 143164145162  
+000046 xxxx 163040056056  
+000047 xxxx 056056000000  
+000050 xxxx 000041600027 dsc11:  desc9a  et(3), 23 
+000051 xxxx 633031622031 et2:    bci     /This is 26 characters ..../ 
+000052 xxxx 622002062023  
+000053 xxxx 302151212363  
+000054 xxxx 255162203333  
+000055 xxxx 333320202020  
+000056 xxxx 000051520025 dsc16:  desc6a  et2(5), 21 
+000057 xxxx 000330450000 erpt:	stz     ersw        "clear convert only switch
+000060 xxxx 000264743000 erjn:	stx3	errx3       "save X3
+000061 xxxx 000360742000         stx2    errin		"set address of message descriptor
+000062 xxxx 000000235012         lda     0,2         "get character count from string
+000063 xxxx 000033771000         arl     27          " ..
+000064 xxxx 000000627005         eax7    0,al		"length of string in X7
+000065 xxxx 000361747000         stx7    erlen		"save length
+000066 xxxx 000001626000         eax6    1           "X6 is offset into input string
+000067 xxxx 000002771000         arl     2           "divide character count by 4
+000070 xxxx 000001623005         eax3    1,al		"round
+000071 xxxx 000360023000         adlx3	errin		"X3 -> first parameter
+000072 xxxx 000124624000         eax4    84          "remaining length of output in X4
+000073 xxxx 000000625000         eax5    0           "X5 is offset into output string
+000074 xxxx 000000104003 erloop:	cmpx4	0,du		"is output string exhausted?
+000075 xxxx 000236604400         tmoz    erprnt		"if so, print message now
+000076 xxxx 000361106000         cmpx6	erlen		"is input string exhausted?
+000077 xxxx 000236605400         tpnz    erprnt		"if so, print completed message
+000100 xxxx 000000100436         mlr     (id,x6),(),fill(0)      " grab one character
+000101 xxxx 000360000000         arg     errin
+000102 xxxx 000357000004         desc9a	errarg,4 
+000103 xxxx 000001626016         eax6    1,6         "step offset over character
+000104 xxxx 000357235000         lda     errarg      "pick up character
+000105 xxxx 136000115003         cmpa    =1a^,du		"is it "^"?
+000106 xxxx 000116600000         tze     ernot		"if so, go process it
+000107 xxxx 000015160400         mvt     (),(x5)     "insert translated character in output
+000110 xxxx 000357000001         desc9a	errarg,1 
+000111 xxxx 000274020001         desc6a	erbuf,1 
+000112 xxxx 000434000000         arg     asgetab
+000113 xxxx 000001625015         eax5    1,5         "step output offset and length
+000114 xxxx 777777624014         eax4    -1,4		"..
+000115 xxxx 000074710000         tra     erloop      "and loop
+000116 xxxx 000076124400 ernot:	scm     (),(rl,id,x6)   "search table of keys
+000117 xxxx 000362000010         desc9a	erkey,8 
+000120 xxxx 000360000000         arg     errin
+000121 xxxx 000356000000         arg     ertally
+000122 xxxx 000074606400         ttn     erloop		" tra if not legal key
+000123 xxxx 000001626016         eax6    1,6         " step over key
+000124 xxxx 000000235013         lda     0,3         " pick up argument pointer
+000125 xxxx 000126551064         stba	*+1,64      " set following lda instruction
+000126 xxxx 000000235000         lda     0           " ****** THIS INSTRUCTION GETS MODIFIED ******
+000127 xxxx 000357755000         sta     errarg      " and save for conversion
+000130 xxxx 000001623013         eax3    1,3         " step to next parameter
+000131 xxxx 000356236000         ldq     ertally		" get character key index
+000132 xxxx 000364710026         tra     ertable,ql* " dispatch on key
+000133 xxxx 000226702000 err_A:	tsx2	setar		"set AR bit if necessary
+000134 xxxx 040000160420         mvt     (id),(),fill(040)	"copy ASCII and translate to BCD
+000135 xxxx 000357000000         arg     errarg
+000136 xxxx 000336020100         desc6a	errtemp,64 
+000137 xxxx 000434000000         arg     asgetab
+000140 xxxx 000547702000 errstrip:	tsx2	stripg  "strip trailing blanks
+000141 xxxx 000336020100         desc6a	errtemp,64 
+000142 xxxx 000203710000         tra     errtrim     "and trim leading blanks
+000143 xxxx 000226702000 err_G:	tsx2	setar		"set AR bit if necessary
+000144 xxxx 020000100420         mlr     (id),(),fill(20)	"copy BCD string
+000145 xxxx 000357000000         arg     errarg
+000146 xxxx 000336020100         desc6a	errtemp,64 
+000147 xxxx 000140710000         tra     errstrip	"join common code
+000150 xxxx 000422702000 err_a:	tsx2	asge		"convert ASCII to GE BCD
+000151 xxxx 000700702000 err_g:	tsx2	rjust		"right-justify GE BCD
+000152 xxxx 000336755000         sta     errtemp     "save GE BCD
+000153 xxxx 000006235007         lda     6,dl        "length of output is 6 characters
+000154 xxxx 000203710000         tra     errtrim     "trim leading blanks from output
+000155 xxxx 000000301400 err_d:	btd     (),()           "convert decimal number
+000156 xxxx 000357000004         desc9a	errarg,4 
+000157 xxxx 000334050014         desc4ls	errnum,12 
+000160 xxxx 000000024400         mvne	(),(),()	"edit the output
+000161 xxxx 000334050014         desc4ls	errnum,12 
+000162 xxxx 000374000011         desc9a	eredit_d,9 
+000163 xxxx 000336020014         desc6a	errtemp,12 
+000164 xxxx 000014235007         lda     12,dl       "length of output is 12 characters
+000165 xxxx 000203710000         tra     errtrim     "trim leading blanks from output
+000166 xxxx 000010627000 err_n:	eax7    (eredit_n-eredit_o)*4  "set offset for conversion with no blank
+000167 xxxx 000173710000         tra     err_ow		"join common code
+000170 xxxx 000001627000 err_o:	eax7    1           "set offset of 1 to skip ses micro-op
+000171 xxxx 000173710000         tra     err_ow		"common code for "^o" and "^w"
+000172 xxxx 000000627000 err_w:	eax7    0           "offset of 0 to turn off zero suppression
+000173 xxxx 000474702000 err_ow:	tsx2	octwd		"convert octal
+000174 xxxx 000334757000         staq	errnum		"save word
+000175 xxxx 000017020400         mve     (),(x7),()      "insert a blank in the middle
+000176 xxxx 000334020014         desc6a	errnum,12 
+000177 xxxx 000377000007         desc9a	eredit_o,7 
+000200 xxxx 000336020015         desc6a	errtemp,13 
+000201 xxxx 000015235007         lda     13,dl		"length is 13
+000202 xxxx 000203710000         tra     errtrim		"copy into output
+000203 xxxx 000000164440 errtrim:	tct	(rl)        "search for last non-blank
+000204 xxxx 000336020005         desc6a	errtemp,al 
+000205 xxxx 000552000000         arg     gbtable
+000206 xxxx 000356000000         arg     ertally
+000207 xxxx 000356236000         ldq     ertally		"offset of first non-blank in Q
+000210 xxxx 000356175000         sba     ertally		"compute # of non-blank characters
+000211 xxxx 000022735000 errmov:	als     18          "place in AU
+000212 xxxx 000356755000         sta     ertally		"and save
+000213 xxxx 000356104000         cmpx4	ertally		"is there enough room?
+000214 xxxx 000216605000         tpl     *+2         "..
+000215 xxxx 000356744000         stx4	ertally		"if not, use only remaining space
+000216 xxxx 000356235000         lda     ertally		"..
+000217 xxxx 000223600000         tze     ernomov		"skip zero length move
+000220 xxxx 000055100446         mlr     (rl,ql),(rl,x5)	"copy the string
+000221 xxxx 000336020001         desc6a	errtemp,au 
+000222 xxxx 000274020001         desc6a	erbuf,au 
+000223 xxxx 000356065000 ernomov:	adx5	ertally	"step output index and length
+000224 xxxx 000356164000         sbx4	ertally		"..
+000225 xxxx 000074710000         tra     erloop		"loop
+000226 xxxx 000100236007 setar:	ldq     =o100,dl    "get AR bit for MF1
+000227 xxxx 700000315003         cana	=o700000,du	"high-order bits ON
+000230 xxxx 000233600000         tze     resetar		"if not, reset AR bit
+000231 xxxx 000000256012         orsq	0,2         "if so, set AR bit
+000232 xxxx 000000710012         tra     0,2         "and return
+000233 xxxx 000721676000 resetar:	erq	=-1         "complement Q
+000234 xxxx 000000356012         ansq	0,2         "reset AR bit
+000235 xxxx 000000710012         tra     0,2         "and return
+000236 xxxx 000000104003 erprnt:	cmpx4	0,du        "is output line full?
+000237 xxxx 000244604400         tmoz	erprnt_full	"if so, don't pad it
+000240 xxxx 000330727000         lxl7	ersw		"convert only switch in X7
+000241 xxxx 000331716017         xec     erpad,7		"pad output with blanks or nulls
+000242 xxxx 000242020000         desc6a	*,0 
+000243 xxxx 000274020014         desc6a	erbuf,x4 
+000244 xxxx 000330234000         szn     ersw		"convert only?
+000245 xxxx 000263601000         tnz     erpend		"if so, return now
+000246 xxxx 000005636015         eaq     5,5         "round up character count
+000247 xxxx 000022772000         qrl     18          "shift to QL
+000250 xxxx 000006506007         div     6,dl		"compute # of words to type
+000251 xxxx 000262752007         stcq	erct,07		"and set call to type
+000252 xxxx 000000106400         cmpc	(),()		"is message the same as last?
+000253 xxxx 000274020124         desc6a	erbuf,84 
+000254 xxxx 000312020124         desc6a	erbuf_last,84 
+000255 xxxx 000266600000         tze     erreq		"if so, print "="
+000256 xxxx 000000100400         mlr     (),()
+000257 xxxx 000274020124         desc6a	erbuf,84 
+000260 xxxx 000312020124         desc6a	erbuf_last,84 
+000261 xxxx 000403702000         tsx2	type		"print output
+000262 xxxx 000274000262 erct:	zero	erbuf,*
+000263 xxxx 000000622013 erpend:	eax2	0,3         "set correct X2 return value
+000264 xxxx 000264623000 errx3:	eax3	*           "restore X3
+000265 xxxx 000000710012         tra     0,2         "and return
+000266 xxxx 000403702000 erreq:	tsx2	type		"print "="
+000267 xxxx 000722000001         zero	=h=?????,1
+000270 xxxx 000263710000         tra     erpend
+000271 xxxx 000001235007 ercv:	lda     1,dl        "this entry only converts
+000272 xxxx 000330755000         sta     ersw		"set convert only switch
+000273 xxxx 000060710000         tra     erjn		"and join common code
+000274 xxxx 000000000000 erbuf:	bss	,14
+000312 xxxx 000000000000         bss	,14
+000330 xxxx 000000000000 ersw:	bss	,1  
+000331 xxxx 017055100400 erpad:	mlr     (),(rl,x5),fill(17)
+000332 xxxx 020055100400         mlr     (),(rl,x5),fill(20)
+000334 xxxx 000000000000 errnum:     bss	,2
+000336 xxxx 000000000000 errtemp:	bss	,16
+000356 xxxx 000000000000 ertally:	bss	,1
+000357 xxxx 000000000000 errarg:     bss	,1
+000360 xxxx 000360000001 errin:      desc9a	*,1 
+000361 xxxx 000000000000 erlen:      bss	,1
+000362 xxxx 101107167157 erkey:      aci	"AGwondag" 
+000363 xxxx 156144141147  
+000364 xxxx 000133710000 ertable:tra     err_A
+000365 xxxx 000143710000         tra     err_G
+000366 xxxx 000172710000         tra     err_w
+000367 xxxx 000170710000         tra     err_o
+000370 xxxx 000166710000         tra     err_n
+000371 xxxx 000155710000         tra     err_d
+000372 xxxx 000150710000         tra     err_a
+000373 xxxx 000151710000         tra     err_g
+000374 xxxx 401020403020 eredit_d:	vfd	9/lte+1,o9/20,9/lte+3,o9/20,9/lte+4,o9/52,9/mfls+10,9/enf
+000375 xxxx 404052152040 
+000376 xxxx 321000000000             vfd	9/mvc+1
+000377 xxxx 070401020106 eredit_o:	vfd	9/ses+if0,9/lte+1,o9/20,9/mvzb+6,9/insm+1,9/mvzb+5,9/mvc+1,9/ses+if0
+000400 xxxx 021105321070 
+000401 xxxx 401020021113 eredit_n:	vfd	9/lte+1,o9/20,9/insm+1,9/mvzb+11,9/mvc+1,9/ses+if0,9/ses+if0
+000402 xxxx 321070070000 
+000403 xxxx 000416742000 type:	stx2	typex2          "here to write tty
+000404 xxxx 000000236012         ldq     0,2             "get address and length
+000405 xxxx 000413752070         stcq	tydesc,70       "place address in descriptor
+000406 xxxx 000006735000         als     6               "into au
+000407 xxxx 777777376007         anq     =o777777,dl     "mask the length
+000410 xxxx 000006402007         mpy     6,dl            "compute character count
+000411 xxxx 000413752003         stcq	tydesc,03       "and place in descriptor
+000412 xxxx 000547702000         tsx2	stripg          "strip blanks from end of string
+000413 xxxx 000413020000 tydesc:	desc6a	*,0 
+000414 xxxx 000413235000         lda     tydesc          " write descriptor to console
+000415 xxxx 000007420400         emCall  7
+000416 xxxx 000416622000 typex2:	eax2	*
+000417 xxxx 000001710012         tra     1,2
+000420 xxxx 770017171717 cr:     bci     '!0????' 
+000422 xxxx 000723375000 asge:	ana     =o177177177177	"make it  legit ASCII
+000423 xxxx 000433755000         sta     wd9         "setup to loop through word
+000424 xxxx 040000160400         mvt     (),(),fill(040)	"move and translate
+000425 xxxx 000433000004         desc9a	wd9,4 
+000426 xxxx 000432020006         desc6a	wd6,6 
+000427 xxxx 000434000000         arg     asgetab
+000430 xxxx 000432235000         lda     wd6         "get ge word
+000431 xxxx 000000710012         tra     0,2
+000432 xxxx 000000000000 wd6:	oct	0
+000433 xxxx 000000000000 wd9:	oct	0
+000434 xxxx 020020020020     oct	020020020020,020020020020   "00
+000435 xxxx 020020020020
+000436 xxxx 020020020020 	oct	020020020020,020020020020   "10
+000437 xxxx 020020020020
+000440 xxxx 020020020020 	oct	020020020020,020020020020   "20
+000441 xxxx 020020020020
+000442 xxxx 020020020020 	oct	020020020020,020020020020   "30
+000443 xxxx 020020020020
+000444 xxxx 020057076013 	oct	020057076013,053074032057   "40
+000445 xxxx 053074032057
+000446 xxxx 035055054060 	oct	035055054060,073052033061   "50
+000447 xxxx 073052033061
+000450 xxxx 000001002003 	oct	000001002003,004005006007   "60
+000451 xxxx 004005006007
+000452 xxxx 010011015056 	oct	010011015056,036075016020   "70
+000453 xxxx 036075016020
+000454 xxxx 014021022023 	oct	014021022023,024025026027   "100
+000455 xxxx 024025026027
+000456 xxxx 030031041042 	oct	030031041042,043044045046   "110
+000457 xxxx 043044045046
+000460 xxxx 047050051062 	oct	047050051062,063064065066   "120
+000461 xxxx 063064065066
+000462 xxxx 067070071012 	oct	067070071012,020034020072   "130
+000463 xxxx 020034020072
+000464 xxxx 037021022023 	oct	037021022023,024025026027   "140
+000465 xxxx 024025026027
+000466 xxxx 030031041042 	oct	030031041042,043044045046   "150
+000467 xxxx 043044045046
+000470 xxxx 047050051062 	oct	047050051062,063064065066   "160
+000471 xxxx 063064065066
+000472 xxxx 067070071020 	oct	067070071020,040020020020   "170
+000473 xxxx 040020020020
+000474 xxxx 000511742000 octwd:	stx2	octx2
+000475 xxxx 000006622000 	eax2	6
+000476 xxxx 000003736000 	qls     3
+000477 xxxx 000003777000 	llr     3
+000500 xxxx 777777622012 	eax2	-1,2
+000501 xxxx 000476605400 	tpnz	*-3
+000502 xxxx 000533756000 	stq     octtemp
+000503 xxxx 000006622000 	eax2	6
+000504 xxxx 000003736000 	qls     3
+000505 xxxx 000003777000 	llr     3
+000506 xxxx 777777622012 	eax2	-1,2
+000507 xxxx 000504605400 	tpnz	*-3
+000510 xxxx 000533235000 	lda     octtemp
+000511 xxxx 000511622000 octx2:	eax2	*
+000512 xxxx 000000710012 	tra     0,2
+000513 xxxx 000531742000 hexwd:	stx2	hexx2
+000514 xxxx 000044773000 	lrl     36          "shift to Q
+000515 xxxx 000006622000 	eax2	6           "	process 6 characters
+000516 xxxx 000000235007 hexloop:	lda	=0,dl	"	clear A
+000517 xxxx 000004737000 	lls     4           "shift in 4 bits
+000520 xxxx 000011115007 	cmpa	=9,dl		"greater than 9?
+000521 xxxx 000523604400 	tmoz	*+2
+000522 xxxx 000007035007 	adla	=7,dl       "if so, change to letter
+000523 xxxx 000006773000 	lrl     6
+000524 xxxx 000533235000 	lda     octtemp		"get temporary
+000525 xxxx 000006737000 	lls     6           "insert new character
+000526 xxxx 000533755000 	sta     octtemp		"and store
+000527 xxxx 777777622012 	eax2	-1,2		"decrement index
+000530 xxxx 000516605400 	tpnz	hexloop
+000531 xxxx 000531622000 hexx2:	eax2	*
+000532 xxxx 000000710012 	tra     0,2		"return to caller
+000533 xxxx 000000000000 octtemp:	oct	0
+000534 xxxx 000562627000 stripa:	eax7	abtable		"X7 -> table for stripping ASCII blanks
+000535 xxxx 000000165420 stripj:	tctr	(id)		"scan characters in reverse
+000536 xxxx 000000000012 	arg	0,2
+000537 xxxx 000000000017 	arg	0,7
+000540 xxxx 000551000000 	arg	tctally
+000541 xxxx 000724235000 	lda	=o77777777	"mask out extraneous info in tally
+000542 xxxx 000551355000 	ansa	tctally		"..
+000543 xxxx 000000235012 	lda	0,2		"descriptor in A
+000544 xxxx 007777375007 	ana	=o7777,dl	"	extract string length
+000545 xxxx 000551135000 	sbla	tctally		"subtract blanks skipped over
+000546 xxxx 000001710012 	tra	1,2		"return with new length in A
+000547 xxxx 000552627000 stripg:	eax7	gbtable		"X7 -> table for stripping GEBCD blanks
+000550 xxxx 000535710000 	tra	stripj		"join common code
+000551 xxxx 000000000000 tctally:	bss	,1
+000552 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000553 xxxx 001001001001 
+000554 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000555 xxxx 001001001001 
+000556 xxxx 000001001001 	vfd	9/0,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000557 xxxx 001001001001 
+000560 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000561 xxxx 001001001001 
+000562 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000563 xxxx 001001001001 
+000564 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000565 xxxx 001001001001 
+000566 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000567 xxxx 001001001001 
+000570 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000571 xxxx 001001001001 
+000572 xxxx 000001001001 	vfd	9/0,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000573 xxxx 001001001001 
+000574 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000575 xxxx 001001001001 
+000576 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000577 xxxx 001001001001 
+000600 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000601 xxxx 001001001001 
+000602 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000603 xxxx 001001001001 
+000604 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000605 xxxx 001001001001 
+000606 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000607 xxxx 001001001001 
+000610 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000611 xxxx 001001001001 
+000612 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000613 xxxx 001001001001 
+000614 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000615 xxxx 001001001001 
+000616 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000617 xxxx 001001001001 
+000620 xxxx 001001001001 	vfd	9/1,9/1,9/1,9/1,9/1,9/1,9/1,9/1
+000621 xxxx 001001001001 
+000622 xxxx 000432755000 geas:	sta	wd6		"setup char tally words
+000623 xxxx 000000160400 	mvt	(),()
+000624 xxxx 000432020004 	desc6a	wd6,4 
+000625 xxxx 000433000004 	desc9a	wd9,4 
+000626 xxxx 000631000000 	arg	geastab
+000627 xxxx 000433235000 	lda	wd9		 "get comverted word
+000630 xxxx 000000710012 	tra	0,2
+000631 xxxx 060061062063 geastab:	aci	X0123456789[#@:>?X 
+000632 xxxx 064065066067  
+000633 xxxx 070071133043  
+000634 xxxx 100072076077  
+000635 xxxx 040141142143 	aci	X abcdefghi&.](<\X 
+000636 xxxx 144145146147  
+000637 xxxx 150151046056  
+000640 xxxx 135050074077  
+000641 xxxx 174152153154 	aci	X|jklmnopqr-$*);'X 
+000642 xxxx 155156157160  
+000643 xxxx 161162055044  
+000644 xxxx 052051073047  
+000645 xxxx 053057163164 	aci	X+/stuvwxyz_,%=" X 
+000646 xxxx 165166167170  
+000647 xxxx 171172137054  
+000650 xxxx 045075042040  
+000651 xxxx 060061062063 geastabu:	aci	o0123456789[#@:>?o 
+000652 xxxx 064065066067  
+000653 xxxx 070071133043  
+000654 xxxx 100072076077  
+000655 xxxx 040101102103 	aci	o ABCDEFGHI&.](<\o 
+000656 xxxx 104105106107  
+000657 xxxx 110111046056  
+000660 xxxx 135050074077  
+000661 xxxx 136112113114 	aci	o^JKLMNOPQR-$*);'o 
+000662 xxxx 115116117120  
+000663 xxxx 121122055044  
+000664 xxxx 052051073047  
+000665 xxxx 053057123124 	aci	o+/STUVWXYZ_,%="!o 
+000666 xxxx 125126127130  
+000667 xxxx 131132137054  
+000670 xxxx 045075042041  
+000671 xxxx 000725115000 ljust:	cmpa	=h      "		check for blank
+000672 xxxx 000000600012 	tze	0,2
+000673 xxxx 000726236000 	ldq	=o007777777777	"to left adjust ge word
+000674 xxxx 200000211003 	cmk	=o200000,du
+000675 xxxx 000000601012 	tnz	0,2
+000676 xxxx 000006775000 	alr	6
+000677 xxxx 000674710000 	tra	*-3
+000700 xxxx 000727115000 rjust:	cmpa	=h      "		check for blank
+000701 xxxx 000000600012 	tze	0,2
+000702 xxxx 000100336007 	lcq	=o100,dl		"to right adjust ge word
+000703 xxxx 000020211007 	cmk	=o20,dl
+000704 xxxx 000000601012 	tnz	0,2
+000705 xxxx 000036775000 	alr	30
+000706 xxxx 000703710000 	tra	*-3
+000707 xxxx 000716755000 bzel:	sta	bzin		"replace leading zeros with blanks
+000710 xxxx 000000020400 	mve	(),(),()
+000711 xxxx 000716020006 	desc6a	bzin,6 
+000712 xxxx 000720000004 	desc9a	bzedit,4 
+000713 xxxx 000717020006 	desc6a	bzout,6 
+000714 xxxx 000717235000 	lda	bzout
+000715 xxxx 000000710012 	tra	0,2
+000716 xxxx 000000000000 bzin:	bss	,1
+000717 xxxx 000000000000 bzout:	bss	,1
+000720 xxxx 401020105321 bzedit:	vfd	9/lte+1,o9/20,9/mvzb+5,9/mvc+1
+000721 xxxx 777777777777 lit Lit000233 (=-1)
+000722 xxxx 751717171717 lit Lit000267 (=h=?????)
+000723 xxxx 177177177177 lit Lit000422 (=o177177177177)
+000724 xxxx 000077777777 lit Lit000541 (=o77777777)
+000725 xxxx 202020202020 lit Lit000671 (=h)
+000726 xxxx 007777777777 lit Lit000673 (=o007777777777)
+000727 xxxx 202020202020 lit Lit000700 (=h)

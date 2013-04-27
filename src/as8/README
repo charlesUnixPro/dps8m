@@ -1,0 +1,4 @@
+Tue Apr 16 18:46:49 PDT 2013
+
+The assembler, as8, contained in this directory has been depreciated and 
+is no longer recommended or actively developed. Use as8+ instead.

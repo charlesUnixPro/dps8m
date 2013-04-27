@@ -1,0 +1,444 @@
+" Begin include file ...... error.incl.alm
+" Last modified 5/3/77 by Noel I. Morris
+" Modified November 1981 by C. Hornig to not use IOM rel mode.
+
+"	tsx2	erpt	to print error messages
+"	acc	'message'
+"	nop	a,t "	parameters
+"	^w	 full word octal
+"	^o	 zero suppressed octal
+"	^n	 octal with no spaces inserted
+"	^d	 decimal
+"	^a	 ASCII (4 char)
+"	^g	 GE code (6 char)
+
+erpt:	stz	ersw		clear convert only switch
+
+erjn:	stx3	errx3		save X3
+
+	stx2	errin		set address of message descriptor
+	lda	0,2		get character count from string
+	arl	27		..
+	eax7	0,al		length of string in X7
+	stx7	erlen		save length
+	eax6	1		X6 is offset into input string
+
+	arl	2		divide character count by 4
+	eax3	1,al		round
+	adlx3	errin		X3 -> first parameter
+
+	eax4	84		remaining length of output in X4
+	eax5	0		X5 is offset into output string
+
+
+" 
+
+erloop:	cmpx4	0,du		is output string exhausted?
+	tmoz	erprnt		if so, print message now
+
+	cmpx6	erlen		is input string exhausted?
+	tpnz	erprnt		if so, print completed message
+
+	mlr	(id,x6),(),fill(0)	grab one character
+	arg	errin
+	desc9a	errarg,4
+
+	eax6	1,6		step offset over character
+
+	lda	errarg		pick up character
+	cmpa	=1a^,du		is it "^"?
+	tze	ernot		if so, go process it
+
+	mvt	(),(x5)		insert translated character in output
+	desc9a	errarg,1
+	desc6a	erbuf,1
+	arg	asgetab
+
+	eax5	1,5		step output offset and length
+	eax4	-1,4		..
+	tra	erloop		and loop
+
+ernot:	scm	(),(rl,id,x6)	search table of keys
+	desc9a	erkey,8
+	arg	errin
+	arg	ertally
+	ttn	erloop		tra if not legal key
+
+	eax6	1,6		step over key
+
+	lda	0,3		pick up argument pointer
+	stba	*+1,64		set following lda instruction
+	lda	0|0		****** THIS INSTRUCTION GETS MODIFIED ******
+	sta	errarg		and save for conversion
+	eax3	1,3		step to next parameter
+
+	ldq	ertally		get character key index
+	tra	ertable,ql*	dispatch on key
+
+" 
+
+err_A:	tsx2	setar		set AR bit if necessary
+	mvt	(id),(),fill(040)	copy ASCII and translate to BCD
+	arg	errarg
+	desc6a	errtemp,64
+	arg	asgetab
+
+errstrip:	tsx2	stripg		strip trailing blanks
+	desc6a	errtemp,64
+	tra	errtrim		and trim leading blanks
+
+
+err_G:	tsx2	setar		set AR bit if necessary
+	mlr	(id),(),fill(20)	copy BCD string
+	arg	errarg
+	desc6a	errtemp,64
+	tra	errstrip		join common code
+
+
+err_a:	tsx2	asge		convert ASCII to GE BCD
+
+
+err_g:	tsx2	rjust		right-justify GE BCD
+	sta	errtemp		save GE BCD
+
+	lda	6,dl		length of output is 6 characters
+	tra	errtrim		trim leading blanks from output
+
+
+err_d:	btd	(),()		convert decimal number
+	desc9a	errarg,4
+	desc4ls	errnum,12
+
+	mvne	(),(),()		edit the output
+	desc4ls	errnum,12
+	desc9a	eredit_d,9
+	desc6a	errtemp,12
+
+	lda	12,dl		length of output is 12 characters
+	tra	errtrim		trim leading blanks from output
+
+
+err_n:	eax7	(eredit_n-eredit_o)*4  set offset for conversion with no blank
+	tra	err_ow		join common code
+
+
+err_o:	eax7	1		set offset of 1 to skip ses micro-op
+	tra	err_ow		common code for "^o" and "^w"
+
+
+err_w:	eax7	0		offset of 0 to turn off zero suppression
+
+err_ow:	tsx2	octwd		convert octal
+	staq	errnum		save word
+
+	mve	(),(x7),()	insert a blank in the middle
+	desc6a	errnum,12
+	desc9a	eredit_o,7
+	desc6a	errtemp,13
+
+	lda	13,dl		length is 13
+	tra	errtrim		copy into output
+
+" 
+
+errtrim:	tct	(rl)		search for last non-blank
+	desc6a	errtemp,al
+	arg	gbtable
+	arg	ertally
+
+	ldq	ertally		offset of first non-blank in Q
+	sba	ertally		compute # of non-blank characters
+
+errmov:	als	18		place in AU
+	sta	ertally		and save
+	cmpx4	ertally		is there enough room?
+	tpl	*+2		..
+	stx4	ertally		if not, use only remaining space
+	lda	ertally		..
+	tze	ernomov		skip zero length move
+
+	mlr	(rl,ql),(rl,x5)	copy the string
+	desc6a	errtemp,au
+	desc6a	erbuf,au
+
+ernomov:	adx5	ertally		step output index and length
+	sbx4	ertally		..
+	tra	erloop		loop
+
+
+setar:	ldq	=o100,dl		get AR bit for MF1
+	cana	=o700000,du	high-order bits ON
+	tze	resetar		if not, reset AR bit
+	orsq	0,2		if so, set AR bit
+	tra	0,2		and return
+
+resetar:	erq	=-1		complement Q
+	ansq	0,2		reset AR bit
+	tra	0,2		and return
+
+" 
+
+erprnt:	cmpx4	0,du		is output line full?
+	tmoz	erprnt_full	if so, don't pad it
+
+	lxl7	ersw		convert only switch in X7
+	xec	erpad,7		pad output with blanks or nulls
+	desc6a	*,0
+	desc6a	erbuf,x4
+
+erprnt_full:
+	szn	ersw		convert only?
+	tnz	erpend		if so, return now
+	eaq	5,5		round up character count
+	qrl	18		shift to QL
+	div	6,dl		compute # of words to type
+	stcq	erct,07		and set call to type
+
+	cmpc	(),()		is message the same as last?
+	desc6a	erbuf,84
+	desc6a	erbuf_last,84
+	tze	erreq		if so, print "="
+
+	mlr	(),()
+	desc6a	erbuf,84
+	desc6a	erbuf_last,84
+
+	tsx2	type		print output
+erct:	zero	erbuf,*
+
+erpend:	eax2	0,3		set correct X2 return value
+errx3:	eax3	*		restore X3
+	tra	0,2		and return
+
+erreq:	tsx2	type		print "="
+	zero	=h=?????,1
+	tra	erpend
+
+
+
+ercv:	lda	1,dl		this entry only converts
+	sta	ersw		set convert only switch
+	tra	erjn		and join common code
+
+" 
+
+
+erbuf:	bss	,14
+erbuf_last:
+	bss	,14
+
+ersw:	bss	,1
+erpad:	mlr	(),(rl,x5),fill(17)
+	mlr	(),(rl,x5),fill(20)
+
+	even
+errnum:	bss	,2
+errtemp:	bss	,16
+ertally:	bss	,1
+errarg:	bss	,1
+errin:	desc9a	*,1
+erlen:	bss	,1
+
+erkey:	aci	"AGwondag"
+ertable:	tra	err_A
+	tra	err_G
+	tra	err_w
+	tra	err_o
+	tra	err_n
+	tra	err_d
+	tra	err_a
+	tra	err_g
+
+eredit_d:	vfd	9/lte+1,o9/20,9/lte+3,o9/20,9/lte+4,o9/52,9/mfls+10,9/enf
+	vfd	9/mvc+1
+eredit_o:	vfd	9/ses+if0,9/lte+1,o9/20,9/mvzb+6,9/insm+1,9/mvzb+5,9/mvc+1,9/ses+if0/
+eredit_n:	vfd	9/lte+1,o9/20,9/insm+1,9/mvzb+11,9/mvc+1,9/ses+if0,9/ses+if0
+
+"
+"	tsx2	type		to type line on oprs console
+"	zero	buf,n
+
+type:	stx2	typex2		here to write tty
+
+	absa	cr		get address of NL
+	als	6		in AU
+	stca	tydcw,70		and in DCW's
+	stca	tydcw+2,70
+
+	ldq	0,2		get address and length
+	stcq	tydesc,70		place address in descriptor
+	absa	0,qu		" get real address
+	als	6		into au
+	stca	tydcw+1,70	and into DCW
+	anq	=o777777,dl	mask the length
+	mpy	6,dl		compute character count
+	stcq	tydesc,03		and place in descriptor
+
+	tsx2	stripg		strip blanks from end of string
+tydesc:	desc6a	*,0
+
+	lrl	36		character length in QL
+	adq	5,dl		round to nearest word
+	div	6,dl		compute word count
+	tnz	*+2		always print at least one word
+	ldq	1,dl		..
+	stcq	tydcw+1,03	and place in DCW
+
+	eax7	tydcw+1		start with line to be output
+	sxl7	tyag+1		without initial carriage return
+
+tyag:	tsx2	connect_iom	run DCW list
+	zero	typcw,*
+
+	eax7	tydcw		extra carriage return for error reocvery
+	sxl7	tyag+1		..
+
+	tsx2	check_status	test for error
+	arg	ttyno
+	zero
+	tra	tyag
+
+typex2:	eax2	*
+	tra	1,2
+
+
+ttyno:	zero	16		channel no of tty
+cr:	bci	'!0????'
+
+	even
+
+typcw:	vfd	o6/13,6/0,6/0,o3/7,3/0,6/0,6/0	PCW to write on console
+	vfd	o9/20
+
+tyapcw:	vfd	o6/51,6/0,6/0,o3/7,3/0,6/0,6/0	PCW to sound alarm
+	vfd	o9/20
+
+tydcw:	vfd	18/cr,6/1,12/1	write carriage return
+	vfd	18/*,6/1,12/	write message
+	vfd	18/cr,6/,12/1	write final carriage return
+
+
+" 
+"	tsx2	ttyalert		to sound audible alarm
+
+ttyalert:	stx2	tyax2		save X2
+
+tyalcon:	tsx2	connect_iom	connect to the IOM
+	zero	tyapcw,0
+
+	tsx2	check_status	wait for status
+	zero	ttyno
+	zero
+	tra	tyalcon
+
+tyax2:	eax2	*		restore X2
+	tra	0,2		and return to caller
+
+
+tyrq:	stx2	tyrqx		here on special interrupt
+
+	lda	com|inputsw	read next line from tty
+	arl	6
+	sta	com|inputsw
+	tsx2	erpt
+	acc	'*'
+	stz	status_lock	 reset status-call lock.
+ttyrqst:	tsx2	*
+tyrqx:	tra	*
+
+
+ttyinit:	stx2	ttyir		called to init tty package
+	lda	com|ttychanno	get the correct channel number
+	sta	ttyno		..
+	als	9		place in PCW, too
+	sta	typcw+1		..
+	sta	tyapcw+1		..
+
+	eax2	0,2*		special interrupt handler
+	stx2	ttyrqst
+	tsx2	get_special_interrupt
+	zero	ttyno,tyrq
+
+	tsx2	xio_wait		activate tty channel
+	zero
+	zero	ttyno
+	tra	*+1		ignore errors
+
+ttyir:	eax2	*
+	tra	1,2
+
+"
+"	lda	ascii code
+"	tsx2	asge	to convert to GE code
+"	sta	GE code
+
+asge:	ana	=o177177177177	make it  legit ASCII
+	sta	wd9		setup to loop through word
+
+	mvt	(),(),fill(040)	move and translate
+	desc9a	wd9,4
+	desc6a	wd6,6
+	arg	asgetab
+
+	lda	wd6		get ge word
+	tra	0,2
+
+
+wd6:	oct	0
+wd9:	oct	0
+
+
+asgetab:	oct	020020020020,020020020020 00
+	oct	020020020020,020020020020 10
+	oct	020020020020,020020020020 20
+	oct	020020020020,020020020020 30
+	oct	020057076013,053074032057 40
+	oct	035055054060,073052033061 50
+	oct	000001002003,004005006007 60
+	oct	010011015056,036075016020 70
+	oct	014021022023,024025026027 100
+	oct	030031041042,043044045046 110
+	oct	047050051062,063064065066 120
+	oct	067070071012,020034020072 130
+	oct	037021022023,024025026027 140
+	oct	030031041042,043044045046 150
+	oct	047050051062,063064065066 160
+	oct	067070071020,040020020020 170
+
+" End of include file ...... error.incl.alm
+
+"
+"
+"                                          -----------------------------------------------------------
+"
+"
+"
+" Historical Background
+"
+" This edition of the Multics software materials and documentation is provided and donated
+" to Massachusetts Institute of Technology by Group Bull including Bull HN Information Systems Inc. 
+" as a contribution to computer science knowledge.  
+" This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+" Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell Bull Inc., Groupe Bull
+" and Bull HN Information Systems Inc. to the development of this operating system. 
+" Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+" renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+" of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture for
+" managing computer hardware properly and for executing programs. Many subsequent operating systems
+" incorporated Multics principles.
+" Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+" as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+"
+"                                          -----------------------------------------------------------
+"
+" Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+" fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+" and that both the copyright notice and historical background and this permission notice appear in supporting
+" documentation, and that the names of MIT, HIS, Bull or Bull HN not be used in advertising or publicity pertaining
+" to distribution of the programs without specific prior written permission.
+"    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+"    Copyright 2006 by Bull HN Information Systems Inc.
+"    Copyright 2006 by Bull SAS
+"    All Rights Reserved
+"
+"
