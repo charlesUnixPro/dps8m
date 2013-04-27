@@ -1067,7 +1067,7 @@ void fcmg()
         //e3 = e1;
     }
     
-    // fetch magnatides of mantissae
+    // fetch magnitudes of mantissae
     if (m1 & SIGN36)
         m1 = (~m1 + 1) & MASK36;
     

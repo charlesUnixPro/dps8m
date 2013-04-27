@@ -2037,13 +2037,16 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             /// C(E) → C(Y)0,7
             /// C(A)0,27 → C(Y)8,35
-            CY = (rE << 28) | (((rA >> 8) & 01777777777LL));
+            CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
 
             /// Zero: If C(Y) = floating point 0, then ON; otherwise OFF
-            SCF((CY & 01777777777LL) == 0, rIR, I_ZERO);
+            //SCF((CY & 01777777777LL) == 0, rIR, I_ZERO);
+            bool isZero = rE == -128 && rA == 0;
+            SCF(isZero, rIR, I_ZERO);
             
             /// Neg: If C(Y)8 = 1, then ON; otherwise OFF
-            SCF(CY & 01000000000LL, rIR, I_NEG);
+            //SCF(CY & 01000000000LL, rIR, I_NEG);
+            SCF(rA & SIGN36, rIR, I_NEG);
             
             /// Exp Ovr: If exponent is greater than +127, then ON
             /// Exp Undr: If exponent is less than -128, then ON
