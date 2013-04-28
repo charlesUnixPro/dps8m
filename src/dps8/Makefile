@@ -58,6 +58,7 @@ OBJS += \
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
 CFLAGS = -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -flto -fwhole-program -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
 
+
 # for Linux (Gentoo 4.3.6-r1 p1.0, pie-10.1.5)
 # Ubuntu Linux 8.04.4, "Hardy Heron" (which is no longer a supported release) 
 #CFLAGS = -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 \
