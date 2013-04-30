@@ -15,12 +15,59 @@ msgHello:   acc     "This is TestFP ...^g^g\r\n"
     bss     Date, 2
 
 main_:
+    call    arc_sine_degrees_(=.1)
+    emCall  6
+    call    crlf
+    
+    call    arc_sine_degrees_(=.2)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.499999)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.5)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.500001)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.51823962601)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.7)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.91)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.9985096709)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=.99999999)
+    emCall  6
+    call    crlf
+
+    call    arc_sine_degrees_(=1.0) " 90
+    emCall  6
+    call    crlf
+
+    dfld     =3.1415926535897932d0   " 1.77245385091
+    tsx7    double_square_root_
+    emCall  6
+    call    crlf
 
     call    arc_tangent_radians_(=1.0)
     fmp     =4.0,du
     emCall  6
     call    crlf
-
 
     call    arc_tangent_degrees_(=1.0)
     emCall  6
@@ -1413,7 +1460,7 @@ arc_tangent_degrees_:
     return  arc_tangent_degrees_
 
 arc_tangent_degrees_2_:
-    save    0,1,2,3,4    
+    save    0,1,2,3,4
     FLD     3, 1*               " Y = ARGUMENT
     fstr    y
     FLD     2, 1*               " X = ARGUMENT => EAQ
@@ -1748,10 +1795,11 @@ ATp3:	dec	-.14072538d00
 "
 " Exit:	EAQ = the desired square root.
 "
-" Uses:	X0, X1
+" Uses:	X0, X1, X7
 "	X0 = temporary storage for exponent of input argument
 "	     and saves a return address from call_math_error_
 "	X1 = index to scale table
+"   X7 = return address
 
 	"equ	root_m,0
 	"equ	x,2
@@ -1764,31 +1812,32 @@ ATp3:	dec	-.14072538d00
 
 double_square_root_:
     fad     =0.0,du		" normalize input arg
-	tze     pr3|0		" if x = 0 return (0)
+	"tze     pr3|0		" if x = 0 return (0)
+    tze     0,x7        " if x = 0 return (0)
 	tpl     calc_dsquare_root	" if x < 0:
-    fneg	0		"   x = -x
-	dfst	pr2|x
+    fneg	0           "   x = -x
+	dfst	x
 	ldq     22,dl
 *	tsx0	<call_math_error_>|[call_math_error_]
-	dfld	pr2|x
+	dfld	x
 
 calc_dsquare_root:
-	dfst	x		" store EAQ := input arg
-	ldx0	x		" X0 := addr (x) -> expon
-                    " m = x
-	lde     =0b25,du		" addr (m) -> expon = 0
+	dfst	x           " store EAQ := input arg
+	ldx0	x           " X0 := addr (x) -> expon
+                        " m = x
+	lde     =0b25,du	" addr (m) -> expon = 0
 
 	canx0	=1b25,du	" calculate mod (e, 2)
 	tze     2,ic		" if mod (e, 2) = 1:
 	lde     =-1b25,du	"   EAQ := m = .5*m
 
-	dfst	m		" store EAQ := m
-	ldq     x		" Q := 8/expon,28/garbage
-	qrs     28		" Q := 28/0,8/expon
+	dfst	m           " store EAQ := m
+	ldq     x           " Q := 8/expon,28/garbage
+	qrs     28          " Q := 28/0,8/expon
 	adq     =1,dl		" calculate e+1
-	qrs     1		" calculate divide (e+1, 2, 7)
-	qls     28		" position result in exponent field
-	stq     e		" store Q := e = divide (e+1, 2, 7)
+	qrs     1           " calculate divide (e+1, 2, 7)
+	qls     28          " position result in exponent field
+	stq     e           " store Q := e = divide (e+1, 2, 7)
 	dfld	m
 	fmp     DSp2		" calculate root_m_top = p(m)
 	fad     DSp1
@@ -1796,18 +1845,18 @@ calc_dsquare_root:
 	fad     DSp0
 
 	fst     root_m
-	fdi     m		" calculate root_m = .5 * (root_m_top + m_top/root_m_top)
+	fdi     m           " calculate root_m = .5 * (root_m_top + m_top/root_m_top)
 	fad     root_m
 	fmp     =0.5,du
 
 	dfrd	0
 	dfst	root_m
-	dfdi	m		" calculate root_m = .5 * (root_m + m/root_m)
+	dfdi	m           " calculate root_m = .5 * (root_m + m/root_m)
 	dfad	root_m
 	fmp     =0.5,du
 
 	dfrd	0
-	dfst	root_m	" calculate root_m + m/root_m
+	dfst	root_m      " calculate root_m + m/root_m
 	dfdi	m
 	dfad	root_m
 	ade     =-1b25,du	" root_m = .5 * (root_m + float (m, 63)/root_m)
@@ -1815,7 +1864,8 @@ calc_dsquare_root:
 	ade     e           " calculate addr (root_x) -> expon =
                         "    addr (root_x) -> expon + divide (e+1, 2, 7)
 	dfrd	0
-	tra     pr3|0		" return (root_x)
+	tra     0,x7        " return (root_x)
+    "tra     pr3|0		" return (root_x)
 
 	even
 one_quarter:
@@ -1889,34 +1939,45 @@ name	arc_sine_
 
 "	segref	math_constants_,half_pi,hfp_half_pi,hfp_one_radian,one_radian,pi,quarter_pi
 
-
+    even
 	bss     abs_x,2
 	bss     arg_x,2
+    bss     yy, 2
 	bss     p,2
 	bss     space_used,2
+    
 	equ     pp,p
-	equ     temp,abs_x
+	equ     AStemp,abs_x
 
 
 arc_sine_radians_:
+    save    0,1,2,3,4,7    
+    FLD     2, 1*               " X = ARGUMENT
+
 	eax2	BFP
 	tsx3	arcsine
 	frd	0
-	tra	pr3|0		" Return to caller
+	"tra	pr3|0		" Return to caller
+    return  arc_sine_radians_
 
 arc_sine_degrees_:
+    save    0,1,2,3,4,7    
+    FLD     2, 1*               " X = ARGUMENT
+
 	eax2	BFP
 	tsx3	arcsine
 	dfmp	one_radian	" Convert to degrees
-	frd	0
-	tra	pr3|0		" Return to caller
+	frd     0
+	"tra     pr3|0		" Return to caller
+    return  arc_sine_degrees_
+
 
 arc_cosine_radians_:
 	eax2	BFP
 	tsx3	arcsine
 	fneg	0
 	dfad	half_pi		" convert to cosine
-	frd	0
+	frd     0
 	tra	pr3|0		" Return to caller
 
 
@@ -1926,16 +1987,16 @@ arc_cosine_degrees_:
 	dfmp	one_radian,x2	" convert to degrees
 	fneg	0
 	dfrd	0		" clean out unnecessary bottom bits
-	fad	=90.0,du		" convert to cosine
-	frd	0
+	fad     =90.0,du		" convert to cosine
+	frd     0
 	tra	pr3|0		" Return to caller
 
 arcsine:
-	frd	0		" round and normalize input ("arg_x")
-	fst	arg_x		" store sign of arg_x.
-	tpl	2,ic		" abs_x=abs(arg_x)
-	  fneg	0
-	fst	abs_x
+	frd     0           " round and normalize input ("arg_x")
+	fst     arg_x		" store sign of arg_x.
+	tpl     2,ic		" abs_x=abs(arg_x)
+    fneg	0
+	fst     abs_x
 
 " determine what range abs_x is in.  A binary search is not used as
 " each higher range is much smaller than the previous one.  Once the
@@ -1943,42 +2004,42 @@ arcsine:
 " get abs_x into [0, .5], and then transfer to part_arcsine.
 " Upon return, scale the result back.
 
-	fcmg	=0.5,du		" is abs_x in the range [0,.5)
+	fcmg	=0.5,du         " is abs_x in the range [0,.5)
 	tpl     above_bound_1	" no, find the correct range
 	fld     arg_x
 	tsx4	part_arcsine
-	tra     0,x3		" Return to entry
+	tra     0,x3            " Return to entry
 
 above_bound_1:
-	fcmg	bound_2,x2	" is abs_x in the range [.5, .866)
+	fcmg	bound_2,x2      " is abs_x in the range [.5, .866)
 	tpl     above_bound_2	" no, find correct range
-	fmp     abs_x		" EAQ = abs_x**2
-	fmp     two,x2		" EAQ = 2 * abs_x**2
-	fsb     one,x2		" EAQ = 2 * abs_x**2 - 1
+	fmp     abs_x           " EAQ = abs_x**2
+	fmp     two,x2          " EAQ = 2 * abs_x**2
+	fsb     one,x2          " EAQ = 2 * abs_x**2 - 1
 	tsx4	part_arcsine
-	dfad	half_pi,x2	" EAQ = part_asin + pi/2
-	fmp     =0.5,du		" EAQ = .5*part_asin + pi/4
-	fszn	arg_x		" was arg_x negative
-	tpl     0,x3		" no, return to entry
-	fneg	0           " EAQ = -EAQ
-	tra     0,x3		" Return to entry
+	dfad	half_pi,x2      " EAQ = part_asin + pi/2
+	fmp     =0.5,du         " EAQ = .5*part_asin + pi/4
+	fszn	arg_x           " was arg_x negative
+	tpl     0,x3            " no, return to entry
+	fneg	0               " EAQ = -EAQ
+	tra     0,x3            " Return to entry
 
 above_bound_2:
-	fcmg	bound_3,x2	" is abs_x in the range [.866, .966)
+	fcmg	bound_3,x2      " is abs_x in the range [.866, .966)
 	tpl     above_bound_3	" no, find correct range
-	fmp     abs_x		" EAQ = abs_x**2
-	dfst	temp
-	fmp     eight,x2	" EAQ = 8*abs_x**2
-	fsb     eight,x2	" EAQ = 8*abs_x**2 - 8
-	dfmp	temp		" EAQ = 8*abs_x**4 - 8*abs_x**2
-	fad	one,x2          " EAQ = 8*abs_x**4 - 8*abs_x**2 + 1
+	fmp     abs_x           " EAQ = abs_x**2
+	dfst	AStemp          " why not just abs_x?
+	fmp     eight8,x2       " EAQ = 8*abs_x**2
+	fsb     eight8,x2       " EAQ = 8*abs_x**2 - 8
+	dfmp	AStemp          " EAQ = 8*abs_x**4 - 8*abs_x**2
+	fad     one,x2          " EAQ = 8*abs_x**4 - 8*abs_x**2 + 1
 	tsx4	part_arcsine
 	dfad	three_pi_by_two,x2	" EAQ = part_asin + 3*pi/2
 	dfmp	one_quarter,x2	" EAQ = part_asin/4 + 3*pi/8
-	fszn	arg_x		" was arg_x negative
-	tpl     0,x3		" no, return to entry
-	fneg	0           " EAQ = -EAQ
-	tra     0,x3		" return to entry
+	fszn	arg_x           " was arg_x negative
+	tpl     0,x3            " no, return to entry
+	fneg	0               " EAQ = -EAQ
+	tra     0,x3            " return to entry
 
 above_bound_3:
 	fcmg	bound_4,x2	" is abs_x in the range [.966, 1]
@@ -1987,11 +2048,12 @@ above_bound_3:
 	fneg	0           " EAQ = - abs_x/2
 	fad     =0.5,du		" EAQ = .5 - abs_x/2 or (1-abs_x)/2
 
-	epp5	0           " save the return address
-	epp2	space_used	" increment PR2 for sqrt
-	tsp3	square_root,x2	" call sqrt function
-	epp2	-space_used	" restore PR2
-	epp3	0           " restore PR3
+	"epp5	0           " save the return address
+	"epp2	space_used	" increment PR2 for sqrt
+	"tsp3	square_root,x2	" call sqrt function
+    tsx7	square_root,x2	" call sqrt function
+	"epp2	-space_used	" restore PR2
+	"epp3	0           " restore PR3
 	tsx4	part_arcsine	" EAQ = sqrt ((1 - abs_x)/2)
 	fmp     two,x2		" EAQ = 2*part_asin
 	fneg	0           " EAQ = - 2*part_asin
@@ -2009,7 +2071,8 @@ above_bound_3:
 " second last bit of the mantissa.
 
 square_root:
-	tra	<double_square_root_>|[double_square_root_]
+*	tra	<double_square_root_>|[double_square_root_]
+    tra double_square_root_
 	nop
 *	tra	<double_square_root_>|[hfp_double_square_root_]
 
@@ -2025,38 +2088,38 @@ arcsine_domain_error:		" abs_x > 1
 
 part_arcsine:
 	fcmg	formula_bound,x2	" Can we use a short polynomial?
-	tmi     small_formula	" Yup.
+	tmi     small_formula       " Yup.
 
 	dfst	y
 	dfmp	y
-	dfst	yy		" yy = y*y
+	dfst	yy          " yy = y*y
 	dfmp	ACp2,x2		" EAQ = yy*p2
 	dfad	ACp1,x2		" EAQ = p1 + yy*p2
-	dfmp	yy		" EAQ = yy*(p1 + yy*p2)
+	dfmp	yy          " EAQ = yy*(p1 + yy*p2)
 	dfad	ACp0,x2		" EAQ = p0 + yy*(p1 + yy*p2)
 	dfst	p
-	dfld	yy		" EAQ = yy
+	dfld	yy          " EAQ = yy
 	dfad	ACq1,x2		" EAQ = q1 + yy
-	dfmp	yy		" EAQ = yy*(q1 + yy)
+	dfmp	yy          " EAQ = yy*(q1 + yy)
 	dfad	ACq0,x2		" EAQ = q0 + yy*(q1 + yy)
-	dfdi	p		" EAQ = p/q
-	dfmp	y		" EAQ = y*p/q
+	dfdi	p           " EAQ = p/q
+	dfmp	y           " EAQ = y*p/q
 	tra     0,x4		" Return from part_arcsine
 
 small_formula:
 	fcmg	ACepsilon,x2	" Is any calculation necessary?
-	tmi     0,x4		" No. Small number. Just return.
+	tmi     0,x4            " No. Small number. Just return.
 
 	dfst	y
 	dfmp	y
-	dfst	yy		" yy = y*y
-	dfmp	ACpp1,x2		" EAQ = yy*pp1
-	dfad	ACpp0,x2		" EAQ = pp0 + yy*pp1
+	dfst	yy          " yy = y*y
+	dfmp	ACpp1,x2	" EAQ = yy*pp1
+	dfad	ACpp0,x2	" EAQ = pp0 + yy*pp1
 	dfst	pp
 	dfld	yy
-	dfad	ACqq0,x2		" EAQ = qq0 + yy
-	dfdi	pp		" EAQ = pp/qq
-	dfmp	y		" EAQ = y*pp/qq
+	dfad	ACqq0,x2	" EAQ = qq0 + yy
+	dfdi	pp          " EAQ = pp/qq
+	dfmp	y           " EAQ = y*pp/qq
 	tra     0,x4		" Return from part_arcsine
 
 
@@ -2078,11 +2141,11 @@ bound_4:	dec	1.0d0
 
 three_pi_by_two:
 	dec 	.471238898038468985787763d01
-one_quarter:
-	dec	0.25d0
+"one_quarter:
+"	dec	0.25d0
 *one:	dec	1.0d0
 two:	dec	2.0d0
-eight:	dec	8d0
+eight8:	dec	8d0
 formula_bound:
 	dec	0.13052619d0
 ACepsilon:	dec	5.7031627d-10

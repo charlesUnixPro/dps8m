@@ -1438,6 +1438,7 @@ void dfcmg();
 void dvf();
 
 void dfstr(word36 *Ypair);
+void fstr(word36 *CY);
 
 
 word36 AddSub36 (char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);

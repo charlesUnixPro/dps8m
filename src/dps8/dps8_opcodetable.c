@@ -316,7 +316,7 @@ struct opCode NonEISopcodes[01000] = {
     {},
     {"dfmp", PREPARE_CA | READ_YPAIR, 0},
     {}, {}, {}, {},
-    {"fstr", STORE_OPERAND, 0},
+    {"fstr", PREPARE_CA | STORE_OPERAND, 0},
     {"frd", 0},
     {"dfstr", PREPARE_CA | STORE_YPAIR, 0},
     {"dfrd", 0},

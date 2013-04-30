@@ -223,7 +223,11 @@ everythingelse	.
 {symbol}            {
                       // this can be a symbol, a pseudo-op or an instruction (or a host of other things)
                       // determine what it is and pass back the proper value/TERMINAL to the parser
-                      
+                      //
+                      // XXX presently we can't handle something like:
+                      // XXX      fmp     eight,x2	" EAQ = 8*abs_x**2
+                      // XXX because it finds a POP. If we make bZOperandOnly == true after we find an opcode then
+                      // XXXthe rpt instructions termination codes break. Find a way to fix this someday.
                       
                       // XXX not certain why I do this here rather than in the search routine(s)
                       char lcyytext[1024];  // lower-case yytext for opcode & pseudoop searches
@@ -261,13 +265,17 @@ everythingelse	.
                                             yylval.s = o->mne;
                                             return TERMCOND;
                                         }
+                                        break;
                                 }
+
                             return o->syntax;
                         }
     
                         pseudoOp *po = findPop(lcyytext);
                         if (po)
                         {
+                            bOperandOnly = true;    // only look for other user symbols
+
                             if (po->token == NULLOP)
                             {
                                 BEGIN(Junk);

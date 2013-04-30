@@ -8,6 +8,7 @@ load Tests/TestFP.oct
 set debug stderr
 ;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod
 ;set cpu debug=trace;regdumpaqi;regdumpflt;regdumpidx
+;set cpu debug=trace;regdumpaqi;regdumpflt
 g 0
 q
 

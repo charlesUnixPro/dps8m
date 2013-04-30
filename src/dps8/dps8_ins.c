@@ -2033,24 +2033,27 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0470:  ///< fstr
             /// The fstr instruction performs a true round and normalization on C(EAQ) as it is stored.
             
-            frd();
+//            frd();
+//            
+//            /// C(E) → C(Y)0,7
+//            /// C(A)0,27 → C(Y)8,35
+//            CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
+//
+//            /// Zero: If C(Y) = floating point 0, then ON; otherwise OFF
+//            //SCF((CY & 01777777777LL) == 0, rIR, I_ZERO);
+//            bool isZero = rE == -128 && rA == 0;
+//            SCF(isZero, rIR, I_ZERO);
+//            
+//            /// Neg: If C(Y)8 = 1, then ON; otherwise OFF
+//            //SCF(CY & 01000000000LL, rIR, I_NEG);
+//            SCF(rA & SIGN36, rIR, I_NEG);
+//            
+//            /// Exp Ovr: If exponent is greater than +127, then ON
+//            /// Exp Undr: If exponent is less than -128, then ON
+//            /// XXX: not certain how these can occur here ....
             
-            /// C(E) → C(Y)0,7
-            /// C(A)0,27 → C(Y)8,35
-            CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
-
-            /// Zero: If C(Y) = floating point 0, then ON; otherwise OFF
-            //SCF((CY & 01777777777LL) == 0, rIR, I_ZERO);
-            bool isZero = rE == -128 && rA == 0;
-            SCF(isZero, rIR, I_ZERO);
+            fstr(&CY);
             
-            /// Neg: If C(Y)8 = 1, then ON; otherwise OFF
-            //SCF(CY & 01000000000LL, rIR, I_NEG);
-            SCF(rA & SIGN36, rIR, I_NEG);
-            
-            /// Exp Ovr: If exponent is greater than +127, then ON
-            /// Exp Undr: If exponent is less than -128, then ON
-            /// XXX: not certain how these can occur here ....
             break;
             
         case 0477:  ///< dfad
@@ -2435,7 +2438,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// If negative indicator OFF, then
             ///   C(TPR.CA) → C(PPR.IC)
             ///   C(TPR.TSR) → C(PPR.PSR)
-            if (!(rIR & I_NEG))
+            if (!(rIR & I_NEG)) 
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;

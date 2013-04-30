@@ -73,12 +73,18 @@ float72 IEEElongdoubleToFloat72(long double f0)
     
     int exp;
     long double mant = frexpl(f, &exp);
-    
     //fprintf(stderr,"sign=%d f0=%Lf mant=%Lf exp=%d\n", sign, f0, mant, exp);
     
     word72 result = 0;
     
     // now let's examine the mantissa and assign bits as necessary...
+    
+    if (sign && mant == 0.5)
+    {
+        result = bitfieldInsert72(result, 1, 63, 1);
+        exp -= 1;
+        mant -= 0.5;
+    }
     
     long double bitval = 0.5;    ///< start at 1/2 and go down .....
     for(int n = 62 ; n >= 0 && mant > 0; n -= 1)
@@ -94,6 +100,7 @@ float72 IEEElongdoubleToFloat72(long double f0)
     //fprintf(stderr, "n=%d mant=%f\n", n, mant);
     
     //fprintf(stderr, "result=%012llo %012llo\n", (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
+    
     // if f is < 0 then take 2-comp of result ...
     if (sign)
     {
@@ -107,6 +114,59 @@ float72 IEEElongdoubleToFloat72(long double f0)
     // XXX TODO test for exp under/overflow ...
     
     return result;
+}
+
+
+long double
+MYfrexpl(long double x, int *exp)
+{
+    long double exponents[20], *next;
+    int exponent, bit;
+    
+    /* Check for zero, nan and infinity. */
+    if (x != x || x + x == x )
+    {
+        *exp = 0;
+        return x;
+    }
+    
+    if (x < 0)
+        return -MYfrexpl(-x, exp);
+    
+    exponent = 0;
+    if (x > 1.0)
+    {
+        for (next = exponents, exponents[0] = 2.0L, bit = 1;
+             *next <= x + x;
+             bit <<= 1, next[1] = next[0] * next[0], next++);
+        
+        for (; next >= exponents; bit >>= 1, next--)
+            if (x + x >= *next)
+            {
+                x /= *next;
+                exponent |= bit;
+            }
+        
+    }
+    
+    else if (x < 0.5)
+    {
+        for (next = exponents, exponents[0] = 0.5L, bit = 1;
+             *next > x;
+             bit <<= 1, next[1] = next[0] * next[0], next++);
+        
+        for (; next >= exponents; bit >>= 1, next--)
+            if (x < *next)
+            {
+                x /= *next;
+                exponent |= bit;
+            }
+        
+        exponent = -exponent;
+    }
+    
+    *exp = exponent;
+    return x;
 }
 
 /*!
@@ -126,12 +186,18 @@ void IEEElongdoubleToEAQ(long double f0)
     long double f = fabsl(f0);
     
     int exp;
-    long double mant = frexpl(f, &exp);
-       
+    long double mant = MYfrexpl(f, &exp);
+    
     word72 result = 0;
     
     // now let's examine the mantissa and assign bits as necessary...
-    
+    if (sign && mant == 0.5)
+    {
+        result = bitfieldInsert72(result, 1, 63, 1);
+        exp -= 1;
+        mant -= 0.5;
+    }
+
     long double bitval = 0.5;    ///< start at 1/2 and go down .....
     for(int n = 70 ; n >= 0 && mant > 0; n -= 1)
     {
@@ -441,6 +507,7 @@ void ufs()
 /*!
  * floating normalize ...
  */
+
 void fno()
 {
     //! The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF.
@@ -455,7 +522,10 @@ void fno()
     {
         m >>= 1;
         m &= MASK72;
+        
+        m ^= ((word72)1 << 71);
 
+        SCF(rA && SIGN72, rIR, I_NEG);
         CLRF(rIR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
@@ -480,9 +550,9 @@ void fno()
     }
     int8   e = rE;
 
-    
     bool s = m & SIGN72;    ///< save sign bit
-    while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
+    //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
+    while (bitfieldExtract72(m, 71, 1) == bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
     {
         m <<= 1;
         m &= MASK72;
@@ -532,6 +602,8 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     {
         m >>= 1;
         m &= MASK72;
+        
+        m ^= ((word72)1 << 71);
         
         CLRF(rIR, I_OFLOW);
         
@@ -613,7 +685,15 @@ void fneg()
     
     int8 e = rE;
     
-    word72 mc = ~m + 1;     // take 2-comp of mantissa
+    word72 mc = 0;
+    if (m == FLOAT72SIGN)
+    {
+        mc = m >> 1;
+        e += 1;
+    } else
+        mc = ~m + 1;     // take 2-comp of mantissa
+    
+    
     //mc &= FLOAT72MASK;
     mc &= ((word72)1 << 72) - 1;
     /*
@@ -660,10 +740,9 @@ void ufm()
     //! Exp Ovr: If exponent is greater than +127, then ON
     //! Exp Undr: If exponent is less than -128, then ON
     
-    uint64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; ///< XXX was << 8
+    uint64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; 
     int8   e1 = rE;
 
-    //float36 op2 = CY;
     uint64 m2 = bitfieldExtract36(CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
     int8   e2 = bitfieldExtract36(CY, 28, 8) & 0377;      ///< 8-bit signed integer (incl sign)
     
@@ -680,16 +759,28 @@ void ufm()
     }
 
     int sign = 1;
-    
+
     if (m1 & FLOAT72SIGN)   //0x8000000000000000LL)
     {
-        m1 = (~m1 + 1);
+        if (m1 == FLOAT72SIGN)
+        {
+            m1 >>= 1;
+            e1 += 1;
+        }
+        else
+            m1 = (~m1 + 1);
         sign = -sign;
     }
-    
+
     if (m2 & FLOAT72SIGN)   //0x8000000000000000LL)
     {
-        m2 = (~m2 + 1);
+        if (m1 == FLOAT72SIGN)
+        {
+            m2 >>= 1;
+            e2 += 1;
+        }
+        else
+            m2 = (~m2 + 1);
         sign = -sign;
     }
     
@@ -699,18 +790,20 @@ void ufm()
     word72 m3a = m3 >> 63;
     
     if (sign == -1)
-        m3a = (~m3a + 1) & 0xffffffffffffffff;
+        m3a = (~m3a + 1) & 0xffffffffffffffffLL;
     
     rE = e3 & 0377;
     rA = (m3a >> 28) & MASK36;
     rQ = m3a & MASK36;
     
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
-    if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
+    //if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
+    if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno();
     
     SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-    SCF(rA && SIGN72, rIR, I_NEG);
+    //SCF(rA && SIGN72, rIR, I_NEG);
+    SCF(rA && SIGN36, rIR, I_NEG);
     
     if (e1 + e2 >  127) SETF(rIR, I_EOFL);
     if (e1 - e2 < -128) SETF(rIR, I_EUFL);
@@ -760,12 +853,22 @@ void fdvX(bool bInvert)
     int sign = 1;
     if (m1 & SIGN36)
     {
-        m1 = (~m1 + 1) & 0777777777777;
+        if (m1 == SIGN36)
+        {
+            m1 >>= 1;
+            e1 += 1;
+        } else
+            m1 = (~m1 + 1) & 0777777777777;
         sign = -sign;
     }
     
     if (m2 & SIGN36)
     {
+        if (m2 == SIGN36)
+        {
+            m2 >>= 1;
+            e2 += 1;
+        } else
         m2 = (~m2 + 1) & 0777777777777;
         sign = -sign;
     }
@@ -868,7 +971,7 @@ void frd()
     //! -  a) A constant (all 1s) is added to bits 29-71 of the mantissa.
     //! -  b) If the number being rounded is positive, a carry is inserted into the least significant bit position of the adder.
     //! -  c) If the number being rounded is negative, the carry is not inserted.
-    //! - d) Bits 28-71 of C(AQ) are replaced by zeros.
+    //! -  d) Bits 28-71 of C(AQ) are replaced by zeros.
     //! If the mantissa overflows upon rounding, it is shifted right one place and a corresponding correction is made to the exponent.
     //! If the mantissa does not overflow and is nonzero upon rounding, normalization is performed.
     
@@ -891,16 +994,17 @@ void frd()
     
     // C(AQ) + (11...1)29,71 → C(AQ)
     bool s1 = m & SIGN72;
-
+    
     m += (word72)0177777777777777LL; // add 1's into lower 43-bits
         
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (s1 == 0)
+    if (!s1)
         m += 1;
    
-    // 0 → C(AQ)29,71 (Wrong AL39)
+    // 0 → C(AQ)29,71 (AL39)
     // 0 → C(AQ)28,71 (DH02-01 / DPS9000)
-    m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
+    //m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
+    m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
     
     bool s2 = (bool)(m & SIGN72);
     
@@ -909,7 +1013,7 @@ void frd()
     {
         // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
         m >>= 1;
-        if (s1) // (was s2 )restore sign if necessary
+        if (s1) // (was s2) restore sign if necessary
             m |= SIGN72;
         
         rA = (m >> 36) & MASK36;
@@ -937,6 +1041,79 @@ void frd()
     
     SCF(rA & SIGN36, rIR, I_NEG);
     
+}
+
+void fstr(word36 *Y)
+{
+    //The fstr instruction performs a true round and normalization on C(EAQ) as it is stored.
+    //The definition of true round is located under the description of the frd instruction.
+    //The definition of normalization is located under the description of the fno instruction.
+    //Attempted repetition with the rpl instruction causes an illegal procedure fault.
+    
+    word36 A = rA, Q = rQ;
+    word8 E = rE;
+    
+    float72 m = ((word72)A << 36) | (word72)Q;
+    if (m == 0)
+    {
+        E = -128;
+        SETF(rIR, I_ZERO);
+        CLRF(rIR, I_NEG);
+        
+        *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
+        return;
+    }
+    
+    // C(AQ) + (11...1)29,71 → C(AQ)
+    bool s1 = m & SIGN72;
+    
+    m += (word72)0177777777777777LL; // add 1's into lower 43-bits
+    
+    // If C(AQ)0 = 0, then a carry is added at AQ71
+    if (!s1)
+        m += 1;
+    
+    // 0 → C(AQ)29,71 (AL39)
+    // 0 → C(AQ)28,71 (DH02-01 / DPS9000)
+    //m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
+    m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
+    
+    bool s2 = (bool)(m & SIGN72);
+    
+    bool ov = s1 != s2;   // sign change denotes overflow
+    if (ov)
+    {
+        // If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+        m >>= 1;
+        if (s1) // (was s2) restore sign if necessary
+            m |= SIGN72;
+        
+        A = (m >> 36) & MASK36;
+        Q = m & MASK36;
+        
+        if (E + 1 > 127)
+            SETF(rIR, I_EOFL);
+        E +=  1;
+    }
+    else
+    {
+        // If overflow does not occur, C(EAQ) is normalized.
+        A = (m >> 36) & MASK36;
+        Q = m & MASK36;
+        
+        fnoEAQ(&E, &A, &Q);
+    }
+    
+    // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
+    if (A == 0 && Q == 0)
+    {
+        E = -128;
+        SETF(rIR, I_ZERO);
+    }
+    
+    SCF(A & SIGN36, rIR, I_NEG);
+    
+    *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
 }
 
 /*!
@@ -1319,16 +1496,26 @@ void dufm()
     }
     
     int sign = 1;
+
     
-    if (m1 & FLOAT72SIGN)   
+    if (m1 & FLOAT72SIGN)
     {
-        m1 = (~m1 + 1);
+     if (m1 == FLOAT72SIGN)
+     {
+         m1 >>= 1;
+         e1 += 1;
+     } else
+        m1 = (~m1 + 1) & MASK72;
         sign = -sign;
     }
-    
-    if (m2 & FLOAT72SIGN)   
+    if (m2 & FLOAT72SIGN)
     {
-        m2 = (~m2 + 1);
+        if (m2 == FLOAT72SIGN)
+        {
+            m2 >>= 1;
+            e2 += 1;
+        } else
+        m2 = (~m2 + 1) & MASK72;
         sign = -sign;
     }
     
@@ -1343,13 +1530,16 @@ void dufm()
     rE = e3 & 0377;
     rA = (m3a >> 28) & MASK36;
     rQ = m3a & MASK36;
+    //rQ = (m3a & 01777777777LL) << 8;
     
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
-    if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
+    //if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
+    if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno();
     
     SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-    SCF(rA && SIGN72, rIR, I_NEG);
+    //SCF(rA && SIGN72, rIR, I_NEG);
+    SCF(rA && SIGN36, rIR, I_NEG);
     
     if (e1 + e2 >  127) SETF(rIR, I_EOFL);
     if (e1 - e2 < -128) SETF(rIR, I_EUFL);
@@ -1411,16 +1601,28 @@ void dfdvX(bool bInvert)
         return;
     }
     
+
+    
     //! make everything positive, but save sign info for later....
     int sign = 1;
     if (m1 & SIGN64)    //((uint64)1 << 63))
     {
+        if (m1 == SIGN64)
+        {
+            m1 >>= 1;
+            e1 += 1;
+        } else
         m1 = (~m1 + 1);     //& (((uint64)1 << 64) - 1);
         sign = -sign;
     }
     
     if (m2 & SIGN64)    //((uint64)1 << 63))
     {
+        if (m2 == SIGN64)
+        {
+            m2 >>= 1;
+            e2 += 1;
+        } else
         m2 = (~m2 + 1);     //& (((uint64)1 << 64) - 1);
         sign = -sign;
     }
@@ -1570,19 +1772,16 @@ void dfrd()
 {
     //! The dfrd instruction is identical to the frd instruction except that the rounding constant used is (11...1)65,71 instead of (11...1)29,71.
     
-    //! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 28 bits and a normalization on C(EAQ).
+    //! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 64 bits and a normalization on C(EAQ).
     //! A true round is a rounding operation such that the sum of the result of applying the operation to two numbers of equal magnitude but opposite sign is exactly zero.
     
     //! The frd instruction is executed as follows:
-    //! C(AQ) + (11...1)29,71 → C(AQ)
+    //! C(AQ) + (11...1)65,71 → C(AQ)
     //! * If C(AQ)0 = 0, then a carry is added at AQ71
     //! * If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
     //! * If overflow does not occur, C(EAQ) is normalized.
     //! * If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
-    
-    //! I believe AL39 is incorrect; bits 64-71 should be set to 0, not 65-71. DH02-01 & Bull 9000 is correct.
-    
-    
+        
     float72 m = ((word72)rA << 36) | (word72)rQ;
     if (m == 0)
     {
@@ -1592,20 +1791,19 @@ void dfrd()
         
         return;
     }
-    
+
+    bool s1 = (bool)(m & SIGN72);
     
     // C(AQ) + (11...1)65,71 → C(AQ)
-    bool s1 = m & SIGN72;
-    
-    m += (word72)0177LL; // add 1's into lower 43-bits
-    
+    m += (word72)0177LL; // add 1's into lower 64-bits
+
     // If C(AQ)0 = 0, then a carry is added at AQ71
-    if (s1 == 0)
+    if (!s1)     //bitfieldExtract72(m, 71, 1) == 0)
         m += 1;
     
-    
     // 0 → C(AQ)64,71 
-    m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
+    //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
+    m = bitfieldInsert72(m, 0, 0, 8);
     
     bool s2 = (bool)(m & SIGN72);
     
@@ -1641,7 +1839,6 @@ void dfrd()
     }
     
     SCF(rA & SIGN36, rIR, I_NEG);
-    
 }
 
 void dfstr(word36 *Ypair)
@@ -1692,7 +1889,8 @@ void dfstr(word36 *Ypair)
         m += 1;
     
     // 0 → C(AQ)64,71
-    m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
+    //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
+    m = bitfieldInsert72(m, 0, 0, 8);
     
     bool s2 = (bool)(m & SIGN72);
     

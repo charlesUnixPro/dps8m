@@ -287,6 +287,13 @@ float72 IEEElongdoubleToFloat72(long double f0)
     
     // now let's examine the mantissa and assign bits as necessary...
     
+    if (sign && mant == 0.5)
+    {
+        result = bitfieldInsert72(result, 1, 63, 1);
+        exp -= 1;
+        mant -= 0.5;
+    }
+
     long double bitval = 0.5;    ///< start at 1/2 and go down .....
     for(int n = 62 ; n >= 0 && mant > 0; n -= 1)
     {
