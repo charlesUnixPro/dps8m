@@ -17,8 +17,10 @@ C_SRCS += \
 ./dps8_decimal.c \
 ../simh/scp.c \
 ../simh/sim_console.c \
+../simh/sim_disk.c \
 ../simh/sim_ether.c \
 ../simh/sim_fio.c \
+../simh/sim_serial.c \
 ../simh/sim_sock.c \
 ../simh/sim_tape.c \
 ../simh/sim_timer.c \
@@ -46,8 +48,10 @@ OBJS += \
 ./dps8_decimal.o \
 ../simh/scp.o \
 ../simh/sim_console.o \
+../simh/sim_disk.o \
 ../simh/sim_ether.o \
 ../simh/sim_fio.o \
+../simh/sim_serial.o \
 ../simh/sim_sock.o \
 ../simh/sim_tape.o \
 ../simh/sim_timer.o \
@@ -56,7 +60,7 @@ OBJS += \
 ../decNumber/decNumber.o 
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-CFLAGS = -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -flto -fwhole-program -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
+CFLAGS = -g -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -flto -fwhole-program -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
 
 
 # for Linux (Gentoo 4.3.6-r1 p1.0, pie-10.1.5)

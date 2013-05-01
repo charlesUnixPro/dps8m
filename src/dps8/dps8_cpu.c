@@ -698,7 +698,6 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
             //Read(p, rIC + 1 + n, &p->e->op[n], InstructionFetch, 0);
             Read(p, rIC + 1 + n, &p->e->op[n], OperandRead, 0); // I think.
     }
-    
     //if (p->e)
     //    p->e->ins = p;    // Yes, it's a cycle
     

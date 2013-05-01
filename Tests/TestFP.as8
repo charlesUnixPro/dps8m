@@ -15,6 +15,8 @@ msgHello:   acc     "This is TestFP ...^g^g\r\n"
     bss     Date, 2
 
 main_:
+    call    ioa(msgArcsin)
+
     call    arc_sine_degrees_(=.1)
     emCall  6
     call    crlf
@@ -64,6 +66,8 @@ main_:
     emCall  6
     call    crlf
 
+    call    ioa(msgArctan)
+
     call    arc_tangent_radians_(=1.0)
     fmp     =4.0,du
     emCall  6
@@ -94,6 +98,8 @@ main_:
     call    crlf
 
 
+    call    ioa(msgExp)
+
     call    exponential_(=1.0)
     emCall  6
     call    crlf
@@ -107,15 +113,8 @@ main_:
     call    crlf
 
 
-    call    log_base_e_(=3.1415926535897932)
-    emCall  6
-    call    crlf
-
-    call    log_base_10_(=3.1415926535897932)
-    emCall  6
-    call    crlf
-
-
+    call    ioa(msgCotan)
+    
     call    cotangent_degrees_(=34.0)
     emCall  6
     call    crlf
@@ -124,6 +123,8 @@ main_:
     emCall  6
     call    crlf
 
+    call    ioa(msgTan);
+    
     call    tangent_degrees_(=60.0)
     emCall  6
     call    crlf
@@ -147,6 +148,8 @@ main_:
     call    tangent_degrees_(=-12.34)
     emCall  6
     call    crlf
+
+    call    ioa(msgCos)
 
     call    cosine_degrees_(=60.0)
     emCall  6
@@ -172,6 +175,8 @@ main_:
     emCall  6
     call    crlf
 
+    call    ioa(msgSin)
+    
     call    sine_degrees_(=60.0)
     emCall  6
     call    crlf
@@ -197,11 +202,24 @@ main_:
     call    crlf
 
 
+    call    ioa(msgSqrt)
+    
     call    sqrt(=3.1415926535897932)   " 1.77245385091
     emCall  6
     call    crlf
 
     call    sqrt(=2.0)   " 1.414...
+    emCall  6
+    call    crlf
+
+
+    call    ioa(msgLog)
+    
+    call    log_base_e_(=3.1415926535897932)
+    emCall  6
+    call    crlf
+
+    call    log_base_10_(=3.1415926535897932)
     emCall  6
     call    crlf
 
@@ -223,6 +241,17 @@ main_:
     call    crlf
     
     dis
+
+msgArcsin:  acc     /Arcsin tests ...\r\n/
+msgArctan:  acc     /Arctan tests ...\r\n/
+msgExp:     acc     /Exponential tests ...\r\n/
+msgLog:     acc     /Logarithm tests ...\r\n/
+msgCotan:   acc     /Cotangent tests ...\r\n/
+msgSin:     acc     /Sin tests ...\r\n/
+msgCos:     acc     /Cos tests ...\r\n/
+msgTan:     acc     /Tan tests ...\r\n/
+msgSqrt:    acc     /Sqrt tests ...\r\n/
+
 
 LOGS:   SAVE    
         FLD     2, 1*       " X = (2**I) * F = ARGUMENT
@@ -341,10 +370,10 @@ calc_square_root:
         stq     e           " store Q := e = divide (e+1, 2, 7)
         ldq     =0          " clear Q
         dfst	m           " store EAQ := m
-        fmp     p2          " calculate root_m = p(m)
-        fad     p1
+        fmp     SQp2          " calculate root_m = p(m)
+        fad     SQp1
         fmp     m
-        fad     p0
+        fad     SQp0
 
         fst     root_m
         fdi     m           " calculate root_m = .5 * (root_m + m/root_m)
@@ -367,14 +396,14 @@ calc_square_root:
         bss     m,2
         bss     e,2
 
-p0:     dec	2.5927688d-1
-p1:     dec	1.0521212d0
-p2:     dec	-3.1632214d-1
-scale:	oct	000400000000	" 0.5
-        oct	000100000000	" 0.25*0.5 = 0.125
-        oct	000200000000	" 0.25
-        oct	000040000000	" 0.25*0.25 = 0.0625
-        
+SQp0:   dec     2.5927688d-1
+SQp1:   dec     1.0521212d0
+SQp2:   dec     -3.1632214d-1
+scale:	oct     000400000000	" 0.5
+        oct     000100000000	" 0.25*0.5 = 0.125
+        oct     000200000000	" 0.25
+        oct     000040000000	" 0.25*0.25 = 0.0625
+
 " ******************************************
 " *                                        *
 " * Copyright, (C) Honeywell Limited, 1985 *

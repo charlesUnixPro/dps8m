@@ -413,12 +413,22 @@ typedef struct yyList yyList;
 #include <stdio.h>
 int yyerror(const char* msg)
 {
+    static int yyErrCount = 0;
+    
     if (FILEsp == 0)
         fprintf(stderr, "Error on line %d: %s near token '%s'\n", yylineno, msg, yytext);
     else
         fprintf(stderr, "Error on line %d in %s: %s near token '%s'\n", yylineno, LEXCurrentFilename(),msg, yytext);
     yyErrorCount += 1;
     fprintf(stderr, "%s\n", LEXline);
+    
+    yyErrCount += 1;
+    
+    if (yyErrCount > 10)
+    {
+        fprintf(stderr, "Too many errors. Aborting.\n");
+        exit(1);
+    }
     return 0;
 }
 

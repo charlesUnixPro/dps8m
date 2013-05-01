@@ -147,16 +147,13 @@ t_stat doInstruction(DCDstruct *i)
 {
     CLRF(rIR, I_MIIF);
     
-    if (i->e)
+    //if (i->e)
+    if (i->iwb->ndes > 0)
     {
         i->e->ins = i;
         i->e->addr[0].e = i->e;
         i->e->addr[1].e = i->e;
         i->e->addr[2].e = i->e;
-        
-        //i->e->addr[0].lastAddress = -1;
-        //i->e->addr[1].lastAddress = -1;
-        //i->e->addr[2].lastAddress = -1;
         
         i->e->addr[0].mat = OperandRead;   // no ARs involved yet
         i->e->addr[1].mat = OperandRead;   // no ARs involved yet
