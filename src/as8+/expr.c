@@ -54,6 +54,29 @@ expr *exprWord36Value(word36 i36)
     return res;
 }
 
+expr *exprLiteral(literal *l)
+{
+    expr *res = newExpr();
+    
+    res->value = l->addr;
+    res->type = eExprRelative;
+    res->lc = ".text.";
+    
+    return res;    
+}
+
+expr *exprPtrExpr(int ptr_reg, expr *e)
+{
+    expr *res = newExpr();
+    
+    res->value = ((ptr_reg << 15) | (e->value & 077777)) & AMASK;
+    
+    res->type = eExprRelative;  // XXX should we have a PR relative type?
+    res->lc = ".text.";
+    res->bit29 = true;  // this is a PR operation. Set bit-29 if needed
+    
+    return res;    
+}
 
 /*
  * the values of symbols and expressions may be wither absolute or relative to some location counter (lc).

@@ -188,6 +188,9 @@ void doInterpass(FILE *out)
     // fill in literals
     fillLiteralPool();
 
+    // fill in temporaries
+    fillinTemps();
+    
     // fill in ITS/link pairs
     fillExtRef();
     

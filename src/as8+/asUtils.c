@@ -70,6 +70,40 @@ symtab *addsym(char *sym, word36 value) {
     s->segname = NULL;
     s->extname = NULL;
     
+    s->defnLine = yylineno;
+    s->defnFile = strdup(LEXCurrentFilename());
+
+    s->temp = NULL; // fill in if symbol is a stack temporary
+    
+    s->Value = newExpr();
+    s->Value->type = eExprRelative;
+    s->Value->value = value;
+    s->Value->lc = ".text.";
+
+    HASH_ADD_KEYPTR(hh, Symtab, s->name, strlen(s->name), s );
+    
+    return s;
+}
+symtab *addsymx(char *sym, expr *value) {
+    symtab *s = getsym(sym);
+    if (s != NULL)
+        return NULL;    // symbol already defined
+    
+    s = newSym();
+    
+    s->name = sym;      // already strdup()'s in yylex() .... strdup(sym);
+    s->value = value->value;
+    
+    s->segname = NULL;
+    s->extname = NULL;
+    
+    s->defnLine = yylineno;
+    s->defnFile = strdup(LEXCurrentFilename());
+    
+    s->temp = NULL; // fill in if symbol is a stack temporary
+    
+    s->Value = value;
+    
     HASH_ADD_KEYPTR(hh, Symtab, s->name, strlen(s->name), s );
     
     return s;
@@ -90,6 +124,7 @@ int name_sort(symtab *a, symtab *b)
     return strcasecmp(a->name,b->name);
 }
 
+#if OLD
 void dumpSymtab(bool bSort)
 {
     printf("======== %sSymbol Table ========\n", bSort ? "Sorted " : "");
@@ -108,7 +143,7 @@ void dumpSymtab(bool bSort)
         else
             sprintf(temp, "%s", s->name);
         
-        printf("%-10s %06llo   ", temp, s->value);
+        printf("%-10s %06llo   ", temp, s->value & DMASK);
         i++;
         if (i % 4 == 0)
             printf("\n");
@@ -118,7 +153,45 @@ void dumpSymtab(bool bSort)
     if (i % 4)
         printf("\n");
 }
-
+#else
+void dumpSymtab(bool bSort)
+{
+    printf("======== %sSymbol Table ========\n", bSort ? "Sorted " : "");
+    
+    if (bSort)
+        HASH_SORT(Symtab, name_sort);
+    
+    symtab *s = Symtab;
+    while (s)
+	{
+        char temp[256];
+        
+        if (s->segname)
+            sprintf(temp, "%s$%s", s->segname, s->name);
+        else
+            sprintf(temp, "%s", s->name);
+        
+        // pretty-print name and value
+        printf("%12llo    %8s %-30s    ", s->value & DMASK, s->Value->lc, temp);
+        
+        // ... and where symbol is defined
+        strcpy(temp, "");
+        if (s->defnFile)
+        {
+            strcpy(temp, s->defnFile);
+            char *p = strrchr(temp, '/');
+            if (p)
+                strcpy(temp, p+1);
+            strcat(temp, ":");
+        }
+        printf("%-16s %d", temp, s->defnLine);
+        
+        printf("\n");
+        
+        s = s->hh.next;
+	}
+}
+#endif
 
 
 

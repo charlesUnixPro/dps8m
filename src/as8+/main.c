@@ -65,11 +65,11 @@ int main(int argc, char **argv)
                     fprintf(stderr,"only 'uniqueLiterals' are currently supported\n");
                     literalType = 2;
                 }
-                if (callingConvention == 2)
-                {
-                    fprintf(stderr,"only Honeywell/Bull calling conventions currently supported\n");
-                    callingConvention = 1;
-                }
+                //if (callingConvention == 2)
+                //{
+                //    fprintf(stderr,"only Honeywell/Bull calling conventions currently supported\n");
+                //    callingConvention = 1;
+                //}
                 
                 break;
             case 'I':   ///< include path

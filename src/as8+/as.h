@@ -257,6 +257,9 @@ typedef word72      float72;    // double precision float
 #define SETHI72(a,b)	(a &= 0777777777777LL, a |= ((((word72)(b) & 0777777777777LL)) << 36))
 #define SETLO72(a,b)	(a &= 0777777777777LL << 36, a |= ((word72)(b) & 0777777777777LL))
 
+#define BIT(n)          (1LL << (35-n))
+
+
 //! Basic + EIS opcodes .....
 struct opCode {
     char *mne;    ///< mnemonic
@@ -291,11 +294,13 @@ typedef struct adrMods adrMods;
 
 #define EMULATOR_ONLY  1    ///< for emcall instruction, etc ...
 
+extern int callingConvention;   // 1 = Honeywell, 2 = Multics
+
 int asMain(int argc, char **argv);
 
 extern int yyErrorCount;
 
-extern opCode NonEISopcodes[01000], EISopcodes[01000];
+//extern opCode NonEISopcodes[01000], EISopcodes[01000];
 extern adrMods extMods[0100]; ///< extended address modifiers
 extern char GEBcdToASCII[64];   ///< GEBCD => ASCII map
 extern char ASCIIToGEBcd[128];  ///< ASCII => GEBCD map
@@ -366,7 +371,7 @@ int   LEXgetcs(void);
 char *LEXfgets(char *line, int nChars);
 void  LEXgetPush(char *filename);
 char *LEXCurrentFilename();
-void LEXfseekEOF();
+void  LEXfseekEOF();
 extern char *LEXp;  // current source char
 extern char LEXline[256];   // current source line
 extern int FILEsp;          /*!< (FILE*) stack pointer		*/
@@ -382,11 +387,57 @@ void yyprintf(const char *fmt, ...);
 //    eNumOctal,          // octal mode
 //} eNumericMode;
 
+/*
+ * stuff todo with arithmetic/symbolic expressions
+ */
+struct literal; // forward reference
+
+enum enumExpr
+{
+    eExprUnknown     = 0,   // unknown type (assume absolute)
+    eExprAbsolute    = 1,   // an absolute expression (default)
+    eExprRelocatable = 2,   // relocatable expression
+    eExprRelative    = 2,   // relocatable expression
+    eExprTemporary   = 4,   // a stack temporary
+};
+typedef enum enumExpr enumExpr;
+
+
+struct expr
+{
+    word36 value;   // value of expression
+    enumExpr type;  // type of expression
+    char *lc;       // location counter (.text.,)
+    
+    bool bit29;     // true if bit29 should be set .... >HACK<
+};
+typedef struct expr expr;
+
+expr *newExpr();
+expr *add(expr *, expr *);
+expr *subtract(expr *, expr *);
+expr *multiply(expr *, expr *);
+expr *divide(expr *, expr *);
+expr *modulus(expr *, expr *);
+expr *and(expr *, expr *);
+expr *or(expr *, expr *);
+expr *xor(expr *, expr *);
+expr *andnot(expr *op1, expr *op2);
+expr *not(expr *);
+expr *neg(expr *);
+expr *neg8(expr *);
+
+expr *exprSymbolValue(char *s);
+expr *exprWord36Value(word36 i36);
+expr *exprLiteral(struct literal *l);
+expr *exprPtrExpr(int ptr_reg, expr *e);
 
 
 void dumpextRef();
 void writEextRef(FILE *oct);
 void fillExtRef();
+
+struct stackTemp;       // forward reference
 
 /* ***** symbol table stuff *****/
 
@@ -403,6 +454,7 @@ struct symtab
 {
 	char *name;	///< symbol name
 	word36 value;
+    expr  *Value;    // expression value
     
     char *segname;  ///< is symbol references an external symbol in another segment
     char *extname;  ///< name of symbol in external segment
@@ -410,6 +462,8 @@ struct symtab
     //linkPair *ext;    ///< if symbol refers to an external reference
     int defnLine;   ///< line which symbol was defined (breaks for include files)
     char *defnFile; ///< file in which symbol is defined
+    
+    struct stackTemp *temp; ///< filld in if symbol is a stack temporary
     
     symref *xref;  ///< list of references to this symbol in assembly (RFU)
     
@@ -423,6 +477,8 @@ extern symtab *Symtab;  // symbol table
 void initSymtab();
 symtab* getsym(const char *sym);
 struct symtab *addsym(char *sym, word36 value);
+struct symtab *addsymx(char *sym, expr *value);
+
 void dumpSymtab(bool bSort);
 
 extern symtab *lastLabel;    // symbol table entry to last label defined
@@ -441,6 +497,7 @@ typedef union _tuple
     char    *p;
     opCode  *o;
     struct  tuple *t;
+    struct  expr *e;
 } _tuple;
 
 typedef struct tuple
@@ -667,6 +724,9 @@ struct opnd        // for OPCODE operand(s)
     
     word18 hi;     // high order 18-bits
     word18 lo;     // low-order 18-bits
+    
+    expr *hix;      // expression representing hogh order 18-bits
+    
     bool bit29;    // set bit-29
 } opnd;
 
@@ -681,7 +741,8 @@ int findMfReg(char *reg);
 bool doPseudoOp(char *line, char *label, char *op, char *argv0, char *args[32], FILE *out, int nPass, word18 *addr);
 void doDescriptor(pseudoOp *p, word36 address, word36 offset, word36 length, word36 scale, int ar);
 void doDescriptor2(pseudoOp *p, list *);
-void doBoolEqu(char *sym, word36 val);          // process BOOL/Equate pseudoop
+//void doBoolEqu(char *sym, word36 val);          // process BOOL/Equate pseudoop
+void doBoolEqu(char *sym, expr *val);          // process BOOL/Equate pseudoop
 void doStrop(pseudoOp *op, char *str, int sz);  // process acc/aci/bci/ac4 pseudoop
 void doOct(list*);                              // process oct pseudoop
 void doDec(list*);                              // process dec pseudoop
@@ -689,7 +750,7 @@ void doBss(char *, word36);                        // process BSS ( and BFS even
 void doPop0(pseudoOp *p);                       // for pseudooops with 0 args
 void doVfd(tuple *t);
 int _doVfd(tuple *list, word36 *data);
-void doCall(char *, word36, list *, list *);    // for call pseudoop
+void doHCall(char *, word36, list *, list *);   // for call pseudoop
 void doSave(list *);                            // for save pseudoop
 void doReturn(char *, word36);                  // for return pseudoop
 void doTally(pseudoOp *, list *);               // for TALLY pseudo-ops
@@ -698,6 +759,20 @@ void doZero(word36, word36);                    // Zero
 void doOrg(word36);
 void doITSITP(pseudoOp *p, word36, word36, word36);
 void doMod(word36);
+
+void doMCall(expr *, word36, expr *);           // multics CSR Call pseudoop
+void doEntry(list *);                           // multics CSR Entry pseudo-op
+void doPush(word36);                            // multics CSR Push Pseudo-op
+void doReturn0();                               // multics CSR Return pseudo-op
+void doShortCall(char *);                       // multics CSR Short_Call pseudo-op
+void doShortReturn();                           // multics CSR Short_Return pseudo-op
+
+void doTemp(pseudoOp *, tuple *);               // for TEMP pseudo-ops
+
+void doSegdef(list *);
+void doSegref(list *);
+
+void fillinTemps();
 
 /*!
  * a new I/O structure ...

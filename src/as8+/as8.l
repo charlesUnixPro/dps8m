@@ -75,7 +75,7 @@ digit19   		[1-9]
 octaldigit      [0-7]
 hexdigit        ({digit}|[ABCDEFabcdef])
 
-symbol    		({alpha}|\_\.)({alpha}|{digit}|[_.$])*
+symbol    		({alpha}|[_.])({alpha}|{digit}|[_.])*
 
 special         [-+,*/%&|^()$<>~:;']
 
@@ -198,9 +198,8 @@ everythingelse	.
                                 if (s == NULL)
                                 {
                                     s = addsym(yylval.s, addr);
-                                    
-                                    s->defnLine = yylineno; 
-                                    s->defnFile = strdup(LEXCurrentFilename());
+                                    //s->defnLine = yylineno;
+                                    //s->defnFile = strdup(LEXCurrentFilename());
                                     
                                     if (debug) printf("Adding label %s = %6o (%06llo) <%s>:%d\n", yylval.s, addr, s->value, s->defnFile, s->defnLine);
                                 } else
@@ -267,7 +266,10 @@ everythingelse	.
                                         }
                                         break;
                                 }
-
+                            
+                            if (o->syntax != OPCODERPT) // if instruction is not a repeat instruction ...
+                                bOperandOnly = true;    // ...only look for other user symbols
+                            
                             return o->syntax;
                         }
     
@@ -281,7 +283,7 @@ everythingelse	.
                                 BEGIN(Junk);
                                 return NULLOP;
                             }
-            
+                            
                             yylval.p = po;
                             if (po->flags & epStringArgs)
                             {
@@ -311,6 +313,15 @@ everythingelse	.
                             else
                                 bReg = false;
                             
+                            if (po->token == CALL)
+                            {
+                                if (callingConvention == 1)
+                                return CALLH;
+                                else
+                                return CALLM;
+                            }
+                            
+
                             if (po->token)
                                 return po->token;
                             

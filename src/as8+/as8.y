@@ -22,7 +22,7 @@
     char temp[256];
     
     word36 getValue(char *s);
-    
+
     void popAndReset();
     void setOmode();
     
@@ -47,6 +47,7 @@
     list        *lst;  /* for lists of things ..... */
     literal     *lit;  /* for literals */
     tuple         *t;  /* pointer to a tuple for vfd, etc.... */
+    expr          *e;  /* for expression nodes */
  }
 
 
@@ -54,41 +55,42 @@
 %error-verbose
 
 %start input
-
-%token LABEL SYMBOL PSEUDOOP OCT SEGDEF VFD STROP PSEUDOOP2 DEC DESC DESC2 PSEUDOOPD2 BOOL EQU BSS
+%token LABEL SYMBOL PSEUDOOP OCT SEGDEF SEGREF VFD STROP PSEUDOOP2 DEC DESC DESC2 PSEUDOOPD2 BOOL EQU BSS
 %token DECIMAL OCTAL HEX STRING AH REG NAME CALL SAVE RETURN TALLY ARG ZERO ORG ITS ITP OCTLIT DECLIT DECLIT2 NULLOP MOD
 %token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
+%token SHORT_CALL  SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM
 
 %type <s> SYMBOL STRING LABEL TERMCOND
-%type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP
-%type <i> DECIMAL OCTAL HEX integer expr lexpr ptr_reg modifier L operand BOOL EQU REG rexpr OCTLIT DECLIT arg
-%type <i72> DOUBLEINT DECLIT2 
+%type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP TEMP
+%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM
+%type <i72> DOUBLEINT DECLIT2
 %type <c> AH Ta Th To
 %type <r> SINGLE DOUBLE SGLLIT DBLLIT
 %type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %type <lst> symlist exprlist lexprlist optexplist optarglist optintlist opterrlist decs declist
 %type <lit> literal
-%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst
-
+%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist
+%type <e> expr lexpr operand optarg arg2 entry
 
 /*%right '='
-%right '?' ':'
-%left NOT
-%left OR
-%left AND
-%left EQ NE
-%left LT LE GT GE*/
+ %right '?' ':'
+ %left NOT
+ %left OR
+ %left AND
+ %left EQ NE
+ %left LT LE GT GE*/
 %left '+' '-'		/* plus and minus have the least priority	*/
 %left '*' '/' '%' 	/* multiply, divide and modulus are next	*/
 %left NEG NOT		/* negate/complement is next				*/
 
 %%
 input: /* empty  */
-    | input line 
-    ;
+    | input line
+;
 
+/*
 expr: expr '+' expr         { $$ = $1 + $3;         }
     | expr '-' expr         { $$ = $1 - $3;         }
     | expr '*' expr         { $$ = $1 * $3;         }
@@ -101,17 +103,43 @@ expr: expr '+' expr         { $$ = $1 + $3;         }
     | '*'                   { $$ = (word36s)addr;   }
     ;
 
-lexpr: lexpr '+' lexpr         { $$ = $1 | $3; }
-     | lexpr '-' lexpr         { $$ = $1 ^ $3; }
-     | lexpr '*' lexpr         { $$ = $1 & $3; }
-     | lexpr '/' lexpr         { $$ = $1 & ~$3;} 
-     | '(' lexpr ')'           { $$ = $2;      }
-     | '^' lexpr %prec NOT 	   { $$ = ~$2;     }
-     | '-' expr %prec NEG 	   { $$ = $2 ^ 0400000000000LL; /* flip the sign bit */ }
-     | SYMBOL                  { $$ = getValue($1); }
-     | OCTAL
-     | '*'                     { $$ = (word36s)addr; }
-     ;
+lexpr
+    : lexpr '+' lexpr         { $$ = $1 | $3; }
+    | lexpr '-' lexpr         { $$ = $1 ^ $3; }
+    | lexpr '*' lexpr         { $$ = $1 & $3; }
+    | lexpr '/' lexpr         { $$ = $1 & ~$3;}
+    | '(' lexpr ')'           { $$ = $2;      }
+    | '^' lexpr %prec NOT 	  { $$ = ~$2;     }
+    | '-' expr %prec NEG 	  { $$ = $2 ^ 0400000000000LL; /* flip the sign bit *//* }
+    | SYMBOL                  { $$ = getValue($1); }
+    | OCTAL
+    | '*'                     { $$ = (word36s)addr; }
+    ;
+*/
+expr: expr '+' expr         { $$ = add($1, $3);      }
+    | expr '-' expr         { $$ = subtract($1, $3); }
+    | expr '*' expr         { $$ = multiply($1, $3); }
+    | expr '/' expr         { $$ = divide($1, $3);   }
+    | expr '%' expr         { $$ = modulus($1, $3);  }
+    | '(' expr ')'          { $$ = $2;               }
+    | '-' expr %prec NEG 	{ $$ = neg($2);          }
+    | SYMBOL                { $$ = exprSymbolValue($1);    }
+    | integer               { $$ = exprWord36Value($1);    }
+    | '*'                   { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
+    ;
+
+lexpr
+    : lexpr '+' lexpr         { $$ = or($1, $3); }
+    | lexpr '-' lexpr         { $$ = xor($1, $3); }
+    | lexpr '*' lexpr         { $$ = and($1, $3); }
+    | lexpr '/' lexpr         { $$ = andnot($1, $3);}
+    | '(' lexpr ')'           { $$ = $2;      }
+    | '^' lexpr %prec NOT 	  { $$ = not($2);     }
+    | '-' expr %prec NEG 	  { $$ = neg8($2); }
+    | SYMBOL                  { $$ = exprSymbolValue($1); }
+    | OCTAL                   { $$ = exprWord36Value($1); }
+    | '*'                     { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
+    ;
 
 integer
     : DECIMAL
@@ -125,95 +153,119 @@ optintlist: /* empty */      { $$ = NULL;   }
     ;
 
 line : labels stmt eol
-     | error '\n'
-     ;
+    | error '\n'
+    ;
 
 labels : /* empty */
-    | label
+    |        label
     | labels label
     ;
 
 label: LABEL /*if (add_label($1) != 0) { YYERROR; } */
-     ;
+    ;
 
 stmt: /* empty */
     | instr
     | pop
     ;
 
-instr   : OPCODE        operands                                        { opnd.o = $1; doOpcode(&opnd);  }
-        | OPCODEMW      mfks                                            { doMWEis($1, $2);          }
+instr
+    : OPCODE        operands                                        { opnd.o = $1; doOpcode(&opnd); }
+    | OPCODEMW      mfks                                            { doMWEis($1, $2);              }
 
-        | OPCODEARS     ptr_reg '|' operand                             { doARS($1, $2, $4,  0);    }
-        | OPCODEARS     ptr_reg '|' operand ',' modifier                { doARS($1, $2, $4, $6);    }
-        | OPCODEARS                 operand ',' modifier ',' expr       { doARS($1, $6, $2, $4);    }
+    | OPCODEARS     ptr_reg '|' operand                             { doARS($1, $2, $4->value,  0);        }
+    | OPCODEARS     ptr_reg '|' operand ',' modifier                { doARS($1, $2, $4->value, $6);        }
+    | OPCODEARS                 operand ',' modifier ',' expr       { doARS($1, $6->value, $2->value, $4); }
 
-        | OPCODERPT     expr ',' expr ','   {bTermCond = true;} rptlst  { doRPT($1, $2, $4, $7);    }
-        | OPCODERPT          ',' expr                                   { doRPT($1, 0, $3, NULL);   }
-        | OPCODERPT     expr          ','   {bTermCond = true;} rptlst  { doRPT($1, 0, $2, $5);     }
+    | OPCODERPT     expr ',' expr ','   {bTermCond = true;} rptlst  { doRPT($1, $2->value, $4->value, $7); }
+    | OPCODERPT          ',' expr                                   { doRPT($1, 0, $3->value, NULL);       }
+    | OPCODERPT     expr          ','   {bTermCond = true;} rptlst  { doRPT($1, 0, $2->value, $5);         }
 
-        | OPCODESTC                 operand ',' {setOmode();} lexpr     { doSTC($1, $2, $5, -1);         }
-        | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4, $7, (int)$2);    }
-        ;
+    | OPCODESTC                 operand ',' {setOmode();} lexpr     { doSTC($1, $2->value, $5->value, -1);        }
+    | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2);   }
+    ;
 
-rptlst: /* empty */                         { $$ = NULL;    }
-      |            TERMCOND                 { $$ = NULL; tuple *t = newTuple(); t->a.p = $1;  DL_APPEND($$, t);}
-      | rptlst ',' TERMCOND                 { $$ = $1;   tuple *t = newTuple(); t->a.p = $3;  DL_APPEND($1, t);}
-      ;
+rptlst: /* empty */                       { $$ = NULL;    }
+    |            TERMCOND                 { $$ = NULL; tuple *t = newTuple(); t->a.p = $1;  DL_APPEND($$, t);}
+    | rptlst ',' TERMCOND                 { $$ = $1;   tuple *t = newTuple(); t->a.p = $3;  DL_APPEND($1, t);}
+    ;
 
-operand :             expr
-        ;
+operand
+    : expr 
+    ;
 
-operands: /* empty */                       { opnd.hi = 0; opnd.lo = 0;                     }
-        |             operand               { opnd.hi = $1 & AMASK; opnd.lo = 0;            }
-        |             operand ',' modifier  { opnd.hi = $1 & AMASK; opnd.lo = $3 & 077;     }
-        |             literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0;      }
-        |             literal ',' modifier  { if ($3 == 3 || $3 == 7)
-                                                  opnd.hi = get18($1, (int)$3); // process literal w/ du/dl modifier
-                                              else
-                                                  opnd.hi = $1->addr & AMASK;
-                                              opnd.lo = $3 & 077;
-                                            }
-        | ptr_reg '|' operand               { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3 & 077777)); opnd.lo = 0; }
-        | ptr_reg '|' operand ',' modifier  { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3 & 077777)); opnd.lo = $5 & 077; }
-        | external
-        | external ',' modifier
-        | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
-        ;
+operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
+    | operand               {
+                                if ($1->type == eExprTemporary)
+                                {
+                                    opnd.hi = (6 << 15) | ($1->value & 077777);
+                                    opnd.bit29 = true;
+                                }
+                                else
+                                    opnd.hi = $1->value & AMASK;
+                                opnd.lo = 0;
+                            }
+    | operand ',' modifier  {
+                                if ($1->type == eExprTemporary)
+                                {
+                                    opnd.hi = (6 << 15) | ($1->value & 077777);
+                                    opnd.bit29 = true;
+                                }
+                                else
+                                    opnd.hi = $1->value & AMASK;
+                                opnd.lo = $3 & 077;
+                            }
+    | literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0;         }
+    | literal ',' modifier  {
+                               if ($3 == 3 || $3 == 7)
+                                  opnd.hi = get18($1, (int)$3); // process literal w/ du/dl modifier
+                               else
+                                  opnd.hi = $1->addr & AMASK;
+                               opnd.lo = $3 & 077;
+                            }
+    | ptr_reg '|' operand               { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = 0;        }
+    | ptr_reg '|' operand ',' modifier  { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = $5 & 077; }
+    | external
+    | external ',' modifier
+    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
+    ;
 
 ptr_reg : SYMBOL {
-                    $$ = -1;
-                    if (nPass == 2)
-                    {
-                        int npr = getPRn($1);
-                        if (npr == -1)
-                        {
-                            symtab *s = getsym($1);
-                            if (!s)
-                            {
-                                sprintf(temp, "invalid PR <%s>", $1);
-                                yyerror(temp);
-                                YYERROR;
-                            }
-                            npr = s->value & 7; // only keep lower 3 bits of symbol value
-                        }
-                        $$ = npr;
-                    }
-                 }
-        | integer { $$ = $1 & 07; }
-        ;
+    $$ = -1;
+    if (nPass == 2)
+    {
+        int npr = getPRn($1);
+        if (npr == -1)
+        {
+            symtab *s = getsym($1);
+            if (!s)
+            {
+                sprintf(temp, "invalid PR <%s>", $1);
+                yyerror(temp);
+                YYERROR;
+            }
+            npr = s->value & 7; // only keep lower 3 bits of symbol value
+        }
+        $$ = npr;
+    }
+}
+    | integer { $$ = $1 & 07; }
+    ;
 
-external : SYMBOL '$' SYMBOL
-         ;
+external
+    :     SYMBOL     '$'     SYMBOL
+    | '<' SYMBOL '>' '|' '[' SYMBOL ']'
+    ;
 
-modifier: SYMBOL        { $$ = getmod($1);  }
-        | '*'           { $$ = getmod("*"); }
-        | '*' SYMBOL    { strcpy(temp, "*"); strcat(temp,  $2);  $$ = getmod(temp);  }
-        | SYMBOL '*'    { strcpy(temp,  $1); strcat(temp, "*");  $$ = getmod(temp);  }
-        | integer       { sprintf(temp, "%lld", $1); $$ = getmod(temp);                }
-        | '*' integer   { sprintf(temp, "*%lld", $2); $$ = getmod(temp);               }
-        | integer '*'   { sprintf(temp, "%lld*", $1); $$ = getmod(temp);               }
-        ;
+modifier
+    : SYMBOL        { $$ = getmod($1);  }
+    | '*'           { $$ = getmod("*"); }
+    | '*' SYMBOL    { strcpy(temp, "*"); strcat(temp,  $2);  $$ = getmod(temp);  }
+    | SYMBOL '*'    { strcpy(temp,  $1); strcat(temp, "*");  $$ = getmod(temp);  }
+    | integer       { sprintf(temp, "%lld", $1); $$ = getmod(temp);                }
+    | '*' integer   { sprintf(temp, "*%lld", $2); $$ = getmod(temp);               }
+    | integer '*'   { sprintf(temp, "%lld*", $1); $$ = getmod(temp);               }
+    ;
 
 // for MF EIS
 mfk : '(' eismfs ')'        { $$ = newTuple(); $$->a.c = 'm'; $$->b.t =  $2; }
@@ -224,7 +276,7 @@ mfks: /* empty */           { $$ = NULL;                    }
     |          mfk          { $$ = NULL; DL_APPEND($$, $1); }
     | mfks ',' mfk          { $$ = $1;   DL_APPEND($1, $3); }
     ;
-    
+
 eismfs
     : /* empty */           { $$ = NULL;                    }
     | eismf                 { $$ = NULL; DL_APPEND($$, $1); }
@@ -236,30 +288,30 @@ eismf
     ;
 
 eisopt
-    : SYMBOL                 { $$ = newTuple(); $$->a.c = '1'; $$->b.p = $1;                 }
-    | SYMBOL '(' lexpr ')'   { $$ = newTuple(); $$->a.c = '2'; $$->b.p = $1;  $$->c.i36 = $3;}
+    : SYMBOL                 { $$ = newTuple(); $$->a.c = '1'; $$->b.p = $1;                        }
+    | SYMBOL '(' lexpr ')'   { $$ = newTuple(); $$->a.c = '2'; $$->b.p = $1; $$->c.i36 = $3->value; }
     ;
 
 
-symlist:             SYMBOL { $$ = NULL; list *n = newList(); n->p = $1; DL_APPEND($$, n); }
-       | symlist ',' SYMBOL { $$ = $1;   list *n = newList(); n->p = $3; DL_APPEND($1, n); }
-       ;
+symlist:          SYMBOL { $$ = NULL; list *n = newList(); n->p = $1; DL_APPEND($$, n); }
+    | symlist ',' SYMBOL { $$ = $1;   list *n = newList(); n->p = $3; DL_APPEND($1, n); }
+    ;
 
 
-exprlist:              expr { $$ = NULL; list *n = newList(); n->i36 = $1; DL_APPEND($$, n); }
-        | exprlist ',' expr { $$ = $1;   list *n = newList(); n->i36 = $3; DL_APPEND($1, n); }
-        | exprlist ','      { $$ = $1;   list *n = newList(); n->i36 =  0; DL_APPEND($1, n); }
-        ;
+exprlist:          expr { $$ = NULL; list *n = newList(); n->i36 = $1->value; DL_APPEND($$, n); }
+    | exprlist ',' expr { $$ = $1;   list *n = newList(); n->i36 = $3->value; DL_APPEND($1, n); }
+    | exprlist ','      { $$ = $1;   list *n = newList(); n->i36 =         0; DL_APPEND($1, n); }
+    ;
 
-lexprlist:               lexpr { $$ = NULL; list *n = newList(); n->i36 = $1; DL_APPEND($$, n); }
-         | lexprlist ',' lexpr { $$ = $1;   list *n = newList(); n->i36 = $3; DL_APPEND($1, n); }
-         | lexprlist ','       { $$ = $1;   list *n = newList(); n->i36 =  0; DL_APPEND($1, n); }
-         ;
+lexprlist:          lexpr { $$ = NULL; list *n = newList(); n->i36 = $1->value; DL_APPEND($$, n); }
+    | lexprlist ',' lexpr { $$ = $1;   list *n = newList(); n->i36 = $3->value; DL_APPEND($1, n); }
+    | lexprlist ','       { $$ = $1;   list *n = newList(); n->i36 =  0; DL_APPEND($1, n); }
+    ;
 
-decs:  expr     { $$ = newList(); $$->i36 = $1;  $$->whatAmI = lstI36;    }
-    | SINGLE    { $$ = newList(); $$->r = $1;    $$->whatAmI = lstSingle; }
-    | DOUBLE    { $$ = newList(); $$->r = $1;    $$->whatAmI = lstDouble; }
-    | DOUBLEINT { $$ = newList(); $$->i72 = $1;  $$->whatAmI = lstI72;    }
+decs:  expr     { $$ = newList(); $$->i36 = $1->value;  $$->whatAmI = lstI36;    }
+    | SINGLE    { $$ = newList(); $$->r   = $1;         $$->whatAmI = lstSingle; }
+    | DOUBLE    { $$ = newList(); $$->r   = $1;         $$->whatAmI = lstDouble; }
+    | DOUBLEINT { $$ = newList(); $$->i72 = $1;         $$->whatAmI = lstI72;    }
     ;
 
 declist
@@ -277,7 +329,7 @@ optarglist: /* empty */     { $$ = NULL;    }
     | optarglist ',' arg    { $$ = $1;   list *n = newList(); n->i36 = $3; DL_APPEND($1, n);  }
     ;
 
-arg : expr
+arg : expr      { $$ = $1->value;   }
     | literal   { $$ = $1->addr;    }
     ;
 
@@ -288,10 +340,10 @@ literal
     | DECLIT                                        { $$ = doNumericLiteral(10, $1);         }
     | SGLLIT                                        { $$ = doFloatingLiteral(1, $1);         }
     | DBLLIT                                        { $$ = doFloatingLiteral(2, $1);         }
-    | ITPLIT '(' ptr_reg ',' expr ')'               { $$ = doITSITPLiteral(041, $3, $5,  0); }
-    | ITPLIT '(' ptr_reg ',' expr ',' modifier ')'  { $$ = doITSITPLiteral(041, $3, $5, $7); }
-    | ITSLIT '(' expr ',' expr ')'                  { $$ = doITSITPLiteral(043, $3, $5,  0); }
-    | ITSLIT '(' expr ',' expr ',' modifier ')'     { $$ = doITSITPLiteral(043, $3, $5, $7); }
+    | ITPLIT '(' ptr_reg ',' expr ')'               { $$ = doITSITPLiteral(041, $3, $5->value,  0); }
+    | ITPLIT '(' ptr_reg ',' expr ',' modifier ')'  { $$ = doITSITPLiteral(041, $3, $5->value, $7); }
+    | ITSLIT '(' expr ',' expr ')'                  { $$ = doITSITPLiteral(043, $3->value, $5->value,  0); }
+    | ITSLIT '(' expr ',' expr ',' modifier ')'     { $$ = doITSITPLiteral(043, $3->value, $5->value, $7); }
     | VFDLIT '(' vfdArgs ')'                        { $$ = doVFDLiteral($3); popAndReset();  }
     | DECLIT2                                       { $$ = doNumericLiteral72($1);           }
     ;
@@ -302,98 +354,143 @@ vfdArgs
     | vfdArgs ',' vfdArg    { $$ = $1;   DL_APPEND($1, $3);          }
     ;
 
-vfdArg:    L '/' expr       { $$ = newTuple(); $$->a.c =  0; $$->b.i = (int)$1; $$->c.i36 = $3;    }
-      | Ta L '/' STRING     { $$ = newTuple(); $$->a.c = $1; $$->b.i = (int)$2; $$->c.p   = $4;    }
-      | Th L '/' STRING     { $$ = newTuple(); $$->a.c = $1; $$->b.i = (int)$2; $$->c.p   = $4;    }
-      | To L '/' lexpr      { $$ = newTuple(); $$->a.c = $1; $$->b.i = (int)$2; $$->c.i36 = $4;    }
-      | L Ta '/' STRING     { $$ = newTuple(); $$->b.i = (int)$1; $$->a.c = $2; $$->c.p   = $4;    }
-      | L Th '/' STRING     { $$ = newTuple(); $$->b.i = (int)$1; $$->a.c = $2; $$->c.p   = $4;    }
-      | L To '/' lexpr      { $$ = newTuple(); $$->b.i = (int)$1; $$->a.c = $2; $$->c.i36 = $4;    }
-      ;
+vfdArg:  L '/' expr       { $$ = newTuple(); $$->a.c =  0; $$->b.i = (int)$1; $$->c.i36 = $3->value;    }
+    | Ta L '/' STRING     { $$ = newTuple(); $$->a.c = $1; $$->b.i = (int)$2; $$->c.p   = $4;           }
+    | Th L '/' STRING     { $$ = newTuple(); $$->a.c = $1; $$->b.i = (int)$2; $$->c.p   = $4;           }
+    | To L '/' lexpr      { $$ = newTuple(); $$->a.c = $1; $$->b.i = (int)$2; $$->c.i36 = $4->value;    }
+    | L Ta '/' STRING     { $$ = newTuple(); $$->b.i = (int)$1; $$->a.c = $2; $$->c.p   = $4;           }
+    | L Th '/' STRING     { $$ = newTuple(); $$->b.i = (int)$1; $$->a.c = $2; $$->c.p   = $4;           }
+    | L To '/' lexpr      { $$ = newTuple(); $$->b.i = (int)$1; $$->a.c = $2; $$->c.i36 = $4->value;    }
+    ;
 
-rexpr:  REG
-     | expr 
-     ;
-
-
-pop: PSEUDOOP                                                            { doPop0($1);   }
-   | PSEUDOOP2      operands
+rexpr
+    :  REG
+    | expr { $$ = $1->value;    }
+    ;
 
 
-   | ZERO                   ',' expr                                     { doZero(0, $3);           }
-   | ZERO                   ',' literal                                  { doZero(0, $3->addr);     }
-   | ZERO           literal ',' expr                                     { doZero($2->addr, $4);    }
-   | ZERO           literal ',' literal                                  { doZero($2->addr, $4->addr);}
-   | ZERO           expr    ',' literal                                  { doZero($2, $4->addr);    }
-   | ZERO           literal                                              { doZero($2->addr, 0);     }
-   | ZERO           expr    ',' expr                                     { doZero($2, $4);          }
-   | ZERO           expr                                                 { doZero($2, 0);           }
-   | ZERO               VFDLIT vfdArgs                                   { literal *l = doVFDLiteral($3); doZero(l->addr,0);  popAndReset();  }
-   | ZERO           ',' VFDLIT vfdArgs                                   { literal *l = doVFDLiteral($4); doZero(0,l->addr);  popAndReset();  }
+pop
+    : PSEUDOOP                                   { doPop0($1);   }
+    | PSEUDOOP2      operands
 
-   | ARG            operands                                             { doArg(&opnd);  }
-   | NAME           SYMBOL
-   | ORG            expr                                                 { doOrg($2);     }
-   | MOD            expr                                                 { doMod($2);     }
+    | ZERO                   ',' expr            { doZero(0, $3->value);           }
+    | ZERO                   ',' literal         { doZero(0, $3->addr);            }
+    | ZERO           literal ',' expr            { doZero($2->addr, $4->value);    }
+    | ZERO           literal ',' literal         { doZero($2->addr, $4->addr);     }
+    | ZERO           expr    ',' literal         { doZero($2->value, $4->addr);    }
+    | ZERO           literal                     { doZero($2->addr, 0);            }
+    | ZERO           expr    ',' expr            { doZero($2->value, $4->value);   }
+    | ZERO           expr                        { doZero($2->value, 0);           }
+    | ZERO           VFDLIT vfdArgs              { literal *l = doVFDLiteral($3); doZero(l->addr,0);  popAndReset();  }
+    | ZERO           ',' VFDLIT vfdArgs          { literal *l = doVFDLiteral($4); doZero(0,l->addr);  popAndReset();  }
 
-   | SEGDEF         symlist
-   | OCT            lexprlist                                            { doOct($2);  }
-   | DEC            declist                                              { doDec($2);  }
-   | DESC                       expr                                     { doDescriptor($1, $2,  0,  0,  0,      -1); }
-   | DESC                       expr '(' expr ')'                        { doDescriptor($1, $2, $4,  0,  0,      -1); }
-   | DESC           ptr_reg '|' expr              ',' rexpr              { doDescriptor($1, $4,  0, $6,  0, (int)$2); }
-   | DESC                       expr '(' expr ')' ',' rexpr              { doDescriptor($1, $2, $4, $7,  0,      -1); }
-   | DESC                       expr              ',' rexpr              { doDescriptor($1, $2,  0, $4,  0,      -1); }
-   | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr              { doDescriptor($1, $4, $6, $9,  0, (int)$2); }
-   | DESC           ptr_reg '|' expr              ',' rexpr ',' expr     { doDescriptor($1, $4,  0, $6, $8, (int)$2); }
-   | DESC                       expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $2, $4, $7, $9,      -1); }
-   | DESC                       expr              ',' rexpr ',' expr     { doDescriptor($1, $2,  0, $4, $6,      -1); }
-   | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $4, $6, $9, $11,(int)$2); }
-   | DESC2          exprlist                                             { doDescriptor2($1, $2);                     }
-   | PSEUDOOPD2     symlist
+    | ARG            operands                                             { doArg(&opnd);  }
+    | NAME           SYMBOL
+    | ORG            expr                                                 { doOrg($2->value);     }
+    | MOD            expr                                                 { doMod($2->value);     }
 
-   | STROP          STRING                  { doStrop($1, $2, 0);       }
-   | STROP          STRING  ',' expr        { doStrop($1, $2, (int)$4); }
+    | OCT            lexprlist                                            { doOct($2);  }
+    | DEC            declist                                              { doDec($2);  }
+    | DESC                       expr                                     { doDescriptor($1, $2->value,         0,  0,  0,      -1); }
+    | DESC                       expr '(' expr ')'                        { doDescriptor($1, $2->value, $4->value,  0,  0,      -1); }
+    | DESC           ptr_reg '|' expr              ',' rexpr              { doDescriptor($1, $4->value,  0, $6,  0, (int)$2); }
+    | DESC                       expr '(' expr ')' ',' rexpr              { doDescriptor($1, $2->value, $4->value, $7,  0,      -1); }
+    | DESC                       expr              ',' rexpr              { doDescriptor($1, $2->value,  0, $4,  0,      -1); }
+    | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr              { doDescriptor($1, $4->value, $6->value, $9,  0, (int)$2); }
+    | DESC           ptr_reg '|' expr              ',' rexpr ',' expr     { doDescriptor($1, $4->value,  0, $6, $8->value, (int)$2); }
+    | DESC                       expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $2->value, $4->value, $7, $9->value,      -1); }
+    | DESC                       expr              ',' rexpr ',' expr     { doDescriptor($1, $2->value,  0, $4, $6->value,      -1); }
+    | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $4->value, $6->value, $9, $11->value,(int)$2); }
+    | DESC2          exprlist                                             { doDescriptor2($1, $2);                     }
+    | PSEUDOOPD2     symlist
 
-   | VFD            vfdArgs                 { doVfd($2);                }
+    | STROP          STRING                  { doStrop($1, $2, 0);       }
+    | STROP          STRING  ',' expr        { doStrop($1, $2, (int)$4); }
 
-   | BOOL           SYMBOL ',' lexpr        { doBoolEqu($2, $4);        }
-   | EQU            SYMBOL ','  expr        { doBoolEqu($2, $4);        }
+    | VFD            vfdArgs                 { doVfd($2);                }
 
-   | BSS            SYMBOL ','  expr        { doBss($2,   $4);          }
-   | BSS                   ','  expr        { doBss(NULL, $3);          }
-   | BSS                        expr        { doBss(NULL, $2);          }
+    | BOOL           SYMBOL ',' lexpr        { doBoolEqu($2, $4); }
+    | EQU            SYMBOL ','  expr        { doBoolEqu($2, $4); }
 
-   | CALL           SYMBOL                                            { doCall($2,  0, NULL, NULL); }
-   | CALL           SYMBOL ',' modifier                               { doCall($2, $4, NULL, NULL); }
-   | CALL           SYMBOL ',' modifier '(' optarglist ')' opterrlist { doCall($2, $4,   $6,   $8); }
-   | CALL           SYMBOL              '(' optarglist ')' opterrlist { doCall($2,  0,   $4,   $6); }
+    | BSS            SYMBOL ','  expr        { doBss($2,   $4->value);   }
+    | BSS                   ','  expr        { doBss(NULL, $3->value);   }
+    | BSS                        expr        { doBss(NULL, $2->value);   }
 
-   | SAVE           optintlist                                        { doSave ($2);                }
+    | CALLH          SYMBOL                                            { doHCall($2,  0, NULL, NULL); }
+    | CALLH          SYMBOL ',' modifier                               { doHCall($2, $4, NULL, NULL); }
+    | CALLH          SYMBOL ',' modifier '(' optarglist ')' opterrlist { doHCall($2, $4,   $6,   $8); }
+    | CALLH          SYMBOL              '(' optarglist ')' opterrlist { doHCall($2,  0,   $4,   $6); }
 
-   | RETURN         SYMBOL                                            { doReturn($2, 0);            }
-   | RETURN         SYMBOL ',' integer                                { doReturn($2, $4);           }
+    | SAVE           optintlist                                        { doSave ($2);                }
 
-   | TALLY          exprlist                                          { doTally($1, $2);            }
+    | RETURN         SYMBOL                                            { doReturn($2, 0);            }
+    | RETURN         SYMBOL ',' integer                                { doReturn($2, $4);           }
 
-   | ITP            ptr_reg ',' expr                { doITSITP($1, $2, $4,  0);    }
-   | ITP            ptr_reg ',' expr ',' modifier   { doITSITP($1, $2, $4, $6);    }
-   | ITS            expr ',' expr                   { doITSITP($1, $2, $4,  0);    }
-   | ITS            expr ',' expr ',' modifier      { doITSITP($1, $2, $4, $6);    }
+    | TALLY          exprlist                                          { doTally($1, $2);            }
 
-   | NULLOP
-   ;
-        
+    | ITP            ptr_reg ',' expr                { doITSITP($1, $2, $4->value,  0);         }
+    | ITP            ptr_reg ',' expr ',' modifier   { doITSITP($1, $2, $4->value, $6);         }
+    | ITS            expr ',' expr                   { doITSITP($1, $2->value, $4->value,  0);  }
+    | ITS            expr ',' expr ',' modifier      { doITSITP($1, $2->value, $4->value, $6);  }
+
+    | NULLOP
+
+  /*| CALL           SYMBOL '(' SYMBOL ')' */
+    | CALLM          entry                                 { doMCall($2,  0, NULL); }
+    | CALLM          entry ',' modifier                    { doMCall($2, $4, NULL); }
+    | CALLM          entry ',' modifier '(' optarg ')'     { doMCall($2, $4,   $6); }
+    | CALLM          entry              '(' optarg ')'     { doMCall($2,  0,   $4); }
+
+    | ENTRY          symlist                         { doEntry($2);                 }
+    | PUSH           expr                            { doPush($2->value);           }
+    | PUSH                                           { doPush(0);                   }
+    | RETURN                                         { doReturn0();                 }
+    | SHORT_CALL     SYMBOL                          { doShortCall($2);             }
+    | SHORT_RETURN                                   { doShortReturn();             }
+
+    | TEMP           templist                        { doTemp($1, $2);              }
+
+    | SEGDEF         symlist                         { doSegdef($2);                }
+    | SEGREF         symlist                         { doSegref($2);                }
+
+    ;
+
+entry
+    : expr
+    | ptr_reg '|' expr  { $$ = exprPtrExpr((int)$1, $3); }
+    ;
+
+templist
+    :                tempelement    { $$ = NULL; DL_APPEND($$, $1);          }
+    |   templist ',' tempelement    { $$ = $1;   DL_APPEND($1, $3);          }
+    ;
+
+tempelement
+    : SYMBOL                    { $$ = newTuple(); $$->a.p = $1; $$->b.i36 =  1;        }
+    | SYMBOL '(' ')'            { $$ = newTuple(); $$->a.p = $1; $$->b.i36 =  1;        }
+    | SYMBOL '(' expr ')'       { $$ = newTuple(); $$->a.p = $1; $$->b.i36 = $3->value; }
+    ;
+
 opterrlist: /* empty */         { $$ = NULL;                                }
     | exprlist '\'' SYMBOL '\'' { $$ = newList(); $$->l = $1; $$->p = $3;   } /* change to exprlist */
     |          '\'' SYMBOL '\'' { $$ = newList(); $$->l = NULL; $$->p = $2; }
     | exprlist                  { $$ = newList(); $$->l = $1; $$->p = NULL; }
     ;
 
-eol: '\n'
-| ';'
-;
+optarg: /* empty */     { $$ = NULL;    }
+    |   arg2
+    ;
 
+arg2
+    : expr            
+    | literal           { $$ = exprLiteral($1);          }
+    | ptr_reg '|' expr  { $$ = exprPtrExpr((int)$1, $3); }
+    ;
+
+
+eol: '\n'
+    | ';'
+    ;
 
 %%
  /*--------------------------------------------------------*/
@@ -482,6 +579,7 @@ int getPRn(char *s)
     return -1;
 }
 
+
 word36 getValue(char *s)
 {
     symtab *y = getsym(s);
@@ -494,8 +592,11 @@ word36 getValue(char *s)
         yyprintf("undefined symbol <%s>", s);
         return 0;
     }
+    
     return y->value;
 }
+
+
 
 tuple *newTuple()
 {
