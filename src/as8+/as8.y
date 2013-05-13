@@ -329,8 +329,8 @@ optarglist: /* empty */     { $$ = NULL;    }
     | optarglist ',' arg    { $$ = $1;   list *n = newList(); n->i36 = $3; DL_APPEND($1, n);  }
     ;
 
-arg : expr      { $$ = $1->value;   }
-    | literal   { $$ = $1->addr;    }
+arg : expr                              { $$ = $1->value;   }
+    | literal                           { $$ = $1->addr;    }
     ;
 
 literal
@@ -435,7 +435,6 @@ pop
 
     | NULLOP
 
-  /*| CALL           SYMBOL '(' SYMBOL ')' */
     | CALLM          entry                                 { doMCall($2,  0, NULL); }
     | CALLM          entry ',' modifier                    { doMCall($2, $4, NULL); }
     | CALLM          entry ',' modifier '(' optarg ')'     { doMCall($2, $4,   $6); }
@@ -483,8 +482,9 @@ optarg: /* empty */     { $$ = NULL;    }
 
 arg2
     : expr            
-    | literal           { $$ = exprLiteral($1);          }
-    | ptr_reg '|' expr  { $$ = exprPtrExpr((int)$1, $3); }
+    | literal           { $$ = exprLiteral($1);                 }
+    | ptr_reg '|' expr  { $$ = exprPtrExpr((int)$1, $3);        }
+    | VFDLIT    vfdArgs { $$ = exprLiteral(doVFDLiteral($2));   }
     ;
 
 
