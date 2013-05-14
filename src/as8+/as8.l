@@ -63,6 +63,7 @@
 %x InLiteral InLiteral1 InLiteral2 InLiteral3
 %x Junk
 %x InVFD InVFD2 expOct
+%x OPT
 
 %option noyywrap
 /*%option yylineno*/
@@ -80,6 +81,7 @@ symbol    		({alpha}|[_.])({alpha}|{digit}|[_.])*
 special         [-+,*/%&|^()$<>~:;']
 
 include			[Ii][Nn][Cc][Ll][Uu][Dd][Ee]
+options         [Oo][Pp][Tt][Ii][Oo][Nn]([Ss]?)
 
 octal           ({octaldigit}{1,12})
 
@@ -123,6 +125,11 @@ ITPLiteral      \=[Ii][Tt][Ss]
 everythingelse	.
 
 %%
+{options}                         { BEGIN OPT; return OPTIONS;                  }
+<OPT>{symbol}                     { yylval.s = strdup(yytext);  return SYMBOL;  }
+<OPT>{special}                    { return yytext[0];                           }
+<OPT>{decimal}|{octal}|{hex}      { yylval.i = strtoll(yytext, NULL, 0); return INTEGER; }
+
 {include}           { BEGIN IFN;		/* don't move! */	}
 <IFN>[^ \f\t\n]+	{ 
                         BEGIN INITIAL;
@@ -316,9 +323,9 @@ everythingelse	.
                             if (po->token == CALL)
                             {
                                 if (callingConvention == 1)
-                                return CALLH;
+                                    return CALLH;
                                 else
-                                return CALLM;
+                                    return CALLM;
                             }
                             
 

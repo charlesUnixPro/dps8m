@@ -18,8 +18,23 @@ extern char* yytext;
 
 char *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8, *arg9, *arg10;
 
+// XXX remove these when ready 
 word36 Eval(char *s) { return 0; }
 word36 boolEval(char *s) { return 0; }
+
+void doOptions(tuple *tt)
+{
+    tuple *t;
+    DL_FOREACH(tt, t)
+    {
+        if (!strcasecmp(t->a.p, "multics"))
+            callingConvention = 2;
+        else if (!strcasecmp(t->a.p, "honeywell"))
+            callingConvention = 1;
+        else
+            yyprintf("unknown option <%s>", t->a.p);
+    }
+}
 
 void doBss(char *symbol, word36 size)
 {

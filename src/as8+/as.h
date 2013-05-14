@@ -532,7 +532,7 @@ struct list        // for holding a list of anything
     word72  i72;
     word36  i36;
     word18  i18;
-    
+
     long double r;
     
     tuple   *t;
@@ -737,6 +737,8 @@ void doSTC(opCode *o, word36, word36, int);
 void doARS(opCode *o, word36, word36, word36);
 
 int findMfReg(char *reg);
+
+void doOptions(tuple *);
 
 bool doPseudoOp(char *line, char *label, char *op, char *argv0, char *args[32], FILE *out, int nPass, word18 *addr);
 void doDescriptor(pseudoOp *p, word36 address, word36 offset, word36 length, word36 scale, int ar);

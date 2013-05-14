@@ -1,20 +1,80 @@
+    name    TestFP
+    segdef  msgHello
+    
+    tra     main_
+    
+    entry   main_
+    short_call  main_
+    short_return
+    return
+    push    32
+    push
+    getlp
+    
+    "temp    Stack_temp_1(1), Stack_temp_2(2), Stack_temp_3(4)
+    "tempd   Stack_temp_d1(1), Stack_temp_d2(2), Stack_temp_d3(4)
+    "temp8   Stack_temp_81(1), Stack_temp_82(2), Stack_temp_83(4)
+    
+    tempd	.temp
+    tempd	.label_variable(0)
+    tempd	.time1,.time2
+    tempd	.unwinder_arglist(0)
+    tempd	.on_unit(5)
+    temp	.pf,.entryp
+    tempd	.vfl_arglist(2)
+    tempd	.mcptr
+    
+    tempd	v_temp          "temporary for virtual time computation
+  	tempd	v_delta         "temporary to remember virtual_delta
+  	tempd	pad(2)
+  	temp8	mach_cond(6)	"machine conditions
+  	temp8	history_registers(16)
+  	tempd	mc_ptr          "pointer to machine conditions
+  	tempd	call_ptr        "pointer to fault handling routine
+ 	tempd	arglist(4)      "argument list
+  	temp	fcode           "fault code
+  	temp	temp3(3)		"temporary cells
+    
+    lda     temp3
+    ldaq    pad
+    ldq     .on_unit
+    
+"     50    .temp                    dm_hcs_:       25.
+"     52    .label_variable          dm_hcs_:       25,   38.
+"     52    .time1                   dm_hcs_:       25.
+"     54    .time2                   dm_hcs_:       25.
+"     56    .unwinder_arglist        dm_hcs_:       25,   38.
+"     56    .on_unit                 dm_hcs_:       25,   38.
+"     70    .pf                      dm_hcs_:       25.
+"     71    .entryp                  dm_hcs_:       25,   38.
+"     72    .vfl_arglist             dm_hcs_:       25,   38.
+"     76    .mcptr                   dm_hcs_:       25,   38.
+
+    option  Multics         " Multics calling convention
+
+    call	pr1|0,*(pr2|0)
+    call	bp|0(=v18/0,18/4,18/0,18/0)
+    
+    option  Honeywell       " Honeywell calling convention
+    
+    
 "
 " floating point test routines ... 
 "
+msgHello:   acc     "This is TestFP ...^g^g\r\n"
+*msg1:      acc     "Date: ^g^g \r\n"
+            even
+            bss     Date, 2
+
+
+main_:
+
     tsx2	rd_clock
     staq	Date        "MM/DD HH:MM
 
     call    ioa(msgHello, Date, Date+1)
-        
-    tra     main_
 
-msgHello:   acc     "This is TestFP ...^g^g\r\n"
-*msg1:      acc     "Date: ^g^g \r\n"
 
-    even
-    bss     Date, 2
-
-main_:
     call    ioa(msgArcsin)
 
     call    arc_sine_degrees_(=.1)

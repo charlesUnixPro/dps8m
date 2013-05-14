@@ -60,18 +60,18 @@
 %token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
-%token SHORT_CALL  SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM
+%token SHORT_CALL  SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER
 
 %type <s> SYMBOL STRING LABEL TERMCOND
 %type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP TEMP
-%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM
+%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM INTEGER
 %type <i72> DOUBLEINT DECLIT2
 %type <c> AH Ta Th To
 %type <r> SINGLE DOUBLE SGLLIT DBLLIT
 %type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %type <lst> symlist exprlist lexprlist optexplist optarglist optintlist opterrlist decs declist
 %type <lit> literal
-%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist
+%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option
 %type <e> expr lexpr operand optarg arg2 entry
 
 /*%right '='
@@ -370,7 +370,9 @@ rexpr
 
 
 pop
-    : PSEUDOOP                                   { doPop0($1);   }
+    : OPTIONS        options                     { doOptions($2);   }
+
+    | PSEUDOOP                                   { doPop0($1);      }
     | PSEUDOOP2      operands
 
     | ZERO                   ',' expr            { doZero(0, $3->value);           }
@@ -451,7 +453,6 @@ pop
 
     | SEGDEF         symlist                         { doSegdef($2);                }
     | SEGREF         symlist                         { doSegref($2);                }
-
     ;
 
 entry
@@ -487,6 +488,17 @@ arg2
     | VFDLIT    vfdArgs { $$ = exprLiteral(doVFDLiteral($2));   }
     ;
 
+options
+    :             option        { $$ = NULL; DL_APPEND($$, $1);      }
+    | options ',' option        { $$ = $1;   DL_APPEND($1, $3);      }
+    ;
+
+option
+    : SYMBOL                            { $$ = newTuple(); $$->a.p = $1;                                    }
+    | SYMBOL '(' INTEGER ')'            { $$ = newTuple(); $$->a.p = $1; $$->b.i = (int)$3;                 }
+    | SYMBOL '(' SYMBOL '=' INTEGER ')' { $$ = newTuple(); $$->a.p = $1; $$->b.p = $3; $$->c.i = (int)$5;   }
+    | SYMBOL '(' SYMBOL '=' SYMBOL  ')' { $$ = newTuple(); $$->a.p = $1; $$->b.p = $3; $$->c.p = $5;        }
+    ;
 
 eol: '\n'
     | ';'
