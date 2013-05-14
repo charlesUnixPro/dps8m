@@ -49,7 +49,7 @@
 #endif
 
 #if !defined(SIM_GIT_COMMIT_ID)
-#define SIM_GIT_COMMIT_ID 02ebf6bdfc8d5455c39e1e03fd9e6ee0f12b913b
+#define SIM_GIT_COMMIT_ID 6c42556d30b3b80dce2dbe698140cb5a21616f05
 #endif
 
 /*

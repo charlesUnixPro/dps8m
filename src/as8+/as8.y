@@ -329,8 +329,8 @@ optarglist: /* empty */     { $$ = NULL;    }
     | optarglist ',' arg    { $$ = $1;   list *n = newList(); n->i36 = $3; DL_APPEND($1, n);  }
     ;
 
-arg : expr                              { $$ = $1->value;   }
-    | literal                           { $$ = $1->addr;    }
+arg : expr                  { $$ = $1->value;   }
+    | literal               { $$ = $1->addr;    }
     ;
 
 literal
