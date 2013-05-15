@@ -399,6 +399,7 @@ enum enumExpr
     eExprRelocatable = 2,   // relocatable expression
     eExprRelative    = 2,   // relocatable expression
     eExprTemporary   = 4,   // a stack temporary
+    eExprSegRef      = 5,   // referenced through a segref
 };
 typedef enum enumExpr enumExpr;
 
@@ -756,6 +757,7 @@ void doHCall(char *, word36, list *, list *);   // for call pseudoop
 void doSave(list *);                            // for save pseudoop
 void doReturn(char *, word36);                  // for return pseudoop
 void doTally(pseudoOp *, list *);               // for TALLY pseudo-ops
+void doName(char *);                            // NAME pseudoop
 void doArg(struct opnd *o);
 void doZero(word36, word36);                    // Zero
 void doOrg(word36);
@@ -773,6 +775,14 @@ void doTemp(pseudoOp *, tuple *);               // for TEMP pseudo-ops
 
 void doSegdef(list *);
 void doSegref(list *);
+
+void emitSegdefs();
+void emitSegrefs();
+void writeSegrefs();
+
+int fillinEntrySequences();     ///< fill in info for entry sequences
+void writeEntrySequences();     ///< write entry section to output
+void emitEntryDirectives();
 
 void fillinTemps();
 
@@ -825,6 +835,7 @@ int getPRn(char *s);
 
 void doInterpass(FILE *out);    ///< for any special interpass processing ...
 void doPostpass(FILE *out);     ///< for any special post-pass processing ...
+
 void emitSegment(FILE *oct);    ///< emit segment directive
 void emitGo(FILE *oct);         ///< emit go directive
 

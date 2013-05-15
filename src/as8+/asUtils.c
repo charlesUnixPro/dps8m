@@ -166,9 +166,9 @@ void dumpSymtab(bool bSort)
 	{
         char temp[256];
         
-        if (s->segname)
-            sprintf(temp, "%s$%s", s->segname, s->name);
-        else
+        //if (s->segname)
+        //    sprintf(temp, "%s$%s", s->segname, s->name);
+        //else
             sprintf(temp, "%s", s->name);
         
         // pretty-print name and value
@@ -240,105 +240,79 @@ void dumpSymtab(bool bSort)
 extern int linkCount;
 extern word18 linkAddr;
 
-void dumpextRef()
-{
-    if (linkCount == 0)
-        return;
-    
-    printf("======== External References ========\n");
-    
-    int i = 0;
-    symtab *s = Symtab;
-    
-    while (s->name)
-	{
-        if (s->segname && s->extname)
-        {
-        
-        printf("%-10s %-10s %06llo  ", s->segname, s->extname, s->value);
-        
-        i++;
-        if (i % 2 == 0)
-            printf("\n");
-        }
-        s += 1;
-	}
-    if (i % 4)
-        printf("\n");
-}
-
-/*
- * fill-in external segrefs before beginning pass 2
- */
-void fillExtRef()
-{
-    if (!linkCount)
-        return;
-    
-    symtab *s = Symtab;
-    
-    if ((addr) % 2)    // linkage (ITS) pairs must be on an even boundary
-        addr += 1;
-    
-    linkAddr = addr;    // offset of linkage section
-    
-    while (s->name)
-    {
-        if (s->segname && s->extname)
-        {
-            s->value = (s->value + addr) & AMASK;
-            addr += 2;
-        }
-        s += 1;
-    }
-}
+//void dumpextRef()
+//{
+//    if (linkCount == 0)
+//        return;
+//    
+//    printf("======== External References ========\n");
+//    
+//    int i = 0;
+//    symtab *s = Symtab;
+//    
+//    while (s->name)
+//	{
+//        if (s->segname && s->extname)
+//        {
+//        
+//        printf("%-10s %-10s %06o  ", s->segname, s->extname, s->value);
+//        
+//        i++;
+//        if (i % 2 == 0)
+//            printf("\n");
+//        }
+//        s += 1;
+//	}
+//    if (i % 4)
+//        printf("\n");
+//}
 
 /**
  * write literap pool to output stream "oct" ...
  */
-void writeExtRef(FILE *oct)
-{
-    word18 maxAddr = 0;
-
-    symtab *s = Symtab;
-
-    if (linkCount)
-    {
-        if ((addr) % 2)    // ITS pairs must be on an even boundary
-            addr += 1;
-    
-        if (linkAddr && addr != linkAddr)
-            fprintf(stderr, "writeExtRef(): Phase error for linkage section %06o != %06o\n", addr, linkAddr);
-    }
-    else return;
-
-    while (s->name)
-    {
-        if (s->segname && s->extname)
-        {
-
-            word18 lnkAddr = (word18)s->value;
-            
-            if (addr != s->value)
-                fprintf(stderr, "writeextRef(): Phase error for %s/%s\n", s->segname, s->extname);
-            
-            int segno = 0;  // filled in by loader
-            int offset = 0; // filled in by loader
-            word36 even = ((word36)segno << 18) | 046;  // unsnapped link
-            word36 odd = (word36)(offset << 18);    // no modifications (yet)| (arg3 ? getmod(arg3) : 0);
-        
-            char desc[256];
-            sprintf(desc, "link %s|%s", s->segname, s->extname);
-        
-            fprintf(oct, "%6.6o xxxx %012llo %s \n", (addr)++, even, desc);
-            fprintf(oct, "%6.6o xxxx %012llo\n", (addr)++, odd);
-
-            maxAddr = max(maxAddr, lnkAddr);
-        }
-        s += 1;
-    }
-    addr = maxAddr;
-}
+//void writeExtRef(FILE *oct)
+//{
+//    word18 maxAddr = 0;
+//
+//    symtab *s = Symtab;
+//
+//    if (linkCount)
+//    {
+//        if ((addr) % 2)    // ITS pairs must be on an even boundary
+//            addr += 1;
+//    
+//        if (linkAddr && addr != linkAddr)
+//            fprintf(stderr, "writeExtRef(): Phase error for linkage section %06o != %06o\n", addr, linkAddr);
+//    }
+//    else return;
+//
+//    while (s->name)
+//    {
+//        if (s->segname && s->extname)
+//        {
+//
+//            word18 lnkAddr = (word18)s->value;
+//            
+//            if (addr != s->value)
+//                fprintf(stderr, "writeextRef(): Phase error for %s/%s\n", s->segname, s->extname);
+//            
+//            int segno = 0;  // filled in by loader
+//            int offset = 0; // filled in by loader
+//            word36 even = ((word36)segno << 18) | 046;  // unsnapped link
+//            word36 odd = (word36)(offset << 18);        // no modifications (yet)| (arg3 ? getmod(arg3) : 0);
+//        
+//            char desc[256];
+//            sprintf(desc, "link %s|%s", s->segname, s->extname);
+//        
+//            fprintf(oct, "%6.6o xxxx %012llo %s \n", (addr)++, even, desc);
+//            fprintf(oct, "%6.6o xxxx %012llo\n", (addr)++, odd);
+//
+//            maxAddr = max(maxAddr, lnkAddr);
+//        }
+//        s += 1;
+//    }
+//    addr = maxAddr;
+//}
 
 /**
  * return normalized dps8 representation of IEEE double f0 ...

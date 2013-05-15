@@ -535,7 +535,7 @@ outRec *outas8Str(char *s36, word18 address, char *srctext)
 extern list *newList();
 
 /*
- * write a directive to the output stream ...
+ * write a directive to the output stream as8output...
  */
 outRec *outas8Direct(char *dir, ...)
 {
@@ -544,24 +544,55 @@ outRec *outas8Direct(char *dir, ...)
     
     p->direct = strdup(dir);
     
-    va_list listPointer;
-    
-    va_start( listPointer, dir );
+    va_list argPointer;
+    va_start( argPointer, dir );
     
     if (!strcasecmp(dir, "size"))
     {
         // size of assembly in word18 words
         list *l = newList();
-        l->i18 = va_arg( listPointer, word18 );
+        l->i18 = va_arg( argPointer, word18 );
         DL_APPEND(p->dlst, l);
         
         asprintf(&p->dirStr, "!SIZE %06o", l->i18);
         
-    } else
-        fprintf(stderr, "outas8Direct(): unhandled directive <%s>\n", dir);
-    
-    va_end( listPointer );
+    } else if (!strcasecmp(dir, "entry"))
+    {
+        char *name = va_arg( argPointer, char *);
+        word18 intValue = va_arg( argPointer, word18);
+        word18 extValue = va_arg( argPointer, word18);
+        
+        asprintf(&p->dirStr, "!ENTRY %s %06o %06o", name, intValue, extValue);
+    } else if (!strcasecmp(dir, "name"))
+    {
+        char *name = va_arg( argPointer, char *);
 
+        asprintf(&p->dirStr, "!NAME %s", name);
+    } else if (!strcasecmp(dir, "segdef"))
+    {
+        char *name = va_arg( argPointer, char *);
+        word18 intValue = va_arg( argPointer, word18);
+
+        asprintf(&p->dirStr, "!SEGDEF %s %06o", name, intValue);
+    } else if (!strcasecmp(dir, "segref"))
+    {
+        char *name = va_arg( argPointer, char *);
+        char *segname = va_arg( argPointer, char *);
+        word18 lnkValue = va_arg( argPointer, word18);
+        
+        asprintf(&p->dirStr, "!SEGREF %s %s %06o", name, segname, lnkValue);
+    }
+    else if (!strcasecmp(dir, "linkage"))
+    {
+        word18 linkAddr = va_arg( argPointer, word18 );
+        int linkCount = va_arg( argPointer, int );
+        
+        asprintf(&p->dirStr, "!LINKAGE %06o %d", linkAddr, linkCount);
+    }
+    else
+        fprintf(stderr, "outas8Direct(): unhandled directive <%s>\n", dir);
+
+    va_end( argPointer );
     DL_APPEND(as8output, p);
     
     return p;

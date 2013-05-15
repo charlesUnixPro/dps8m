@@ -11,10 +11,6 @@
     push
     getlp
     
-    "temp    Stack_temp_1(1), Stack_temp_2(2), Stack_temp_3(4)
-    "tempd   Stack_temp_d1(1), Stack_temp_d2(2), Stack_temp_d3(4)
-    "temp8   Stack_temp_81(1), Stack_temp_82(2), Stack_temp_83(4)
-    
     tempd	.temp
     tempd	.label_variable(0)
     tempd	.time1,.time2
@@ -23,7 +19,23 @@
     temp	.pf,.entryp
     tempd	.vfl_arglist(2)
     tempd	.mcptr
-    
+
+"     50    .temp                    dm_hcs_:       25.
+"     52    .label_variable          dm_hcs_:       25,   38.
+"     52    .time1                   dm_hcs_:       25.
+"     54    .time2                   dm_hcs_:       25.
+"     56    .unwinder_arglist        dm_hcs_:       25,   38.
+"     56    .on_unit                 dm_hcs_:       25,   38.
+"     70    .pf                      dm_hcs_:       25.
+"     71    .entryp                  dm_hcs_:       25,   38.
+"     72    .vfl_arglist             dm_hcs_:       25,   38.
+"     76    .mcptr                   dm_hcs_:       25,   38.
+
+
+    temp    Stack_temp_1(1), Stack_temp_2(2), Stack_temp_3(4)
+    tempd   Stack_temp_d1(1), Stack_temp_d2(2), Stack_temp_d3(4)
+    temp8   Stack_temp_81(1), Stack_temp_82(2), Stack_temp_83(4)
+        
     tempd	v_temp          "temporary for virtual time computation
   	tempd	v_delta         "temporary to remember virtual_delta
   	tempd	pad(2)
@@ -39,17 +51,6 @@
     ldaq    pad
     ldq     .on_unit
     
-"     50    .temp                    dm_hcs_:       25.
-"     52    .label_variable          dm_hcs_:       25,   38.
-"     52    .time1                   dm_hcs_:       25.
-"     54    .time2                   dm_hcs_:       25.
-"     56    .unwinder_arglist        dm_hcs_:       25,   38.
-"     56    .on_unit                 dm_hcs_:       25,   38.
-"     70    .pf                      dm_hcs_:       25.
-"     71    .entryp                  dm_hcs_:       25,   38.
-"     72    .vfl_arglist             dm_hcs_:       25,   38.
-"     76    .mcptr                   dm_hcs_:       25,   38.
-
     option  Multics         " Multics calling convention
 
     call	pr1|0,*(pr2|0)
@@ -57,6 +58,16 @@
     
     option  Honeywell       " Honeywell calling convention
     
+    
+    segref  UtilsA, Aone
+    segref  UtilsB, Bone, Btwo, Bthree
+
+    lda     Aone
+    ldq     Bthree
+    stq     Btwo
+    sta     Bone
+    
+    entry   FPtests_
     
 "
 " floating point test routines ... 
@@ -75,7 +86,9 @@ main_:
     call    ioa(msgHello, Date, Date+1)
 
 
+FPtests_:
     call    ioa(msgArcsin)
+
 
     call    arc_sine_degrees_(=.1)
     emCall  6
@@ -469,7 +482,7 @@ scale:	oct     000400000000	" 0.5
 " * Copyright, (C) Honeywell Limited, 1985 *
 " *                                        *
 " ******************************************
-	name	sine_
+*	name	sine_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on GCOS routine '7nba'.
@@ -688,7 +701,7 @@ tp5:        dec	-2.386834641d-8
 " * Copyright, (C) Honeywell Information Systems Inc., 1985 *
 " *                                                         *
 " ***********************************************************
-	name	principal_angle_
+*	name	principal_angle_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985.
 "
@@ -938,7 +951,7 @@ square_root_two:
 " * Copyright, (C) Honeywell Limited, 1985 *
 " *                                        *
 " ******************************************
-	name	tangent_
+*	name	tangent_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on GCOS routine '7nbc'.
@@ -1173,7 +1186,7 @@ q1:     dec	-2.78397212200427089d1
 " * Copyright, (C) Honeywell Limited, 1985 *
 " *                                        *
 " ******************************************
-	name	logarithm_
+*	name	logarithm_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on GCOS routine '7naf'.
@@ -1338,7 +1351,7 @@ Lsquare_root_two:
 " * Copyright, (C) Honeywell Limited, 1985 *
 " *                                        *
 " ******************************************
-	name	exponential_
+*	name	exponential_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on GCOS routine '7naz'.
@@ -1870,7 +1883,7 @@ ATp3:	dec	-.14072538d00
 " * Copyright, (C) Honeywell Limited, 1985 *
 " *                                        *
 " ******************************************
-	name	double_square_root_
+*	name	double_square_root_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on GCOS routine '7nau'.
@@ -1983,7 +1996,7 @@ DSp2:	dec	-3.1632214d-1
 "                                                      END HISTORY COMMENTS
 
 
-name	arc_sine_
+*name	arc_sine_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on the GCOS routine '7nah'.

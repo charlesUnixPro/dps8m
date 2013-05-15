@@ -1997,7 +1997,7 @@ void doDescriptor2(pseudoOp *p, list *argList)
 char *segName = NULL;
 
 // specifies again the object segment name as it appears in the object segment.
-void doName(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
+void doName(char *arg1)
 {
     if (nPass == 1)
     {
@@ -2069,16 +2069,48 @@ void doSegdef(list *lst)
             
             
             // probably should check for dup segdefs
+            segDef *sd;
+            DL_FOREACH(segDefs, sd)
+            {
+                if (!strcmp(sd->name, lel->p))
+                {
+                    yyprintf("WARNING: duplicate SEGDEF %s - ignoring", sd->name);
+                    goto c1;    // heh, heh, sometimes, only a goto will do! :-)
+                }
+                    
+            }
             
             segDef *s = newsegDef();
             s->name = lel->p;
             s->value = -1;  // no value set yet
             
             DL_APPEND(segDefs, s);
-        }
+c1:;    }
     }
 }
 
+void emitSegdefs()
+{
+    // process segdefs
+    segDef *s;
+    DL_FOREACH(segDefs, s)
+    {
+        symtab *sym = getsym(s->name);
+        if (!sym)
+            yyprintf("segdef name '%s' not found ", s->name);
+        else
+        {
+            if (sym->segname || sym->extname)
+                yyprintf("segdef segdef name '%s' must not be external", s->name);
+            else
+            {
+                s->value = (word18)sym->Value->value;  // in case we need it later
+                //fprintf(oct, "!SEGDEF %s %06llo\n", sym->name, sym->value);
+                outas8Direct("segdef", s->name, s->value);
+            }
+        }
+    }
+}
 
 /*
  * usage: segref segmentname, name1, name2, ...., nameN
@@ -2092,12 +2124,14 @@ struct segRef
     char    *segname;
     word18  value;      // value of name
     
+    symtab  *sym;       // symtab entry associated with the segRef
+    
     struct segRef *prev;
     struct segRef *next;
-} *aSegRefs = NULL;
+} *segRefs = NULL;
 typedef struct segRef segRef;
 
-segRef * newsegRef()
+segRef *newsegRef()
 {
     return (segRef*)calloc(1, sizeof(segRef));
 }
@@ -2115,13 +2149,12 @@ void doSegref(list *lst)
     {
         if (cnt < 2)
         {
-            yyprintf("ERROR: doSegref(): must have a 'segement name' as the first parameter @ line %d. Ignoring directive.", yylineno);
+            yyerror("must have a 'segement name' as the first parameter");
             return;
         }
         
         char *segname = NULL;
         
-        //for(int i = 1 ; i < 32 ; i++)
         DL_FOREACH(lst, lel)
         {
             char *a = lel->p;
@@ -2134,80 +2167,188 @@ void doSegref(list *lst)
             symtab *sym = getsym(a);
             if (sym)
             {
-                fprintf(stderr, "ERROR: doSegdef(): symbol '%s' already defined @ line %d. Ignoring.\n", a, yylineno);
+                yyprintf("segdef: symbol '%s' already defined", a);
                 continue;
             }
             else
             {
-                sym = addsym(a, 0);
+                expr *e = newExpr();
+                e->type = eExprSegRef;
+                e->lc = ".link.";
+                e->bit29 = true;    // symbol will be references via pr4
+                e->value = 2 * linkCount;   // offset into link section
                 
+                //sym = addsym(a, 0);
+                sym = addsymx(a, e);
                 sym->segname = segname;
                 sym->extname = a;
+                sym->Value = e;
+                sym->value = e->value;
                 
-                if (debug) printf("adding segref symbol '%s'\n", a);
+                if (debug) printf("Adding segref symbol '%s'\n", a);
                 
+                segRef *el = newsegRef();
+                el->name = a;
+                el->segname = segname;
+                el->value = 2 * linkCount;  // each link takes up 2 words
+                el->sym = sym;
+                
+                DL_APPEND(segRefs, el);
+
                 linkCount += 1;
             }
-            
-            segRef *el = newsegRef();
-            el->name = a;
-            el->segname = segname;
-            el->value = -1;
-            
-            DL_APPEND(aSegRefs, el);
         }
     }
 }
 
 /*
- * emit segment related directives (if any)
+ * fill-in external segrefs before beginning pass 2
  */
-void emitSegment(FILE *oct)
+extern int linkCount;
+extern word18 linkAddr;
+
+#if OLD
+void fillExtRef()
 {
-    if (segName)
-        fprintf(oct, "!SEGNAME %s\n", segName);
+    if (!linkCount)
+        return;
     
-    if (doSegment_segno != -1)
-        fprintf(oct, "!SEGMENT %d\n", doSegment_segno);
+    symtab *s = Symtab;
     
-    // process segdefs
-    //for(segDefs *s = aSegDefs; s < sd; s++)
-    segDef *s;
-    DL_FOREACH(segDefs, s)
+    if ((addr) % 2)    // linkage (ITS) pairs must be on an even boundary
+        addr += 1;
+    
+    linkAddr = addr;    // offset of linkage section
+    
+    while (s->name)
     {
-        symtab *sym = getsym(s->name);
-        if (!sym)
-            yyprintf("ERROR: emitSegment(): segdef: name '%s' not found @ line %d.\n", s->name, yylineno);
-        else
+        if (s->segname && s->extname)
         {
-            if (sym->segname || sym->extname)
-                yyprintf("ERROR: emitSegment(): segdef name '%s' must not be external @ line %d. Ignoring\n", s->name, yylineno);
-            else
-            {
-                s->value = (word18)sym->value;  // in case we need it later
-                fprintf(oct, "!SEGDEF %s %06llo\n", sym->name, sym->value);
-            }
+            s->value = (s->value + addr) & AMASK;
+            addr += 2;
         }
-    }
-    
-    // process segrefs
-    
-    int i = 0;
-    
-    symtab *sy = Symtab;
-    while (sy)
-    {
-        char temp[256];
-        
-        if (sy->segname)
-        {
-            sprintf(temp, "%s %s %06llo", sy->segname, sy->name, sy->value & AMASK);
-            fprintf(oct, "!SEGREF %s\n", temp);
-        }
-        i += 1;
-        sy = (symtab*)sy->hh.next;
+        s += 1;
     }
 }
+#else
+void fillExtRef()
+{
+    if (!linkCount)     // and s required?
+        return;
+    
+    
+    if ((addr) % 2)    // linkage (ITS) pairs must be on an even boundary
+        addr += 1;
+    
+    linkAddr = addr;    // offset of linkage section
+    
+    segRef *s;
+    DL_FOREACH(segRefs, s)
+    {
+        s->value = (s->value + linkAddr) & AMASK;
+        
+        addr += 2;
+    }
+}
+
+#endif
+
+void emitSegrefs()
+{
+    // process segrefs
+    if (!linkCount)
+        return;
+    
+    outas8Direct("linkage", linkAddr, linkCount);
+
+    segRef *s;
+    DL_FOREACH(segRefs, s)
+        outas8Direct("segref", s->segname, s->name, s->value);
+}
+
+void writeSegrefs()
+{
+    // process segrefs
+    
+    word18 maxAddr = 0;
+    
+    if (linkCount)
+    {
+        if ((addr) % 2)    // ITS pairs must be on an even boundary
+            addr += 1;
+            
+        if (linkAddr && addr != linkAddr)
+                yyprintf("phase error for linkage section %06o != %06o\n", addr, linkAddr);
+    }
+    
+    segRef *s;
+    DL_FOREACH(segRefs, s)
+    {
+        int segno = 0;                              // filled in by loader
+        int offset = 0;                             // filled in by loader
+        word36 even = ((word36)segno << 18) | 043;  // ITS addressing
+        word36 odd = (word36)(offset << 18);        // no modifications (yet)| (arg3 ? getmod(arg3) : 0);
+                
+        char desc[256];
+        sprintf(desc, "link %s$%s", s->segname, s->name);
+        
+        outas8(even, addr++, desc);
+        outas8(odd,  addr++, NULL);
+        
+        maxAddr = max(maxAddr, linkAddr);
+    }
+    addr = maxAddr;
+}
+
+/*
+ * emit segment related directives (if any)
+ */
+//void emitSegment(FILE *oct)
+//{
+//    if (segName)
+//        fprintf(oct, "!SEGNAME %s\n", segName);
+//    
+//    if (doSegment_segno != -1)
+//        fprintf(oct, "!SEGMENT %d\n", doSegment_segno);
+//    
+//    // process segdefs
+//    //for(segDefs *s = aSegDefs; s < sd; s++)
+//    segDef *s;
+//    DL_FOREACH(segDefs, s)
+//    {
+//        symtab *sym = getsym(s->name);
+//        if (!sym)
+//            yyprintf("ERROR: emitSegment(): segdef: name '%s' not found @ line %d.\n", s->name, yylineno);
+//        else
+//        {
+//            if (sym->segname || sym->extname)
+//                yyprintf("ERROR: emitSegment(): segdef name '%s' must not be external @ line %d. Ignoring\n", s->name, yylineno);
+//            else
+//            {
+//                s->value = (word18)sym->value;  // in case we need it later
+//                fprintf(oct, "!SEGDEF %s %06llo\n", sym->name, sym->value);
+//            }
+//        }
+//    }
+//    
+//    // process segrefs
+//    
+//    int i = 0;
+//    
+//    symtab *sy = Symtab;
+//    while (sy)
+//    {
+//        char temp[256];
+//        
+//        if (sy->segname)
+//        {
+//            sprintf(temp, "%s %s %06llo", sy->segname, sy->name, sy->value & AMASK);
+//            fprintf(oct, "!SEGREF %s\n", temp);
+//        }
+//        i += 1;
+//        sy = (symtab*)sy->hh.next;
+//    }
+//}
 
 /*
  * Multics specific C/S/R code ...
@@ -2366,7 +2507,10 @@ word18 getEntryPoint(char *entrypoint)
 struct entryName
 {
     char    *name;      // name to make external
-    word18  value;      // value of name
+    word18  intValue;   // where in this segment 'name'  begins
+    word18  extValue;   // entrypoint for external calls
+    
+    symtab *sym;        // symbol that represents entry point
     
     struct entryName *prev;
     struct entryName *next;
@@ -2374,7 +2518,7 @@ struct entryName
 
 typedef struct entryName entryName;
 
-entryName * newentryName()
+entryName * newEntryName()
 {
     return (entryName*)calloc(1, sizeof(entryName));
 }
@@ -2389,17 +2533,100 @@ void doEntry(list *lst)                           // multics CSR Entry pseudo-op
         {
             if (debug) printf("adding entry name symbol '%s'\n", lel->p);
             
-            // probably should check for dup entry names
-            
-            entryName *e = newentryName();
+            // check for dup entry names
+            if (entryNames)
+            {
+                entryName *en;
+                DL_FOREACH(entryNames, en)
+                {
+                    if (!strcmp(lel->p, en->name))
+                    {
+                        yyprintf("duplicate entry name found for entrypoint '%s'", en->name);
+                        return;
+                    }
+                }
+            }
+            entryName *e = newEntryName();
             e->name = lel->p;
-            e->value = -1;  // no value set yet
+            e->intValue = -1;
+            e->extValue = -1;
             
             DL_APPEND(entryNames, e);
         }
     }
-    
 }
+
+
+// fill in entry sequences
+int fillinEntrySequences()
+{
+    int beginningOfEntrySequences = 0;     // offset in entry section ...
+    
+    entryName *e;
+    DL_FOREACH(entryNames, e)
+    {
+        if (debug) printf("filling-in entry info for symbol '%s'\n", e->name);
+        
+        char *name = e->name;   // gen name of entry point
+        symtab *sym = getsym(name);
+        if (sym == NULL)
+        {
+            // Uh-Oh, symbol not found!
+            yyprintf("entry name not found for symbol '%s'", e->name);
+            continue;
+        }
+        // check symbol type, better be relative
+//        if (sym->Value->type != eExprRelative)
+//        {
+//            yyprintf("entry name <%s> is not a relocatable type", e->name);
+//            return;
+//        }
+        if (nPass == 1)
+        {
+            e->sym = sym;                                           // symbol table entry for entry name
+            e->intValue = (word18)sym->Value->value;                // this is the symbols interal entry point
+            e->extValue = addr + beginningOfEntrySequences;         // this is the symbols external entry point
+        } else {
+            if (e->intValue != sym->Value->value)                   // this is the symbols interal entry point
+                yyprintf("phase error for entrypoint <%s> intValue %06o/%06o", e->intValue, sym->Value->value);
+            if (e->extValue != addr + beginningOfEntrySequences)    // this is the symbols interal entry point
+                yyprintf("phase error for entrypoint <%s> extValue %06o/%06o", e->extValue, beginningOfEntrySequences);
+        }
+        beginningOfEntrySequences += 2;                             // each entry sequence takes uf 2 words
+    }
+
+    if (debug) printf("%d words used by entry sequences ...\n", beginningOfEntrySequences);
+    
+    return beginningOfEntrySequences;
+}
+
+void writeEntrySequences()
+{
+    //int sizeOfEntrySequences = fillinEntrySequences();
+    
+    entryName *e;
+    DL_FOREACH(entryNames, e)
+    {
+        if (debug) printf("creating entry sequence for symbol '%s'\n", e->name);
+        
+        char w[256];
+        sprintf(w, "Entry Sequence for %s (%06o)", e->name, e->intValue);
+        outas8(0700046272120LL, addr, w);
+        addr += 1;
+        
+        sprintf(w, "%06o%06o", e->intValue,  getEncoding("tra"));
+        outas8Str(w, addr, "");
+        addr += 1;
+    }
+}
+
+void emitEntryDirectives()
+{
+    entryName *e;
+    DL_FOREACH(entryNames, e)
+        outas8Direct("entry", e->name, e->intValue, e->extValue);
+}
+
 
 const int stack_frame_min_length = 48;  // 060
 

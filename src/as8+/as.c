@@ -108,3 +108,81 @@ int asMain(int argc, char **argv)
     return 0;
 }
 
+/**
+ * do special interpass processing ....
+ */
+
+extern char *segName;
+
+extern word18 addr;
+extern word18 linkAddr;
+extern int linkCount;
+
+extern int nTotalLiteralWords;  // how many word the literals take up
+extern int nCurrentLitAddress;
+
+void doInterpass(FILE *out)
+{
+    // perform end of pass 1 processing ...
+    
+    // make literal signature
+    //makeLiteralSignatures();
+    
+    addr += fillinEntrySequences();
+    
+    // fill in literals
+    fillLiteralPool();
+    
+    // fill in temporaries
+    fillinTemps();
+    
+    // fill in ITS/link pairs
+    fillExtRef();
+    
+    //    nCurrentLitAddress = addr;
+    //
+    //    addr += nTotalLiteralWords;
+    
+    // write size of segment
+    if (debug) fprintf(stderr, "!SIZE %06o\n", addr);
+    outas8Direct("size", addr);
+    
+    // write segment name (if any)
+    if (segName)
+    {
+        if (debug) fprintf(stderr, "!NAME %s\n", segName);
+        outas8Direct("name", segName);
+    }
+    
+    // write segdefs
+    emitSegdefs();
+    
+    // write entry sequences (if any)
+    emitEntryDirectives();
+    
+    // write segment references (if any)
+    emitSegrefs();
+    
+    //if (linkCount)
+    //    fprintf(out, "!LINKAGE %06o %06o\n", linkAddr, linkCount);
+    
+    // emit any SEGMENT directive stuff
+    //emitSegment(out);
+    
+    // emit any !GO directive
+    //emitGo(out);
+}
+
+void doPostpass(FILE *out)
+{
+    writeEntrySequences();
+    
+    checkLiteralPool();
+    
+    writeLiteralPool();
+    
+    writeSegrefs();
+    
+    //   writeExtRef(out, &addr);
+}
+

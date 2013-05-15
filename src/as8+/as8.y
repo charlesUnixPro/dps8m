@@ -60,7 +60,7 @@
 %token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
-%token SHORT_CALL  SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER
+%token SHORT_CALL SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER
 
 %type <s> SYMBOL STRING LABEL TERMCOND
 %type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP TEMP
@@ -196,24 +196,36 @@ operand
 
 operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
     | operand               {
+                                opnd.lo = 0;
                                 if ($1->type == eExprTemporary)
                                 {
                                     opnd.hi = (6 << 15) | ($1->value & 077777);
                                     opnd.bit29 = true;
+                                } else if ($1->type == eExprSegRef)
+                                {
+                                    opnd.hi = (4 << 15) | ($1->value & 077777);
+                                    opnd.bit29 = true;
+                                    opnd.lo = getmod("*");  // indirect via pr4 
                                 }
                                 else
                                     opnd.hi = $1->value & AMASK;
-                                opnd.lo = 0;
+
                             }
     | operand ',' modifier  {
+                                opnd.lo = $3 & 077;
                                 if ($1->type == eExprTemporary)
                                 {
                                     opnd.hi = (6 << 15) | ($1->value & 077777);
                                     opnd.bit29 = true;
+                                } else if ($1->type == eExprSegRef)
+                                {
+                                    opnd.hi = (4 << 15) | ($1->value & 077777);
+                                    opnd.bit29 = true;
+                                    opnd.lo = getmod("*");
                                 }
                                 else
                                     opnd.hi = $1->value & AMASK;
-                                opnd.lo = $3 & 077;
+
                             }
     | literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0;         }
     | literal ',' modifier  {
@@ -387,7 +399,6 @@ pop
     | ZERO           ',' VFDLIT vfdArgs          { literal *l = doVFDLiteral($4); doZero(0,l->addr);  popAndReset();  }
 
     | ARG            operands                                             { doArg(&opnd);  }
-    | NAME           SYMBOL
     | ORG            expr                                                 { doOrg($2->value);     }
     | MOD            expr                                                 { doMod($2->value);     }
 
@@ -395,15 +406,15 @@ pop
     | DEC            declist                                              { doDec($2);  }
     | DESC                       expr                                     { doDescriptor($1, $2->value,         0,  0,  0,      -1); }
     | DESC                       expr '(' expr ')'                        { doDescriptor($1, $2->value, $4->value,  0,  0,      -1); }
-    | DESC           ptr_reg '|' expr              ',' rexpr              { doDescriptor($1, $4->value,  0, $6,  0, (int)$2); }
+    | DESC           ptr_reg '|' expr              ',' rexpr              { doDescriptor($1, $4->value,  0, $6,  0, (int)$2);        }
     | DESC                       expr '(' expr ')' ',' rexpr              { doDescriptor($1, $2->value, $4->value, $7,  0,      -1); }
-    | DESC                       expr              ',' rexpr              { doDescriptor($1, $2->value,  0, $4,  0,      -1); }
+    | DESC                       expr              ',' rexpr              { doDescriptor($1, $2->value,  0, $4,  0,      -1);        }
     | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr              { doDescriptor($1, $4->value, $6->value, $9,  0, (int)$2); }
     | DESC           ptr_reg '|' expr              ',' rexpr ',' expr     { doDescriptor($1, $4->value,  0, $6, $8->value, (int)$2); }
     | DESC                       expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $2->value, $4->value, $7, $9->value,      -1); }
     | DESC                       expr              ',' rexpr ',' expr     { doDescriptor($1, $2->value,  0, $4, $6->value,      -1); }
     | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $4->value, $6->value, $9, $11->value,(int)$2); }
-    | DESC2          exprlist                                             { doDescriptor2($1, $2);                     }
+    | DESC2          exprlist                                             { doDescriptor2($1, $2);                                   }
     | PSEUDOOPD2     symlist
 
     | STROP          STRING                  { doStrop($1, $2, 0);       }
@@ -436,6 +447,8 @@ pop
     | ITS            expr ',' expr ',' modifier      { doITSITP($1, $2->value, $4->value, $6);  }
 
     | NULLOP
+
+    | NAME           SYMBOL                          { doName($2);   }
 
     | CALLM          entry                                 { doMCall($2,  0, NULL); }
     | CALLM          entry ',' modifier                    { doMCall($2, $4, NULL); }
@@ -592,21 +605,21 @@ int getPRn(char *s)
 }
 
 
-word36 getValue(char *s)
-{
-    symtab *y = getsym(s);
-
-    if (!y)
-    {
-        if (nPass == 1)
-            return -1;
-        
-        yyprintf("undefined symbol <%s>", s);
-        return 0;
-    }
-    
-    return y->value;
-}
+//word36 getValue(char *s)
+//{
+//    symtab *y = getsym(s);
+//
+//    if (!y)
+//    {
+//        if (nPass == 1)
+//            return -1;
+//        
+//        yyprintf("undefined symbol <%s>", s);
+//        return 0;
+//    }
+//    
+//    return y->value;
+//}
 
 
 
