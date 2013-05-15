@@ -1,3 +1,9 @@
+Tue May 14 19:45:44 PDT 2013
+as8+: completed integration of Multics-style calling conventions. Assembler now generated meta info that *should* support the Multics execution environment's C/S/R API
+
+Mon May 13 19:11:58 PDT 2013
+Added Multics-style calling conventions to as8+; updated simh to latest v4.0-0beta
+
 Sat Apr 20 20:14:37 PDT 2013
 Added scaled, fixed-point literal support
 
