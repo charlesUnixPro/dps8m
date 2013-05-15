@@ -4,6 +4,7 @@ C_SRCS += \
 ./as.c \
 ./asUtils.c \
 ./asMisc.c \
+./expr.c \
 ./opcodeTable.c \
 ./opCodes.c \
 ./literals.c \
@@ -14,6 +15,7 @@ OBJS += \
 ./as.o \
 ./asUtils.o \
 ./asMisc.o \
+./expr.o \
 ./opcodeTable.o \
 ./opCodes.o \
 ./literals.o \
