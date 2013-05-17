@@ -279,14 +279,15 @@ void doZero(word36 hi, word36 lo)
     addr += 1;
 }
 
-int _doVfd(tuple *list, word36 *data)
+#if DELETE_WHEN_READY
+int _doVfdOrig(tuple *list, word36 *data)
 {
     // low-order Li bits of data are used, padded if needed on the left.
     int nBits = 0;
     
     tuple *l;
     DL_FOREACH(list, l)
-    nBits += l->b.i;
+        nBits += l->b.i;
     
     int nWords = nBits / 36;
     nWords += nBits % 36 ? 1 : 0;
@@ -304,15 +305,17 @@ int _doVfd(tuple *list, word36 *data)
         word36 vfd = 0;     ///< final value of vfd
         int bitPos = 36;    ///< start at far left of word ...
         
-        int w, cnt;
-        word36 v;
-        
+        int w;              ///< width of field to encode
+        word36 v;           ///< value to encode
+
+        int cnt;            ///< current bit position of insertion
+
         // now encode bits ...
         DL_FOREACH(list, l)
         {
             if (l->a.c == 'o')
             {
-                w = l->b.i;;
+                w = l->b.i;
                 v = l->c.i36;
             }
             else if (l->a.c == 'a')
@@ -347,7 +350,7 @@ int _doVfd(tuple *list, word36 *data)
             }
             
             if (w > 36)
-                fprintf(stderr, "WARNING: doVfd(): term width exceeds 36-bits (%d)\n", w);
+                yyprintf("_doVfd(): term width exceeds 36-bits (%d)", w);
             
             // at this point w contains up to 36-bits of data. Insert it into the data array at bit bitPos...
             if (bitPos - w < 0)
@@ -394,6 +397,127 @@ int _doVfd(tuple *list, word36 *data)
 
     return nWords;
 }
+#endif
+
+int _doVfd(tuple *list, word36 *data)
+{
+    // low-order Li bits of data are used, padded if needed on the left.
+    int nBits = 0;
+    
+    tuple *l;
+    DL_FOREACH(list, l)
+    nBits += l->b.i;
+    
+    int nWords = nBits / 36;
+    nWords += nBits % 36 ? 1 : 0;
+    
+    if (nPass == 2)
+    {
+        //word36 data[nWords];            // where the vfd bits live
+        //memset(data, 0, sizeof(data));  // make everything 0
+        
+        //word36 *d = data;   // pointer to destination word
+        //int bpos = 0;       // dps8 bit position to write
+        
+        int vfdWord = 0;    ///< current vfd word
+        
+        word36 vfd = 0;     ///< final value of vfd
+        int bitPos = 36;    ///< start at far left of word ...
+        
+        int w;              ///< width of field to encode
+        word72s v;          ///< value to encode (72-bits for large negative #'s
+        
+        int cnt;            ///< current bit position of insertion
+        
+        // now encode bits ...
+        DL_FOREACH(list, l)
+        {
+            if (l->a.c == 'o')      // an 'o' field
+            {
+                w = l->b.i;
+                v = (word72s)l->c.i36;
+            }
+            else if (l->a.c == 'a') // an 'a' field
+            {
+                cnt = (int)strlen(l->c.p);
+                w = l->b.i;
+                v = 0;
+                char *p = l->c.p;
+                
+                for(int n = 0 ; (n < cnt) && (*p) ; n ++)
+                    v = (v << 9) | *p++;
+            }
+            else if (l->a.c == 'h') // 6-bit gebcd packed into 9-bits
+            {
+                cnt = (int)strlen(l->c.p);
+                w = l->b.i;
+                v = 0;
+                char *p = l->c.p;
+                
+                for(int n = 0 ; (n < cnt) && (*p) ; n ++)
+                {
+                    int c6 = ASCIIToGEBcd[*p++];
+                    if (c6 == -1)   // invalid GEBCD?
+                        c6 = 017;   // a GEBCD ? - probably ought to change
+                    v = (v << 9) | (c6 & 077);
+                }
+            }
+            else
+            {
+                w = l->b.i;
+                v = (word72s)l->c.i36;
+            }
+            
+            if (w > 72)
+                yyprintf("_doVfd(): term width exceeds 72-bits (%d)", w);
+            
+            // at this point w contains up to 36-bits of data. Insert it into the data array at bit bitPos...
+            if (bitPos - w < 0)
+            {
+                /*
+                 * v is too big to fit in what's left of the current data word. Place what can fit into the current
+                 * data[] word and continue with the next...
+                 */
+                
+                // determine how much (if any) we can fit into the rest of the current word
+                int x = bitPos - w;
+                int howMuch = w + x;    // this is how many bits we can fit into the current word.
+                
+                bitPos -= howMuch;
+                word36 mask = bitMask36(howMuch);
+                word36 dataToInsert = (v >> (x + howMuch)) & mask;
+                vfd = bitfieldInsert36(vfd, dataToInsert, bitPos, howMuch);
+                
+                // store into current word and go to next
+                data[vfdWord++] = vfd;
+                
+                vfd = 0;
+                bitPos = 36;
+                
+                // how much has slopped over to the next word?
+                int slop = w - howMuch;
+                if (slop)
+                {
+                    bitPos -= slop;
+                    
+                    mask = bitMask36(slop);
+                    vfd = bitfieldInsert36(vfd, v & mask, bitPos, slop);
+                }
+            } else {
+                bitPos -= w;
+                word36 mask = bitMask36(w);
+                vfd = bitfieldInsert36(vfd, v & mask, bitPos, w);
+            }
+        }
+        
+        // last word
+        data[vfdWord++] = vfd;
+    }
+    
+    return nWords;
+}
+
+
 
 void doVfd(tuple *list)
 {
@@ -2201,6 +2325,46 @@ void doSegref(list *lst)
     }
 }
 
+void doLink(char *s, tuple *t)
+{
+    if (nPass == 1)
+    {
+        symtab *sym = getsym(s);
+        if (sym)
+        {
+            yyprintf("link: symbol '%s' already defined", s);
+            return;
+        }
+        else
+        {
+            expr *e = newExpr();
+            e->type = eExprLink;
+            e->lc = ".ext.";            // an external symbol
+            //e->bit29 = true;          // symbol will be references via pr4
+            e->value = 2 * linkCount;   // offset into link section
+                
+            //sym = addsym(a, 0);
+            sym = addsymx(s, e);
+            sym->segname = t->a.p;      // segment name
+            sym->extname = t->b.p;      // name in segment
+            sym->Value = e;
+            sym->value = e->value;
+                
+            if (debug) printf("Adding link symbol '%s'\n", s);
+                
+            segRef *el = newsegRef();
+            el->name = s;
+            el->segname = t->a.p;
+            el->value = 2 * linkCount;  // each link takes up 2 words
+            el->sym = sym;
+                
+            DL_APPEND(segRefs, el);
+            
+            linkCount += 1;
+        }
+    }
+}
+
 /*
  * fill-in external segrefs before beginning pass 2
  */
@@ -2779,6 +2943,15 @@ void doShortReturn()                           // multics CSR Short_Return pseud
     addr += 1;
 }
 
+void doInhibit(char *o)
+{
+    if (!strcasecmp(o, "on"))
+        bInhibit = true;
+    else if (!strcasecmp(o, "off"))
+        bInhibit = false;
+    else
+        yyerror("must specify either ON or OFF for inhibit");
+}
 
 /**
  * Work In Progress ...
@@ -2966,6 +3139,8 @@ pseudoOp pseudoOps[] =
     {"name",        0, NULL,    NAME  },     ///< segment name directive
     {"segdef",      0, NULL,    SEGDEF},     ///< segdef directive
     {"segref",      0, NULL,    SEGREF},
+    {"link",        0, NULL,    LINK},
+    {"inhibit",     0, NULL,    INHIBIT},
     
     { 0, 0, 0 } ///< end marker do not remove
 };

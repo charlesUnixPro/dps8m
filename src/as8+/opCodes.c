@@ -98,8 +98,9 @@ int getmod(const char *arg_in) {
     //return mod;
 }
 
-// process all OPCODE instructions
+bool bInhibit = false;
 
+// process all OPCODE instructions
 void doOpcode(struct opnd *o)
 {   
     if (nPass == 1)
@@ -119,6 +120,9 @@ void doOpcode(struct opnd *o)
     p->data |= ((word36)o->hi << 18);
     if (o->bit29)
         p->data |= (1LL << 6);    // set bit-29
+    
+    if (bInhibit)
+        p->data |= (1LL << 7);    // set bit-28 - inhibit interrupt
     
     p->src = strdup(LEXline);
     

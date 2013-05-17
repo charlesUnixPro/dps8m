@@ -60,7 +60,7 @@
 %token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
-%token SHORT_CALL SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER
+%token SHORT_CALL SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER LINK INHIBIT
 
 %type <s> SYMBOL STRING LABEL TERMCOND
 %type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP TEMP
@@ -71,7 +71,7 @@
 %type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %type <lst> symlist exprlist lexprlist optexplist optarglist optintlist opterrlist decs declist
 %type <lit> literal
-%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option
+%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option external
 %type <e> expr lexpr operand optarg arg2 entry
 
 /*%right '='
@@ -237,9 +237,11 @@ operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
                             }
     | ptr_reg '|' operand               { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = 0;        }
     | ptr_reg '|' operand ',' modifier  { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = $5 & 077; }
+
+    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
+
     | external
     | external ',' modifier
-    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
     ;
 
 ptr_reg : SYMBOL {
@@ -265,8 +267,8 @@ ptr_reg : SYMBOL {
     ;
 
 external
-    :     SYMBOL     '$'     SYMBOL
-    | '<' SYMBOL '>' '|' '[' SYMBOL ']'
+    :     SYMBOL     '$'     SYMBOL         { tuple *t = newTuple(); t->a.p = $1; t->b.p = $3; $$ = t;  }
+    | '<' SYMBOL '>' '|' '[' SYMBOL ']'     { tuple *t = newTuple(); t->a.p = $2; t->b.p = $6; $$ = t;  }
     ;
 
 modifier
@@ -466,6 +468,10 @@ pop
 
     | SEGDEF         symlist                         { doSegdef($2);                }
     | SEGREF         symlist                         { doSegref($2);                }
+    
+    | LINK           SYMBOL ',' external             { doLink($2, $4);              }
+    
+    | INHIBIT        SYMBOL                          { doInhibit($2);               }
     ;
 
 entry

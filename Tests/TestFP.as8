@@ -51,6 +51,7 @@
     ldaq    pad
     ldq     .on_unit
     
+    
     option  Multics         " Multics calling convention
 
     call	pr1|0,*(pr2|0)
@@ -80,11 +81,12 @@ msgHello:   acc     "This is TestFP ...^g^g\r\n"
 
 main_:
 
+    inhibit on
     tsx2	rd_clock
     staq	Date        "MM/DD HH:MM
 
     call    ioa(msgHello, Date, Date+1)
-
+    inhibit off
 
 FPtests_:
     call    ioa(msgArcsin)

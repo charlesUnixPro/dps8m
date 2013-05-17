@@ -27,6 +27,7 @@ int pass(int n, FILE *src, FILE *oct)
     yylineno = 0;
     addr = 0; /* xxx */
     nPass = n;
+    bInhibit = false;   // allow for interrupts
     
     return yyparse();
 }

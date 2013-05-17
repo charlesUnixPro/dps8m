@@ -400,6 +400,7 @@ enum enumExpr
     eExprRelative    = 2,   // relocatable expression
     eExprTemporary   = 4,   // a stack temporary
     eExprSegRef      = 5,   // referenced through a segref
+    eExprLink        = 6,   // referenced via a link to an external
 };
 typedef enum enumExpr enumExpr;
 
@@ -731,6 +732,9 @@ struct opnd        // for OPCODE operand(s)
     bool bit29;    // set bit-29
 } opnd;
 
+
+extern bool bInhibit;   // reflects inhibit flag
+
 void doOpcode(struct opnd *o);
 void doMWEis(opCode *o, tuple *t);
 void doRPT(opCode *o, word36, word36, tuple *);
@@ -775,6 +779,9 @@ void doTemp(pseudoOp *, tuple *);               // for TEMP pseudo-ops
 
 void doSegdef(list *);
 void doSegref(list *);
+
+void doLink(char *, tuple *);
+void doInhibit(char *);
 
 void emitSegdefs();
 void emitSegrefs();

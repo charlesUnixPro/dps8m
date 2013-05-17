@@ -78,7 +78,7 @@ hexdigit        ({digit}|[ABCDEFabcdef])
 
 symbol    		({alpha}|[_.])({alpha}|{digit}|[_.])*
 
-special         [-+,*/%&|^()$<>~:;']
+special         [-+,*/%&|^()$<>~:;'\[\]]
 
 include			[Ii][Nn][Cc][Ll][Uu][Dd][Ee]
 options         [Oo][Pp][Tt][Ii][Oo][Nn]([Ss]?)
@@ -1087,7 +1087,7 @@ LEXgetPush(char *fileToOpen)
         
         strcat(filename, fileToOpen);
         
-        if (debug) printf("Trying ... %d <%s>\n", n, filename);
+        if (debug) printf("Trying ... <%s>\n", filename);
         
         isrc = fopen(filename, "r");		/* try to open requested file	*/
         
@@ -1122,8 +1122,9 @@ LEXgetPush(char *fileToOpen)
     
     onOpen:;
 	/** .include file is open, so set up to use it ... */
-	FILEstack[++FILEsp].fp = isrc;		/* make it TOS	*/
 	FILEtos.lineno = yylineno;			// save lineno
+	FILEstack[++FILEsp].fp = isrc;		/* make it TOS	*/
+//	FILEtos.lineno = yylineno;			// save lineno
 	FILEtos.fname = strdup(filename);	// save filename
 	yylineno = 0;                       // reset lineno for new file
     LEXp = 0;
