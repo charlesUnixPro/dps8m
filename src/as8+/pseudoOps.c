@@ -3074,7 +3074,6 @@ pseudoOp pseudoOps[] =
     {"tempd",       epUnknown,      NULL,   TEMP   },
     {"getlp",       epUnknown,      NULL, PSEUDOOP },
 
-
     
     //  {"erlk",        0, doErlk    },
     {"end",         0,              NULL, PSEUDOOP },

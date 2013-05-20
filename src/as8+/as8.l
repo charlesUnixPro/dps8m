@@ -329,15 +329,14 @@ everythingelse	.
                                     return CALLM;   // Multics calling convention
                             }
                             
-
                             if (po->token)
                                 return po->token;
                             
                             return PSEUDOOP;
                         }
-
-                        if (bReg)
-                        {
+                      }
+                      if (bReg)
+                      {
                           // a register?
                           int r = getmod(yytext);
                           if (r >= 0 && r < 16)
@@ -346,8 +345,8 @@ everythingelse	.
                             yylval.i = r;
                             return REG;
                           }
-                        }
                       }
+
                       yylval.s = strdup(yytext);
                       return SYMBOL;
                     }
