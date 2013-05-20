@@ -1,5 +1,5 @@
 !SIZE 004466
-!NAME TestFP
+!SEGNAME TestFP
 !SEGDEF msgHello 000040
 !ENTRY main_ 000052 004356
 !ENTRY FPtests_ 000062 004360
@@ -49,8 +49,8 @@
 000046 xxxx 012040040040 
 000047 xxxx 000000011000             even "(allocating 1 nop)
 000050 xxxx 000000000000             bss     Date, 2
-000052 xxxx 004167702000     tsx2	rd_clock
-000053 xxxx 000050757000     staq	Date        "MM/DD HH:MM
+000052 xxxx 004167702200     tsx2	rd_clock
+000053 xxxx 000050757200     staq	Date        "MM/DD HH:MM
 000054 xxxx 003652701000     call    ioa(msgHello, Date, Date+1)
 000055 xxxx 000062710000 
 000056 xxxx 000000000000 

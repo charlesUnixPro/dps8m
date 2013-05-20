@@ -65,13 +65,13 @@ void doBss(char *symbol, word36 size)
                 
             }
             //fprintf(out, "%6.6o xxxx 000000000000 %s\n", *addr, line);   //op);
-            outas8(0LL, addr,LEXline);
+            outas8data(0LL, addr,LEXline);
         }
         addr += size;
     }
     else if (!symbol && size) {
         if (nPass == 2)
-            outas8(0LL, addr,LEXline);
+            outas8data(0LL, addr,LEXline);
         addr += size;
     }
 }
@@ -126,7 +126,7 @@ void doTally(pseudoOp *p, list *args)
         tally = (taddr << 18) | (count << 6) | delta;
     }
     
-    outas8(tally, addr, LEXline);
+    outas8data(tally, addr, LEXline);
     
     addr += 1;
 }
@@ -172,24 +172,24 @@ void doDec(list *lst)
             switch (l->whatAmI)
             {
                 case lstI36:
-                    outas8(l->i36 & DMASK, addr, term == 0 ? LEXline : NULL);
+                    outas8data(l->i36 & DMASK, addr, term == 0 ? LEXline : NULL);
                     break;
                 case lstI72:
                     ypair[0] = (l->i72 >> 36) & DMASK;
                     ypair[1] = l->i72 & DMASK;
                     
-                    outas8(ypair[0] & DMASK, addr,   term == 0 ? LEXline : NULL);
-                    outas8(ypair[1] & DMASK, addr+1, NULL);
+                    outas8data(ypair[0] & DMASK, addr,   term == 0 ? LEXline : NULL);
+                    outas8data(ypair[1] & DMASK, addr+1, NULL);
                     break;
 
                 case lstSingle:
                     IEEElongdoubleToYPair(l->r, ypair);
-                    outas8(ypair[0] & DMASK, addr, term == 0 ? LEXline : NULL);
+                    outas8data(ypair[0] & DMASK, addr, term == 0 ? LEXline : NULL);
                     break;
                 case lstDouble:
                     IEEElongdoubleToYPair(l->r, ypair);
-                    outas8(ypair[0] & DMASK, addr,   term == 0 ? LEXline : NULL);
-                    outas8(ypair[1] & DMASK, addr+1, NULL);
+                    outas8data(ypair[0] & DMASK, addr,   term == 0 ? LEXline : NULL);
+                    outas8data(ypair[1] & DMASK, addr+1, NULL);
                     break;
                 default:
                     yyprintf("doDec(): unhandled 'whatAmI' (%d)", l->whatAmI);
@@ -222,9 +222,9 @@ void doOct(list *l)
         if (nPass == 2)
         {
             if (term == 0)
-                outas8(v64 & DMASK, addr, LEXline);
+                outas8data(v64 & DMASK, addr, LEXline);
             else
-                outas8(v64 & DMASK, addr, "\n");
+                outas8data(v64 & DMASK, addr, "\n");
         }
         
         addr += 1;
@@ -274,7 +274,7 @@ void doZero(word36 hi, word36 lo)
     
     char w[32];
     sprintf(w, "%6.6o%6.6o", (word18)hi, (word18)lo);
-    outas8Str(w, addr, LEXline);
+    outas8Strd(w, addr, LEXline);
     
     addr += 1;
 }
@@ -534,9 +534,9 @@ void doVfd(tuple *list)
     {
         for(int n = 0 ; n < nWords ; n += 1)
             if (!n)
-                outas8(data[n], addr + n, LEXline);
+                outas8data(data[n], addr + n, LEXline);
             else
-                outas8(data[n], addr + n, "\n");
+                outas8data(data[n], addr + n, "\n");
     }
     addr += nWords;
 }
@@ -553,7 +553,7 @@ doPop0(pseudoOp *p)
             if (nPass == 2)
             {
                 sprintf(temp, "%s \"(allocating 1 nop)\n", LEXline);
-                outas8(000000011000LL, addr, temp);
+                outas8ins(000000011000LL, addr, temp);
             }
             addr += 1;
         }
@@ -564,7 +564,7 @@ doPop0(pseudoOp *p)
             if (nPass == 2)
             {
                 sprintf(temp, "%s \"(allocating 1 nop)\n", LEXline);
-                outas8(000000011000LL, addr, temp);
+                outas8ins(000000011000LL, addr, temp);
             }
             addr += 1;
         }
@@ -578,9 +578,9 @@ doPop0(pseudoOp *p)
             if (nPass == 2)
             {
                 sprintf(temp, "%s \"(allocating %d nop's)\n", LEXline, 8-inc);
-                outas8(000000011000LL, addr++, temp);
+                outas8ins(000000011000LL, addr++, temp);
                 for(int n = 0 ; n < 8 - inc - 1; n++)
-                    outas8(000000011000LL, addr++, "");
+                    outas8ins(000000011000LL, addr++, "");
             } else
                 addr += 8 - inc;
         }
@@ -594,9 +594,9 @@ doPop0(pseudoOp *p)
             if (nPass == 2)
             {
                 sprintf(temp, "%s \"(allocating %d nop's)\n", LEXline, 64-inc);
-                outas8(000000011000LL, addr++, temp);
+                outas8ins(000000011000LL, addr++, temp);
                 for(int n = 0 ; n < 64 - inc - 1; n++)
-                    outas8(000000011000LL, addr++, "");
+                    outas8ins(000000011000LL, addr++, "");
             } else
                 addr += 64 - inc;
         }
@@ -613,7 +613,7 @@ doPop0(pseudoOp *p)
         {
             //outas8(0700046272120LL, addr, LEXline);
             sprintf(temp, "%06o%06o", 0700046,  getEncoding("tsp2") | (word18)BIT(29) | getmod("*"));
-            outas8Str(temp, addr, LEXline);
+            outas8Stri(temp, addr, LEXline);
         }
         addr += 1;
 
@@ -691,7 +691,7 @@ void doAcc(char *str, int sz)
         {
             if (nPass == 2)
                 //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, words[i], i == 0 ? inLine : "");
-                outas8(words[i], addr, i == 0 ? LEXline : "");
+                outas8data(words[i], addr, i == 0 ? LEXline : "");
         
             addr++;
         }
@@ -748,14 +748,14 @@ void doAci(char *str, int sz)
         for(int i = 0 ; i < nWords; i++)
         {
             if (nPass == 2)
-                outas8(words[i], addr, i == 0 ? LEXline : "\n");
+                outas8data(words[i], addr, i == 0 ? LEXline : "\n");
             addr++;
         }
     }
     else
     {
         if (nPass == 2)
-            outas8(0LL, addr, LEXline);
+            outas8data(0LL, addr, LEXline);
         
         addr++;
     }
@@ -815,13 +815,13 @@ void doBci(char *str, int sz)
         for(int i = 0 ; i < nWords; i++)
         {
             if (nPass == 2)
-                outas8(words[i], addr, i == 0 ? LEXline : "\n");
+                outas8data(words[i], addr, i == 0 ? LEXline : "\n");
             addr++;
         }
     }
     else
     {
-        outas8(0LL, addr, LEXline);
+        outas8data(0LL, addr, LEXline);
         addr++;
     }
 }
@@ -906,13 +906,13 @@ void doAc4(char *str, int sz)
         for(int i = 0 ; i < nWords; i++)
         {
             if (nPass == 2)
-                outas8(fixupDecimals(words[i]), addr, i == 0 ? LEXline : "\n");
+                outas8data(fixupDecimals(words[i]), addr, i == 0 ? LEXline : "\n");
             addr++;
         }
     }
     else
     {
-        outas8(0LL, addr, LEXline);
+        outas8data(0LL, addr, LEXline);
         addr++;
     }
 }
@@ -980,18 +980,18 @@ void doITSITP(pseudoOp *p, word36 arg1, word36 off, word36 tag)
             fprintf(stderr, "WARNING: ITS/ITP word-pair must begin on an even boundary. Padding with 1 nop\n");
 
             sprintf(temp, "%s \"(allocating 1 nop)\n", LEXline);
-            outas8(000000011000LL, addr, temp);
+            outas8ins(000000011000LL, addr, temp);
             
             addr += 1;
         }
         
         // even
         //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, even, inLine);
-        outas8(even, addr, LEXline);
+        outas8data(even, addr, LEXline);
         addr += 1;
             
         //fprintf(oct, "%6.6o xxxx %012llo\n", (*addr)++, odd);
-        outas8(odd, addr, "");
+        outas8data(odd, addr, "");
         addr += 1;
 
     }
@@ -1015,7 +1015,7 @@ void doMod(word36 mod)
         if (nPass == 2)
         {
             //fprintf(oct, "%6.6o xxxx 000000011000 %s\n", (*addr)++, inLine);
-            outas8(000000011000LL, addr, !n ? p : "");
+            outas8ins(000000011000LL, addr, !n ? p : "");
         }
         addr += 1;
     }
@@ -1112,16 +1112,16 @@ void doHCall(char *sub, word36 mod, list *args, list *errs)  // for call pseudoo
         
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o %s\n", (*addr)++,     sub, getOpcode("TSX1"), arg2 ? getmod(arg2) : 0, inLine);
         sprintf(w, "%06o%06o", sub,  getEncoding("tsx1") | (word18)mod);
-        outas8Str(w, addr, LEXline);
+        outas8Stri(w, addr, LEXline);
         addr += 1;
         
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",     *addr,  *addr + 2, getOpcode("TRA"), 0); *addr += 1;
         sprintf(w, "%06o%06o", addr + 2, getEncoding("tra") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         //fprintf(oct, "%6.6o xxxx 000000000000\n",    (*addr)++);    // ZERO
-        outas8(0, addr, "");
+        outas8data(0, addr, "");
         addr += 1;
         
         return;
@@ -1203,15 +1203,15 @@ void doHCall(char *sub, word36 mod, list *args, list *errs)  // for call pseudoo
         //fprintf(oct, "%6.6o xxxx %06o000000\n",      (*addr)++, EI);    // ZERO 0,E.I.
         
         sprintf(w, "%06o%06o", SUB, getEncoding("tsx1") | (word18)mod);
-        outas8Str(w, addr, LEXline);
+        outas8Stri(w, addr, LEXline);
         addr += 1;
         
         sprintf(w, "%06o%06o", addr + 2 + n + m, getEncoding("tra") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o000000", EI);    // ZERO 0,E.I.
-        outas8Str(w, addr, "");
+        outas8Strd(w, addr, "");
         addr += 1;
         // The E.I. is almost certainly wrong. I have no idea what it was or how it was used
         
@@ -1235,7 +1235,7 @@ void doHCall(char *sub, word36 mod, list *args, list *errs)  // for call pseudoo
                 //    An = Eval(args[n]) & AMASK;
                 
                 //fprintf(oct, "%6.6o xxxx %06o000000\n",    (*addr)++, An);    // ARG An
-                outas8(An, addr, ""); // ARG An
+                outas8data(An, addr, ""); // ARG An
                 addr += 1;
                 
             }
@@ -1251,7 +1251,7 @@ void doHCall(char *sub, word36 mod, list *args, list *errs)  // for call pseudoo
                 
                 //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, Em, getOpcode("TRA"), 0); // ARG Em
                 sprintf(w, "%06o%06o", Em, getEncoding("tra") | 0);
-                outas8Str(w, addr, "");
+                outas8Stri(w, addr, "");
                 addr += 1;
                 
                 m -= 1;
@@ -1292,7 +1292,7 @@ void doMCall(expr *entry, word36 mod, expr *arg)  // for call pseudoop
      *  lreg    pr6|32
      */
 
-    outas8(0600000254100LL, addr, LEXline);
+    outas8ins(0600000254100LL, addr, LEXline);
     addr += 1;
 
     char w[256];
@@ -1305,24 +1305,24 @@ void doMCall(expr *entry, word36 mod, expr *arg)  // for call pseudoop
         literal *arg0 = doNumericLiteral(10, 0);    // create a =0 literal
         sprintf(w, "%06o%06o", arg0->addr, getEncoding("epp0"));
     }
-    outas8Str(w, addr, NULL);
+    outas8Stri(w, addr, NULL);
         
     addr += 1;
     
     sprintf(w, "%06o%06o", (word18)(entry->value) & AMASK,  getEncoding("epp2") | (word18)mod | (entry->bit29 ? (1 << 6) : 0));
-    outas8Str(w, addr, NULL);
+    outas8Stri(w, addr, NULL);
     addr += 1;
     
-    outas8(0600040753100LL, addr, NULL);
+    outas8ins(0600040753100LL, addr, NULL);
     addr += 1;
 
-    outas8(0700036670120LL, addr, NULL);
+    outas8ins(0700036670120LL, addr, NULL);
     addr += 1;
 
-    outas8(0600000173100LL, addr, NULL);
+    outas8ins(0600000173100LL, addr, NULL);
     addr += 1;
 
-    outas8(0600040073100LL, addr, NULL);
+    outas8ins(0600040073100LL, addr, NULL);
     addr += 1;    
 }
 
@@ -1378,22 +1378,22 @@ void doSave(list *reglist)                           // for save pseudoop
 //        fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    *addr, (*addr - 3) & AMASK, getOpcode("STX1"), 0); *addr += 1;
         
         sprintf(w, "%06o%06o", addr + 3,  getEncoding("tra") | 0);
-        outas8Str(w, addr, LEXline);
+        outas8Stri(w, addr, LEXline);
         addr += 1;
         
-        outas8(0, addr, "");
+        outas8data(0, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o",  (addr - 1) & AMASK, getEncoding("ret") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o",  (addr - 2) & AMASK, getEncoding("sti") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o", (addr - 3) & AMASK, getEncoding("stx1") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
                 
         if (debug) fprintf(stderr, "SAVE: 3 Addr=%o\n", addr);
@@ -1455,10 +1455,10 @@ void doSave(list *reglist)                           // for save pseudoop
 //        fprintf(oct, "%6.6o xxxx %06o%04o%02o %s\n", *addr, *addr + 3 + n, getOpcode("TRA"), 0, inLine); *addr += 1;
 //        fprintf(oct, "%6.6o xxxx 000000000000\n",    (*addr)++);
         sprintf(w, "%06o%06o", addr + 3 + n, getEncoding("tra") | 0);
-        outas8Str(w, addr, LEXline);
+        outas8Stri(w, addr, LEXline);
         addr += 1;
         
-        outas8(0, addr, "");
+        outas8data(0, addr, "");
         addr += 1;
         
         int i = 0;
@@ -1468,7 +1468,7 @@ void doSave(list *reglist)                           // for save pseudoop
             sprintf(ldx, "ldx%d", nIdx[i]);
             //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, i, getOpcode(ldx), getmod("DU"));
             sprintf(w, "%06o%06o", i, getEncoding(ldx) | getmod("du"));
-            outas8Str(w, addr, "");
+            outas8Stri(w, addr, "");
             addr += 1;
             i += 1;
         }
@@ -1479,15 +1479,15 @@ void doSave(list *reglist)                           // for save pseudoop
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 1, getOpcode("STI"), 0);
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 1, getOpcode("STX1"), 0);
         sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("ret") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o",  BBBBB + 1, getEncoding("sti") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("stx1") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         i = 0;
@@ -1497,7 +1497,7 @@ void doSave(list *reglist)                           // for save pseudoop
             sprintf(stx, "stx%d", nIdx[i]);
             //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 2 + i, getOpcode(stx), 0);
             sprintf(w, "%06o%06o", BBBBB + 2 + i, getEncoding(stx) | 0);
-            outas8Str(w, addr, "");
+            outas8Stri(w, addr, "");
             addr += 1;
             
             i += 1;
@@ -1544,7 +1544,7 @@ void doReturn(char *BBBBB, word36 k)                  // for return pseudoop
         
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o %s\n", (*addr)++, s->value + 2, getOpcode("TRA"), 0, inLine);
         sprintf(w, "%06o%06o", (word18)s->value + 2, getEncoding("tra") | 0);
-        outas8Str(w, addr, LEXline);
+        outas8Stri(w, addr, LEXline);
         addr += 1;
     }
     else if (k)
@@ -1570,19 +1570,19 @@ void doReturn(char *BBBBB, word36 k)                  // for return pseudoop
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 1, getOpcode("STX1"), 0);
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 2, getOpcode("TRA"), 0);
         sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("ldx1") | getmod("*"));
-        outas8Str(w, addr, LEXline);
+        outas8Stri(w, addr, LEXline);
         addr += 1;
         
         sprintf(w, "%06o%06o",  (word18)k & AMASK, getEncoding("sblx1") | getmod("DU"));
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("stx1") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
         
         sprintf(w, "%06o%06o", BBBBB + 2, getEncoding("tra") | 0);
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
     }
     
@@ -1619,7 +1619,7 @@ word36 doDesc4a(pseudoOp *p, word36 address, word36 offset, word36 length, word3
             desc4a = bitfieldInsert36(desc4a, ar & 07, 33, 3);   // ar
         }
         desc4a |= CTA4;
-        outas8(desc4a, addr, LEXline);
+        outas8data(desc4a, addr, LEXline);
 
     }
     addr += 1;
@@ -1641,7 +1641,7 @@ word36 doDesc6a(pseudoOp *p, word36 address, word36 offset, word36 length, word3
             desc6a = bitfieldInsert36(desc6a, ar & 07, 33, 3);   // ar
         }
         desc6a |= CTA6;
-        outas8(desc6a, addr, LEXline);
+        outas8data(desc6a, addr, LEXline);
     }
     addr += 1;
     return desc6a;
@@ -1662,7 +1662,7 @@ word36 doDesc9a(pseudoOp *p, word36 address, word36 offset, word36 length, word3
             desc9a = bitfieldInsert36(desc9a, ar & 07, 33, 3);   // ar
         }
         desc9a |= CTA9;
-        outas8(desc9a, addr, LEXline);
+        outas8data(desc9a, addr, LEXline);
     }
     addr += 1;
     return desc9a;
@@ -1687,7 +1687,7 @@ word36 doDesc4fl(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc4fl |= CTN4;
         desc4fl |= CSFL;
     
-        outas8(desc4fl, addr, LEXline);
+        outas8data(desc4fl, addr, LEXline);
     }
     addr += 1;
     return desc4fl;
@@ -1713,7 +1713,7 @@ word36 doDesc4ls(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc4ls |= CTN4;
         desc4ls |= CSLS;
         
-        outas8(desc4ls, addr, LEXline);
+        outas8data(desc4ls, addr, LEXline);
     }
     addr += 1;
     return desc4ls;
@@ -1739,7 +1739,7 @@ word36 doDesc4ns(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc4ns |= CTN4;
         desc4ns |= CSNS;
 
-        outas8(desc4ns, addr, LEXline);
+        outas8data(desc4ns, addr, LEXline);
     }
     addr += 1;
     return desc4ns;
@@ -1763,7 +1763,7 @@ word36 doDesc4ts(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc4ts |= CTN4;
         desc4ts |= CSTS;
         
-        outas8(desc4ts, addr, LEXline);
+        outas8data(desc4ts, addr, LEXline);
     }
     addr += 1;
     return desc4ts;
@@ -1788,7 +1788,7 @@ word36 doDesc9fl(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc9fl |= CTN9;
         desc9fl |= CSFL;
         
-        outas8(desc9fl, addr, LEXline);
+        outas8data(desc9fl, addr, LEXline);
     }
     addr += 1;
     return desc9fl;
@@ -1812,7 +1812,7 @@ word36 doDesc9ls(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc9ls |= CTN9;
         desc9ls |= CSLS;
         
-        outas8(desc9ls, addr, LEXline);
+        outas8data(desc9ls, addr, LEXline);
     }
     addr += 1;
     return desc9ls;
@@ -1838,7 +1838,7 @@ word36 doDesc9ns(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc9ns |= CTN9;
         desc9ns |= CSNS;
         
-        outas8(desc9ns, addr, LEXline);
+        outas8data(desc9ns, addr, LEXline);
     }
     addr += 1;
     return desc9ns;
@@ -1862,7 +1862,7 @@ word36 doDesc9ts(pseudoOp *p, word36 address, word36 offset, word36 length, word
         desc9ts |= CTN9;
         desc9ts |= CSTS;
         
-        outas8(desc9ts, addr, LEXline);
+        outas8data(desc9ts, addr, LEXline);
     }
     addr += 1;
     return desc9ts;
@@ -1918,7 +1918,7 @@ word36 doDescb(pseudoOp *p, word36 address, word36 offset, word36 length, word36
         //descb = bitfieldInsert36(descb, (offset << 1) & 06, 15, 3);        // offset
         //descb = bitfieldInsert36(descb, address & AMASK, 18, 18);   // address
                 
-        outas8(descb, addr, LEXline);
+        outas8data(descb, addr, LEXline);
     }
     addr += 1;
     return descb;
@@ -1989,7 +1989,7 @@ void doNDSC9 (word18 *args)
         //ndsc4 |= (1LL << 14);
         
         //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, ndsc9, inLine);
-        outas8(ndsc9, addr, LEXline);
+        outas8data(ndsc9, addr, LEXline);
         addr += 1;
     }
 }
@@ -2030,7 +2030,7 @@ void doNDSC4 (word18 *args)
         ndsc4 |= (1LL << 14);
         
         //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, ndsc4, inLine);
-        outas8(ndsc4, addr, LEXline);
+        outas8data(ndsc4, addr, LEXline);
         addr += 1;
     }
 }
@@ -2064,7 +2064,7 @@ void doBDSC (word18 *args)
         bdsc = bitfieldInsert36(bdsc, b,  12,  4);
         
         //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, bdsc, inLine);
-        outas8(bdsc, addr, LEXline);
+        outas8data(bdsc, addr, LEXline);
         addr += 1;
     }
 }
@@ -2456,8 +2456,8 @@ void writeSegrefs()
         char desc[256];
         sprintf(desc, "link %s$%s", s->segname, s->name);
         
-        outas8(even, addr++, desc);
-        outas8(odd,  addr++, NULL);
+        outas8data(even, addr++, desc);
+        outas8data(odd,  addr++, NULL);
         
         maxAddr = max(maxAddr, linkAddr);
     }
@@ -2775,11 +2775,11 @@ void writeEntrySequences()
         
         char w[256];
         sprintf(w, "Entry Sequence for %s (%06o)", e->name, e->intValue);
-        outas8(0700046272120LL, addr, w);
+        outas8ins(0700046272120LL, addr, w);
         addr += 1;
         
         sprintf(w, "%06o%06o", e->intValue,  getEncoding("tra"));
-        outas8Str(w, addr, "");
+        outas8Stri(w, addr, "");
         addr += 1;
     }
 }
@@ -2830,11 +2830,11 @@ void doPush(word36 size)                       // multics CSR Push Pseudo-op
         stack_frame_size = (int)size;
     
     sprintf(w, "%06o%06o", (word18)(stack_frame_size & AMASK), getEncoding("eax7"));
-    outas8Str(w, addr, LEXline);
+    outas8Stri(w, addr, LEXline);
     addr += 1;
     
     sprintf(w, "%06o%06o", 0700040,  getEncoding("tsp2") | (word18)BIT(29) | (word18)020);
-    outas8Str(w, addr, "");
+    outas8Stri(w, addr, "");
     addr += 1;
 }
 
@@ -2867,7 +2867,7 @@ void doReturn0()            // multics CSR Return pseudo-op
     char w[256];
     
     sprintf(w, "%06o%06o", 0700042,  getEncoding("tra") | (word18)BIT(29) | (word18)020);
-    outas8Str(w, addr, LEXline);
+    outas8Stri(w, addr, LEXline);
     addr += 1;
 }
 
@@ -2899,13 +2899,13 @@ void doShortCall(char *entrypoint)      // multics CSR Short_Call pseudo-op
     word18 ep = getEntryPoint(entrypoint);
     
     sprintf(w, "%o%05o%06o", 4, ep & 077777,  getEncoding("epp2") | (word18)BIT(29) | (word18)020);
-    outas8Str(w, addr, LEXline);
+    outas8Stri(w, addr, LEXline);
     addr += 1;
     sprintf(w, "%06o%06o", 0700036,  getEncoding("tsp4") | (word18)BIT(29) | (word18)020);
-    outas8Str(w, addr, NULL);
+    outas8Stri(w, addr, NULL);
     addr += 1;
     sprintf(w, "%06o%06o", 0600030,  getEncoding("epp4") | (word18)BIT(29) | (word18)020);
-    outas8Str(w, addr, NULL);
+    outas8Stri(w, addr, NULL);
     addr += 1;
 }
 
@@ -2939,7 +2939,7 @@ void doShortReturn()                           // multics CSR Short_Return pseud
     char w[256];
     
     sprintf(w, "%06o%06o", 0700044,  getEncoding("tra") | (word18)BIT(29) | (word18)020);
-    outas8Str(w, addr, LEXline);
+    outas8Stri(w, addr, LEXline);
     addr += 1;
 }
 

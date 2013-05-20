@@ -234,6 +234,7 @@ everythingelse	.
                       // XXX      fmp     eight,x2	" EAQ = 8*abs_x**2
                       // XXX because it finds a POP. If we make bZOperandOnly == true after we find an opcode then
                       // XXXthe rpt instructions termination codes break. Find a way to fix this someday.
+                      // FIXME: this has been fixed, I believe
                       
                       // XXX not certain why I do this here rather than in the search routine(s)
                       char lcyytext[1024];  // lower-case yytext for opcode & pseudoop searches
@@ -323,9 +324,9 @@ everythingelse	.
                             if (po->token == CALL)
                             {
                                 if (callingConvention == 1)
-                                    return CALLH;
+                                    return CALLH;   // Honeywell calling convention
                                 else
-                                    return CALLM;
+                                    return CALLM;   // Multics calling convention
                             }
                             
 

@@ -123,6 +123,7 @@ void doOpcode(struct opnd *o)
     
     if (bInhibit)
         p->data |= (1LL << 7);    // set bit-28 - inhibit interrupt
+    // FixMe: Need to propagate this to the rest ot hte output reoutines
     
     p->src = strdup(LEXline);
     
@@ -337,7 +338,7 @@ void doMWEis(opCode *op, tuple *head)
     
     //free(pSafe);
     
-    outas8(i, addr, LEXline);
+    outas8ins(i, addr, LEXline);
     
     addr += 1;
 }
@@ -445,7 +446,7 @@ void doRPT(opCode *o, word36 tally, word36 delta, tuple *tcnds)
     
     
     //fprintf(oct, "%6.6o xxxx %012llo %s \n", (*addr)++, w, inLine);
-    outas8(w, addr, LEXline);
+    outas8ins(w, addr, LEXline);
     
     addr += 1;
 }
@@ -468,7 +469,7 @@ void doSTC(opCode *o, word36 a, word36 b, int pr)
         else
             SETHI(w, a & AMASK);
     
-        outas8(w, addr, LEXline);
+        outas8ins(w, addr, LEXline);
     }
     addr += 1;
 }
@@ -487,7 +488,7 @@ void doARS(opCode *o, word36 ptr, word36 offset, word36 modifier)
         if (o->mne[strlen(o->mne)-1] != 'x')
             w = bitfieldInsert36(w, 1, 6, 1);
         
-        outas8(w, addr, LEXline);
+        outas8ins(w, addr, LEXline);
     }
     addr += 1;
 }
@@ -505,7 +506,7 @@ outRec *newoutRec(void)
 }
 
 
-outRec *outas8(word36 data, word18 address, char *srctext)
+outRec *outas8data(word36 data, word18 address, char *srctext)
 {
     outRec *p = newoutRec();
     p->recType = outRecDefault;
@@ -529,11 +530,49 @@ outRec *outas8(word36 data, word18 address, char *srctext)
     
     return p;
 }
+outRec *outas8ins(word36 ins, word18 address, char *srctext)
+{
+    outRec *p = newoutRec();
+    p->recType = outRecDefault;
+    
+    p->address = address;
+    
+    p->data = ins;
+    
+    if (bInhibit)
+        p->data |= (1LL << 7);    // set bit-28 - inhibit interrupt
 
-outRec *outas8Str(char *s36, word18 address, char *srctext)
+    p->src = srctext ? strdup(srctext) : "";
+    
+    // remove all internal '\n's from srctext
+    char *q = strchr(p->src, '\n');
+    if (q)
+    {
+        while (q)
+        {
+            strcpy(q, q + 1);
+            q = strchr(p->src, '\n');
+        }
+    }
+    DL_APPEND(as8output, p);
+    
+    return p;
+}
+
+//outRec *outas8Str(char *s36, word18 address, char *srctext)
+//{
+//    word36 data = strtoll(s36, NULL, 8);
+//    return outas8(data, address, srctext);
+//}
+outRec *outas8Strd(char *s36, word18 address, char *srctext)
 {
     word36 data = strtoll(s36, NULL, 8);
-    return outas8(data, address, srctext);
+    return outas8data(data, address, srctext);
+}
+outRec *outas8Stri(char *s36, word18 address, char *srctext)
+{
+    word36 ins = strtoll(s36, NULL, 8);
+    return outas8ins(ins, address, srctext);
 }
 
 extern list *newList();
@@ -571,7 +610,7 @@ outRec *outas8Direct(char *dir, ...)
     {
         char *name = va_arg( argPointer, char *);
 
-        asprintf(&p->dirStr, "!NAME %s", name);
+        asprintf(&p->dirStr, "!SEGNAME %s", name);
     } else if (!strcasecmp(dir, "segdef"))
     {
         char *name = va_arg( argPointer, char *);

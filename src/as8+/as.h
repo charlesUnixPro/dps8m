@@ -712,8 +712,15 @@ typedef struct outRec outRec;
 extern outRec *as8output;
 
 outRec *newoutRec(void);    // functiion to create a new outRec
-outRec *outas8(word36 data, word18 address, char *srctext);
-outRec *outas8Str(char *str, word18 address, char *srctext);    // data as 12-digit octal string
+//outRec *outas8(word36 data, word18 address, char *srctext);
+outRec *outas8data(word36 data, word18 address, char *srctext);
+outRec *outas8ins(word36 data, word18 address, char *srctext);
+
+//outRec *outas8Str(char *str, word18 address, char *srctext);    // data as 12-digit octal string
+outRec *outas8Strd(char *str, word18 address, char *srctext);    // data as 12-digit octal string
+outRec *outas8Stri(char *str, word18 address, char *srctext);    // data as 12-digit octal string
+
+
 outRec *outas8Direct(char *dir, ...);
 
 void dumpOutput(FILE *f);

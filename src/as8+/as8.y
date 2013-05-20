@@ -90,32 +90,6 @@ input: /* empty  */
     | input line
 ;
 
-/*
-expr: expr '+' expr         { $$ = $1 + $3;         }
-    | expr '-' expr         { $$ = $1 - $3;         }
-    | expr '*' expr         { $$ = $1 * $3;         }
-    | expr '/' expr         { $$ = $1 / $3;         }
-    | expr '%' expr         { $$ = $1 % $3;         }
-    | '(' expr ')'          { $$ = $2;              }
-    | '-' expr %prec NEG 	{ $$ = -$2;             }
-    | SYMBOL                { $$ = getValue($1);    }
-    | integer
-    | '*'                   { $$ = (word36s)addr;   }
-    ;
-
-lexpr
-    : lexpr '+' lexpr         { $$ = $1 | $3; }
-    | lexpr '-' lexpr         { $$ = $1 ^ $3; }
-    | lexpr '*' lexpr         { $$ = $1 & $3; }
-    | lexpr '/' lexpr         { $$ = $1 & ~$3;}
-    | '(' lexpr ')'           { $$ = $2;      }
-    | '^' lexpr %prec NOT 	  { $$ = ~$2;     }
-    | '-' expr %prec NEG 	  { $$ = $2 ^ 0400000000000LL; /* flip the sign bit *//* }
-    | SYMBOL                  { $$ = getValue($1); }
-    | OCTAL
-    | '*'                     { $$ = (word36s)addr; }
-    ;
-*/
 expr: expr '+' expr         { $$ = add($1, $3);      }
     | expr '-' expr         { $$ = subtract($1, $3); }
     | expr '*' expr         { $$ = multiply($1, $3); }
@@ -129,13 +103,13 @@ expr: expr '+' expr         { $$ = add($1, $3);      }
     ;
 
 lexpr
-    : lexpr '+' lexpr         { $$ = or($1, $3); }
-    | lexpr '-' lexpr         { $$ = xor($1, $3); }
-    | lexpr '*' lexpr         { $$ = and($1, $3); }
+    : lexpr '+' lexpr         { $$ = or($1, $3);    }
+    | lexpr '-' lexpr         { $$ = xor($1, $3);   }
+    | lexpr '*' lexpr         { $$ = and($1, $3);   }
     | lexpr '/' lexpr         { $$ = andnot($1, $3);}
-    | '(' lexpr ')'           { $$ = $2;      }
-    | '^' lexpr %prec NOT 	  { $$ = not($2);     }
-    | '-' expr %prec NEG 	  { $$ = neg8($2); }
+    | '(' lexpr ')'           { $$ = $2;            }
+    | '^' lexpr %prec NOT 	  { $$ = not($2);       }
+    | '-' expr %prec NEG 	  { $$ = neg8($2);      }
     | SYMBOL                  { $$ = exprSymbolValue($1); }
     | OCTAL                   { $$ = exprWord36Value($1); }
     | '*'                     { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
@@ -293,8 +267,9 @@ mfks: /* empty */           { $$ = NULL;                    }
 
 eismfs
     : /* empty */           { $$ = NULL;                    }
-    | eismf                 { $$ = NULL; DL_APPEND($$, $1); }
+    |            eismf      { $$ = NULL; DL_APPEND($$, $1); }
     | eismfs ',' eismf      { $$ = $1;   DL_APPEND($1, $3); }
+    | eismfs '+' eismf      { $$ = $1;   DL_APPEND($1, $3); }
     ;
 
 eismf
@@ -329,7 +304,7 @@ decs:  expr     { $$ = newList(); $$->i36 = $1->value;  $$->whatAmI = lstI36;   
     ;
 
 declist
-    : decs              { $$ = NULL; DL_APPEND($$, $1);  }
+    :             decs  { $$ = NULL; DL_APPEND($$, $1);  }
     | declist ',' decs  { $$ = $1;   DL_APPEND($$, $3);  }
     ;
 
@@ -378,7 +353,7 @@ vfdArg:  L '/' expr       { $$ = newTuple(); $$->a.c =  0; $$->b.i = (int)$1; $$
     ;
 
 rexpr
-    :  REG
+    : REG
     | expr { $$ = $1->value;    }
     ;
 

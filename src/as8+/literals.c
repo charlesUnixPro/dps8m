@@ -537,33 +537,33 @@ void writeLiteralPool()
             case litUnknown:
             case litGeneric:
                 lVal = l->values[0];
-                outas8(lVal, litAddr++, l->text);
+                outas8data(lVal, litAddr++, l->text);
                 break;
             case litScaledFixed:
                 lVal = l->values[0];
-                outas8(lVal, litAddr++, l->text);
+                outas8data(lVal, litAddr++, l->text);
                 break;
             case litSingle:
                 IEEElongdoubleToYPair(l->r, Ypair);
-                outas8(Ypair[0] & DMASK, litAddr++, l->text);
+                outas8data(Ypair[0] & DMASK, litAddr++, l->text);
                 break;
             case litDouble:
                 IEEElongdoubleToYPair(l->r, Ypair);
-                outas8(Ypair[0] & DMASK, litAddr++, l->text);
-                outas8(Ypair[1] & DMASK, litAddr++, "");
+                outas8data(Ypair[0] & DMASK, litAddr++, l->text);
+                outas8data(Ypair[1] & DMASK, litAddr++, "");
                 break;
             case litString:
             case litVFD:
                 for(int i = 0 ; i < l->nWords ; i += 1)
                 {
                     lVal = l->values[i] & DMASK;
-                    outas8(lVal, litAddr++, !i ? l->text : NULL);
+                    outas8data(lVal, litAddr++, !i ? l->text : NULL);
                 }
                 break;
             case litITSITP:
             case litDoubleInt:
-                outas8(l->values[0], litAddr++, l->text);
-                outas8(l->values[1], litAddr++, NULL);
+                outas8data(l->values[0], litAddr++, l->text);
+                outas8data(l->values[1], litAddr++, NULL);
                 break;
         }
         maxAddr = max(maxAddr, litAddr);

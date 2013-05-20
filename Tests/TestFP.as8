@@ -84,9 +84,9 @@ main_:
     inhibit on
     tsx2	rd_clock
     staq	Date        "MM/DD HH:MM
+    inhibit off
 
     call    ioa(msgHello, Date, Date+1)
-    inhibit off
 
 FPtests_:
     call    ioa(msgArcsin)
