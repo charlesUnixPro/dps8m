@@ -4866,8 +4866,10 @@ GET_RADIX (rdx, rptr->radix);
 if ((rptr->flags & REG_VMAD) && sim_vm_fprint_addr)
     sim_vm_fprint_addr (ofile, sim_dflt_dev, (t_addr) val);
 else if (!(rptr->flags & REG_VMIO) ||
-    (fprint_sym (ofile, rdx, &val, NULL, sim_switches | SIM_SW_REG) > 0)) {
-        fprint_val (ofile, val, rdx, rptr->width, rptr->flags & REG_FMT);
+//    (fprint_sym (ofile, rdx, &val, NULL, sim_switches | SIM_SW_REG) > 0)) {
+      (fprint_sym (ofile, rdx, &val, (UNIT*)rptr, sim_switches | SIM_SW_REG) > 0)) {
+
+         fprint_val (ofile, val, rdx, rptr->width, rptr->flags & REG_FMT);
         if (rptr->fields) {
             fprintf (ofile, "\t");
             fprint_fields (ofile, val, val, rptr->fields);
