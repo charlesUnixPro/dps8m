@@ -606,7 +606,7 @@ doPop0(pseudoOp *p)
         LEXfseekEOF();
     } else if (strcmp(p->name, "getlp") == 0)
     {
-        // Sets the pointer register pr4 to ppoint to the linkage section. This can be used with segdef to simulate the effect of entry, This operator can use pointer register pr2, index registers 0 and 7, and the A and Q registers, and requires pr6 and pr7 to be set up properly.
+        // Sets the pointer register pr4 to point to the linkage section. This can be used with segdef to simulate the effect of entry, This operator can use pointer register pr2, index registers 0 and 7, and the A and Q registers, and requires pr6 and pr7 to be set up properly.
         // (This is actually a call to the entry operator.)
 
         if (nPass == 2)

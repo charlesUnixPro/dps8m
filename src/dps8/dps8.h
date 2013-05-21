@@ -1477,6 +1477,8 @@ extern char *strDSBR();
 extern int removeSegment(char *seg);
 extern int removeSegdef(char *seg, char *sym);
 extern int removeSegref(char *seg, char *sym);
+extern int resolveLinks(void);
+extern int loadDeferredSegments(void);
 
 extern t_stat dumpSDWAM();
 

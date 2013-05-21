@@ -106,7 +106,8 @@ struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
 
 REG cpu_reg[] = {
     { ORDATA (IC, rIC, VASIZE) },
-    { ORDATA (IR, rIR, 18) },
+    //{ ORDATA (IR, rIR, 18) },
+    { ORDATAD (IR, rIR, 18, "Indicator Register"), REG_VMIO },
     
     //    { FLDATA (Zero, rIR, F_V_A) },
     //    { FLDATA (Negative, rIR, F_V_B) },

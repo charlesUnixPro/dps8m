@@ -17,7 +17,7 @@
 #define FMT_E   3
 #define FMT_9   9
 
-t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred);
+t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
 
 bool bdeferLoad = false;    // defer load to after symbol resolution
 
@@ -26,6 +26,8 @@ struct segdef          // definitions for externally available symbols
     char    *symbol;    ///< name of externallay available symbol
     int     value;      ///< address of value in segment
     int     relType;    ///< relocation type (RFU)
+    
+    int     segno;      ///< when filled-in is the segment # where the segdef is found (default=-1)
     
     struct segdef  *next;
     struct segdef  *prev;
@@ -59,6 +61,10 @@ struct segref      // references to external symbols in this segment
     int     value;      ///< address of ITS pair in segment
     int     relType;    ///< relocation type (RFU)
     
+    int     segno;      ///< when filled-in is the segment # where the segref is to be found (default=-1)
+    
+    bool    snapped;    ///< true when link has been filled in with a correct ITS pointer
+    
     struct segref  *next;
     struct segref  *prev;
 };
@@ -66,12 +72,15 @@ typedef struct segref segref;
 
 segref *newSegref(char *seg, char *sym, int val)
 {
-    segref *p = malloc(sizeof(segref));
+    segref *p = calloc(1, sizeof(segref));
     if (seg && strlen(seg) > 0)
         p->segname = strdup(seg);
     if (sym && strlen(sym) > 0)
         p->symbol = strdup(sym);
-    p->value = val;
+    p->value = val;     // address in segment to put ITS pair
+    p->snapped = false; // not snapped yet
+    
+    p->segno = -1;
 
     p->next = NULL;
     p->prev = NULL;
@@ -91,18 +100,17 @@ void freeSegref(segref *p)
 
 struct segment
 {
-    char    *name;      ///< name of this segment
-    word36  *M;         ///< contents of this segment
-    int     size;       ///< size of this segment in 36-bit words
+    char    *name;  ///< name of this segment
+    word36  *M;     ///< contents of this segment
+    int     size;   ///< size of this segment in 36-bit words
     
-    segdef *defs;      ///< symbols available to other segments
-    segref *refs;      ///< external symbols needed by this segment
+    segdef *defs;   ///< symbols available to other segments
+    segref *refs;   ///< external symbols needed by this segment
     
-    int     segno;      ///< segment @ segment is assign
+    int     segno;  ///< segment# segment is assigned
     
     struct segment *next;
     struct segment *prev;
-
 };
 typedef struct segment segment;
 
@@ -271,10 +279,117 @@ int segrefNamecmp(segref *a, segref *b)
     return strcmp(a->symbol, b->symbol);
 }
 
+void makeITS(int segno, int offset, int tag, word36 *Ypair)
+{
+    word36 even = 0, odd = 0;
+    
+    even = ((word36)segno << 18) | 043;
+    odd = (word36)(offset << 18) | (tag & 077);
+    
+    Ypair[0] = even;
+    Ypair[1] = odd;
+}
+
+/*
+ * try to resolve external references for all deferred segments
+ */
+int resolveLinks()
+{
+    int segno = 10;     // current segment number
+    
+    printf("Examining segments ...\n");
+    
+    segment *sg1;
+    DL_FOREACH(segments, sg1)
+    {
+        printf("    Processing segment %s...\n", sg1->name);
+
+        if (sg1->segno == -1)
+            sg1->segno = segno ++;  // assign segment # to segment
+     
+        //printf("(assigned as segment #%d)\n", sg1->segno);
+        
+        segref *sr;
+        DL_FOREACH(sg1->refs, sr)
+        {
+            printf("        Resolving segref %s$%s...", sr->segname, sr->symbol);
+            
+            // now loop through all segrefs trying to find the segdef needed
+            
+            bool bFound = false;
+            segment *sg2;
+            DL_FOREACH(segments, sg2)
+            {
+                if (strcmp(sg2->name, sr->segname))
+                    continue;
+
+                if (sg2->segno == -1)
+                {
+                    sg2->segno = segno ++;
+                    //printf("assigned segment # %d to segment %s\n", sg2->segno, sg2->name);
+                }
+                
+                segdef *sd;
+                DL_FOREACH(sg2->defs, sd)
+                {                    
+                    if (strcmp(sd->symbol, sr->symbol) == 0)
+                    {
+                        bFound = true;
+                        printf("found %s (%06o)\n", sr->symbol, sr->value);
+                        
+                        word36 *Ypair = &sg1->M[sr->value];
+                        makeITS(sg2->segno, sd->value, 0, Ypair);   // "snap" link for segref in sg1
+                        printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
+                    }
+                }
+            }
+            if (bFound == false)
+                printf("not found\n");
+        }
+    }
+    
+    return 0;
+}
+
+/*!
+ * load add deferred segments into memory and set-up segment table for appending mode operation ...
+ */
+int loadDeferredSegments(void)
+{
+    printf("Loading deferred segments ...\n");
+    
+    int ldaddr = 0;
+    
+    segment *sg;
+    DL_FOREACH(segments, sg)
+    {
+        printf("    loading %s as segment %d\n", sg->name, sg->segno);
+        
+        int segno = sg->segno;
+        
+        word18 segwords = sg->size;
+        
+        memcpy(M + ldaddr, sg->M, sg->size * sizeof(word36));
+        
+        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+            printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, ldaddr);
+        else
+            printf("      Error loading segment %d (%o)\n", segno, segno);
+        
+        // bump next load address to a 64-word boundary
+        ldaddr += segwords;
+        if (ldaddr % 64)
+            ldaddr += ldaddr % 64;
+            
+    }
+
+    return 0;
+}
+
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-t_stat scanFile(FILE *f, bool bDeferred)
+t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
 {
     long curpos = ftell(f);
     
@@ -372,7 +487,7 @@ t_stat scanFile(FILE *f, bool bDeferred)
             }
             DL_APPEND(currSegment->defs, s);
             
-            printf("segdef created for segment %s, symbol'%s' - %o\n", segments->name, symbol, value);
+            printf("segdef created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
         }
 
         else
@@ -402,7 +517,7 @@ t_stat scanFile(FILE *f, bool bDeferred)
                 }
             }
             DL_APPEND(currSegment->refs, s);
-            printf("segref created for segment '%s' symbol:%s addr:%o\n", segment, symbol, addr);
+            printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
         }
         
         else
@@ -427,7 +542,7 @@ t_stat scanFile(FILE *f, bool bDeferred)
  * "standard" simh/dps8 loader (.oct files) ....
  * Will do real binary files - later.
  */
-t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred)
+t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose)
 {
     char buff[132] = "";
     char *c;
@@ -456,9 +571,14 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred)
                     currSegment->M[maddr] = data & DMASK;
                 words++;
             }
+            currSegment->segno = segno;
         }
-        printf("%d (%06o) words loaded into segment %s\n", words, words, currSegment->name);
-
+        if (segno != -1)
+            sprintf(buff, " as segment %d", segno);
+        else
+            strcpy(buff, "");
+        
+        printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
     }
     else
     if (segno == -1)// just do an absolute load
@@ -638,7 +758,11 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         //    fmt = FMT_S;
         //fseek (fileref, 0, SEEK_SET);                       /* rewind */
     }
-    
+
+    bool bVerbose = false;
+    if (sim_switches & SWMASK ('v'))                        /* -v? */
+        bVerbose = true;
+
     // load file into segment?
     // Syntax load file.oct segment xxx address addr
     if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "seg*"))
@@ -672,14 +796,53 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "def*"))
         bDeferred = true;
     
-    
-    // process any special directives from assebmly
-    scanFile(fileref, bDeferred);
-    
+    // syntax: load file.oct as segment xxx deferred
+    else if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "as*"))
+    {
+        char s[1024], *end_ptr, sn[1024], def[1024];
+        
+        long n = sscanf(cptr, "%*s %s %s %s", s, sn, def);
 
+        if (!strmask(s, "seg*"))
+        {
+            fprintf(stderr, "sim_load(): segment keyword not found\n");
+            return SCPE_ARG;
+        }
+        
+        segno = (int32)strtol(sn, &end_ptr, 0); // allows for octal, decimal and hex
+        if (end_ptr == sn)
+        {
+            fprintf(stderr, "sim_load(): No segment # was found\n");
+            return SCPE_ARG;
+        }
+        
+        if (strmask(def, "def*"))
+            bDeferred = true;
+        else
+        {
+            fprintf(stderr, "sim_load(): deferred keyword not found\n");
+            return SCPE_ARG;
+        }
+        
+        // check for already loaded segment 'segno'
+        segment *sg;
+        DL_FOREACH(segments, sg)
+        {
+            if (sg->segno == segno)
+            {
+                fprintf(stderr, "sim_load(): segment %d already loaded\n", segno);
+                return SCPE_ARG;
+            }
+        }
+
+    }
+    
+    // process any special directives from assembly
+    scanFile(fileref, bDeferred, bVerbose);
+    
     switch (fmt) {                                          /* case fmt */
         case FMT_O:                                         /*!< OCT */
-            return load_oct (fileref, segno, ldaddr, bDeferred);
+            return load_oct (fileref, segno, ldaddr, bDeferred, bVerbose);
             break;
             //case FMT_S:                                         /*!< SAV */
             //  return load_sav (fileref);
