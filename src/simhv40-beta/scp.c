@@ -4867,7 +4867,7 @@ if ((rptr->flags & REG_VMAD) && sim_vm_fprint_addr)
     sim_vm_fprint_addr (ofile, sim_dflt_dev, (t_addr) val);
 else if (!(rptr->flags & REG_VMIO) ||
 //    (fprint_sym (ofile, rdx, &val, NULL, sim_switches | SIM_SW_REG) > 0)) {
-      (fprint_sym (ofile, rdx, &val, (UNIT*)rptr, sim_switches | SIM_SW_REG) > 0)) {
+      (fprint_sym (ofile, rdx, &val, (UNIT*)rptr, sim_switches | SIM_SW_REG) > 0)) { // FixMe: HWR 18 May 2013
 
          fprint_val (ofile, val, rdx, rptr->width, rptr->flags & REG_FMT);
         if (rptr->fields) {
