@@ -485,21 +485,21 @@ extern struct _sdw {  ///< as used by APU
     word1   C;  ///< Cache control bit. If this bit is set ON, data and/or instructions from the segment may be placed in the cache memory.
     word14  CL; ///< Call limiter (entry bound) value. If SDWAM.G is set OFF, transfers of control into the segment must be to segment addresses no greater than this value.
     word15  POINTER;    ///< The effective segment number used to fetch this SDW from main memory.
-    word1   F;  ///< Full/empty bit. If this bit is set ON, the SDW in the register is valid. If this bit is set OFF, a hit is not possible. All SDWAM.F bits are set OFF by the instructions that clear the SDWAM.
-    word6   USE;    ///< Usage count for the register. The SDWAM.USE field is used to maintain a strict FIFO queue order among the SDWs. When an SDW is matched, its USE value is set to 15 (newest) on the DPS/L68 and to 63 on the DPS 8M, and the queue is reordered. SDWs newly fetched from main memory replace the SDW with USE value 0 (oldest) and the queue is reordered.
+    word1   F;          ///< Full/empty bit. If this bit is set ON, the SDW in the register is valid. If this bit is set OFF, a hit is not possible. All SDWAM.F bits are set OFF by the instructions that clear the SDWAM.
+    word6   USE;        ///< Usage count for the register. The SDWAM.USE field is used to maintain a strict FIFO queue order among the SDWs. When an SDW is matched, its USE value is set to 15 (newest) on the DPS/L68 and to 63 on the DPS 8M, and the queue is reordered. SDWs newly fetched from main memory replace the SDW with USE value 0 (oldest) and the queue is reordered.
     
     //bool    _initialized; ///< for emulator use. When true SDWAM entry has been initialized/used ...
     
 } SDWAM[64], *SDW;
 typedef struct _sdw _sdw;
 
-//* in-core SDW
+//* in-core SDW (i.e. not cached, or in SDWAM)
 struct _sdw0 {
     // even word
     word24  ADDR;   ///< The 24-bit absolute main memory address of the page table for the target segment if SDWAM.U = 0; otherwise, the 24-bit absolute main memory address of the origin of the target segment.
-    word3   R1; ///< Upper limit of read/write ring bracket
-    word3   R2; ///< Upper limit of read/execute ring bracket
-    word3   R3; ///< Upper limit of call ring bracket
+    word3   R1;     ///< Upper limit of read/write ring bracket
+    word3   R2;     ///< Upper limit of read/execute ring bracket
+    word3   R3;     ///< Upper limit of call ring bracket
     word1   F;      ///< Directed fault flag
                     // * 0 = page not in main memory; execute directed fault FC
                     // * 1 = page is in main memory
@@ -1474,11 +1474,64 @@ extern char *strSDW0(_sdw0 *SDW);
 extern char *strSDW(_sdw *SDW);
 extern char *strDSBR();
 
-extern int removeSegment(char *seg);
-extern int removeSegdef(char *seg, char *sym);
-extern int removeSegref(char *seg, char *sym);
-extern int resolveLinks(void);
-extern int loadDeferredSegments(void);
+int removeSegment(char *seg);
+int removeSegdef(char *seg, char *sym);
+int removeSegref(char *seg, char *sym);
+int resolveLinks(void);
+int loadDeferredSegments(void);
+int getAddress(int, int);  // return the 24-bit absolute address of segment + offset
+
+// loader stuff ...
+struct segdef          // definitions for externally available symbols
+{
+    char    *symbol;    ///< name of externallay available symbol
+    int     value;      ///< address of value in segment
+    int     relType;    ///< relocation type (RFU)
+    
+    int     segno;      ///< when filled-in is the segment # where the segdef is found (default=-1)
+    
+    struct segdef  *next;
+    struct segdef  *prev;
+};
+typedef struct segdef segdef;
+
+struct segref      // references to external symbols in this segment
+{
+    char    *segname;   ///< name of segment external symbol resides
+    char    *symbol;    ///< name of extern symbol
+    int     value;      ///< address of ITS pair in segment
+    int     relType;    ///< relocation type (RFU)
+    
+    int     segno;      ///< when filled-in is the segment # where the segref is to be found (default=-1)
+    
+    bool    snapped;    ///< true when link has been filled in with a correct ITS pointer
+    
+    struct segref  *next;
+    struct segref  *prev;
+};
+typedef struct segref segref;
+
+struct segment
+{
+    char    *name;  ///< name of this segment
+    word36  *M;     ///< contents of this segment
+    int     size;   ///< size of this segment in 36-bit words
+    
+    segdef *defs;   ///< symbols available to other segments
+    segref *refs;   ///< external symbols needed by this segment
+    
+    int     segno;  ///< segment# segment is assigned
+    
+    struct segment *next;
+    struct segment *prev;
+};
+typedef struct segment segment;
+
+segment *findSegment(char *segname);
+segdef *findSegdef(char *seg, char *sgdef);
+
+
+
 
 extern t_stat dumpSDWAM();
 

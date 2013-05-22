@@ -382,14 +382,72 @@ void dps8_init(void)    //CustomCmds(void)
     sim_vm_parse_addr = parse_addr;
     sim_vm_fprint_addr = fprint_addr;
 
-    
     sim_vm_cmd = dps8_cmds;
 }
 
 void (*sim_vm_init) (void) = &dps8_init;    //CustomCmds;
 
+extern segment *findSegment(char *);
+
 static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
 {
+    // a segment reference?
+    if (strchr(cptr, '|'))
+    {
+        char addspec[256];
+        strcpy(addspec, cptr);
+        
+        *strchr(addspec, '|') = ' ';
+        
+        char seg[256], off[256];
+        int params = sscanf(addspec, "%s %s", seg, off);
+        if (params != 2)
+        {
+            printf("parse_addr(): illegal number of parameters");
+            return 0;
+        }
+        
+        // determine if segment is numeric or symbolic...
+        char *endp;
+        int segno = (int)strtoll(seg, &endp, 0);
+        if (endp == seg) // XXX don't think this is right
+        {
+            // not numeric...
+            segment *s = findSegment(seg);
+            if (s == NULL)
+            {
+                printf("parse_addr(): segment '%s' not found", seg);
+                return 0;
+            }
+            segno = s->segno;
+        }
+        
+        // determine if offset is numeric or symbolic entry point/segdef...
+        int offset = (int)strtoll(off, &endp, 0);
+        if (endp == off)
+        {
+            // not numeric...
+            segdef *s = findSegdef(seg, off);
+            if (s == NULL)
+            {
+                printf("parse_addr(): entrypoint '%s' not found in segment '%s'", off, seg);
+                return 0;
+            }
+            offset = s->value;
+        }
+        
+        // if we get here then seg contains a segment# and offset.
+        // So, fetch the actual address given the segment & offset ...
+        // ... and return this absolute, 24-bit address
+        
+        t_addr absAddr = getAddress(segno, offset);
+        
+        *optr = cptr + strlen(cptr);
+        
+        return absAddr;
+    }
+    
+    // No, determine absolute address given by cptr
     return (t_addr)strtol(cptr, optr, 8);
 }
 

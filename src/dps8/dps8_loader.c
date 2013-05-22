@@ -21,18 +21,18 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
 
 bool bdeferLoad = false;    // defer load to after symbol resolution
 
-struct segdef          // definitions for externally available symbols
-{
-    char    *symbol;    ///< name of externallay available symbol
-    int     value;      ///< address of value in segment
-    int     relType;    ///< relocation type (RFU)
-    
-    int     segno;      ///< when filled-in is the segment # where the segdef is found (default=-1)
-    
-    struct segdef  *next;
-    struct segdef  *prev;
-};
-typedef struct segdef segdef;
+//struct segdef          // definitions for externally available symbols
+//{
+//    char    *symbol;    ///< name of externallay available symbol
+//    int     value;      ///< address of value in segment
+//    int     relType;    ///< relocation type (RFU)
+//    
+//    int     segno;      ///< when filled-in is the segment # where the segdef is found (default=-1)
+//    
+//    struct segdef  *next;
+//    struct segdef  *prev;
+//};
+//typedef struct segdef segdef;
 
 segdef *newSegdef(char *sym, int val)
 {
@@ -54,21 +54,21 @@ void freeSegdef(segdef *p)
 }
 
 
-struct segref      // references to external symbols in this segment
-{
-    char    *segname;   ///< name of segment external symbol resides
-    char    *symbol;    ///< name of extern symbol
-    int     value;      ///< address of ITS pair in segment
-    int     relType;    ///< relocation type (RFU)
-    
-    int     segno;      ///< when filled-in is the segment # where the segref is to be found (default=-1)
-    
-    bool    snapped;    ///< true when link has been filled in with a correct ITS pointer
-    
-    struct segref  *next;
-    struct segref  *prev;
-};
-typedef struct segref segref;
+//struct segref      // references to external symbols in this segment
+//{
+//    char    *segname;   ///< name of segment external symbol resides
+//    char    *symbol;    ///< name of extern symbol
+//    int     value;      ///< address of ITS pair in segment
+//    int     relType;    ///< relocation type (RFU)
+//    
+//    int     segno;      ///< when filled-in is the segment # where the segref is to be found (default=-1)
+//    
+//    bool    snapped;    ///< true when link has been filled in with a correct ITS pointer
+//    
+//    struct segref  *next;
+//    struct segref  *prev;
+//};
+//typedef struct segref segref;
 
 segref *newSegref(char *seg, char *sym, int val)
 {
@@ -98,21 +98,21 @@ void freeSegref(segref *p)
     p->symbol = NULL;
 }
 
-struct segment
-{
-    char    *name;  ///< name of this segment
-    word36  *M;     ///< contents of this segment
-    int     size;   ///< size of this segment in 36-bit words
-    
-    segdef *defs;   ///< symbols available to other segments
-    segref *refs;   ///< external symbols needed by this segment
-    
-    int     segno;  ///< segment# segment is assigned
-    
-    struct segment *next;
-    struct segment *prev;
-};
-typedef struct segment segment;
+//struct segment
+//{
+//    char    *name;  ///< name of this segment
+//    word36  *M;     ///< contents of this segment
+//    int     size;   ///< size of this segment in 36-bit words
+//    
+//    segdef *defs;   ///< symbols available to other segments
+//    segref *refs;   ///< external symbols needed by this segment
+//    
+//    int     segno;  ///< segment# segment is assigned
+//    
+//    struct segment *next;
+//    struct segment *prev;
+//};
+//typedef struct segment segment;
 
 segment *newSegment(char *name, int size)
 {
@@ -279,6 +279,30 @@ int segrefNamecmp(segref *a, segref *b)
     return strcmp(a->symbol, b->symbol);
 }
 
+segment *findSegment(char *segname)
+{
+    segment *sg;
+    DL_FOREACH(segments, sg)
+        if (!strcmp(sg->name, segname))
+            return sg;
+    return NULL;
+}
+
+segdef *findSegdef(char *seg, char *sgdef)
+{
+    segment *s = findSegment(seg);
+    if (!s)
+        return NULL;
+    
+    segdef *sd;
+    DL_FOREACH(s->defs, sd)
+        if (strcmp(sd->symbol, sgdef) == 0)
+            return sd;
+    
+    return NULL;
+}
+
+PRIVATE
 void makeITS(int segno, int offset, int tag, word36 *Ypair)
 {
     word36 even = 0, odd = 0;
@@ -288,6 +312,78 @@ void makeITS(int segno, int offset, int tag, word36 *Ypair)
     
     Ypair[0] = even;
     Ypair[1] = odd;
+}
+
+PRIVATE
+_sdw0 *fetchSDW(int segno)
+{
+    int sdwAddr = DSBR.ADDR + (2 * segno);
+    
+    static _sdw0 SDW0;
+    
+    word36 SDWeven = M[sdwAddr + 0];
+    word36 SDWodd  = M[sdwAddr + 1];
+
+    // even word
+    SDW0.ADDR = (SDWeven >> 12) & 077777777;
+    SDW0.R1 = (SDWeven >> 9) & 7;
+    SDW0.R2 = (SDWeven >> 6) & 7;
+    SDW0.R3 = (SDWeven >> 3) & 7;
+    SDW0.F = TSTBIT(SDWeven, 2);
+    SDW0.FC = SDWeven & 3;
+    
+    // odd word
+    SDW0.BOUND = (SDWodd >> 21) & 037777;
+    SDW0.R = TSTBIT(SDWodd, 20);
+    SDW0.E = TSTBIT(SDWodd, 19);
+    SDW0.W = TSTBIT(SDWodd, 18);
+    SDW0.P = TSTBIT(SDWodd, 17);
+    SDW0.U = TSTBIT(SDWodd, 16);
+    SDW0.G = TSTBIT(SDWodd, 15);
+    SDW0.C = TSTBIT(SDWodd, 14);
+    SDW0.EB = SDWodd & 037777;
+
+    return &SDW0;
+}
+
+int getAddress(int segno, int offset)
+{
+    // XXX Do we need to 1st check SDWAM for segment entry?
+    
+    
+    // get address of in-core segment descriptor word from DSBR
+    _sdw0 *s = fetchSDW(segno);
+    
+    return (s->ADDR + offset) & 0xffffff; // keep to 24-bits
+}
+
+PRIVATE
+void writeSDW(int segno, _sdw0 *s0)
+{
+    int addr = DSBR.ADDR + (2 * segno);
+    
+    // write a _sdw to memory
+    
+    word36 even = 0, odd = 0;
+    even = bitfieldInsert36(even, s0->ADDR, 12, 24);
+    even = bitfieldInsert36(even, s0->R1, 9, 3);
+    even = bitfieldInsert36(even, s0->R2, 6, 3);
+    even = bitfieldInsert36(even, s0->R3, 3, 3);
+    even = bitfieldInsert36(even, s0->F,  2, 1);
+    even = bitfieldInsert36(even, s0->FC, 0, 2);
+    
+    odd = bitfieldInsert36(odd, s0->BOUND, 21, 14);
+    odd = bitfieldInsert36(odd, s0->R, 20, 1);
+    odd = bitfieldInsert36(odd, s0->E, 19, 1);
+    odd = bitfieldInsert36(odd, s0->W, 18, 1);
+    odd = bitfieldInsert36(odd, s0->P, 17, 1);
+    odd = bitfieldInsert36(odd, s0->U, 16, 1);
+    odd = bitfieldInsert36(odd, s0->G, 15, 1);
+    odd = bitfieldInsert36(odd, s0->C, 14, 1);
+    odd = bitfieldInsert36(odd, s0->EB, 0, 14);
+
+    M[addr + 0] = even;
+    M[addr + 1] = odd;
 }
 
 /*
@@ -356,9 +452,14 @@ int resolveLinks()
  */
 int loadDeferredSegments(void)
 {
+    // First, check to see if DSBR is set up .....
+    if (DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
+        if (!get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
+            return -1;
+
     printf("Loading deferred segments ...\n");
     
-    int ldaddr = 0;
+    int ldaddr = DSBR.ADDR + 65536; // load segments *after* SDW table
     
     segment *sg;
     DL_FOREACH(segments, sg)
@@ -376,11 +477,23 @@ int loadDeferredSegments(void)
         else
             printf("      Error loading segment %d (%o)\n", segno, segno);
         
-        // bump next load address to a 64-word boundary
+        // update in-code SDW to reflect segment info
+        _sdw0 *s0 = fetchSDW(segno);
+        
+        s0->ADDR = ldaddr; // 24-bit absolute address
+        int bound = ldaddr + segwords;
+        bound += bound % 16;
+        
+        s0->BOUND = ((bound-1) >> 10) & 037777; ///< The 14 high-order bits of the last Y-block16 address within the segment that can be referenced without an access violation, out of segment bound, fault
+        s0->R1 = s0->R2 = s0->R3 = 0;   
+        // XXX probably need to fill in more
+        
+        writeSDW(segno, s0);
+        
+        // bump next load address to a 16-word boundary
         ldaddr += segwords;
-        if (ldaddr % 64)
-            ldaddr += ldaddr % 64;
-            
+        ldaddr += ldaddr % 16;        
+        
     }
 
     return 0;
@@ -463,12 +576,12 @@ t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
         else
             
         // process !segdef symbol value
-        if (bDeferred && strcasecmp(args[0], "!segdef") == 0)
+        if (bDeferred && !strcasecmp(args[0], "!segdef"))
         {
             char symbol[256];
             int value;
             
-            sscanf(buff, "%*s %s %i", symbol, &value);
+            sscanf(buff, "%*s %s %o", symbol, &value);
             
             segdef *s = newSegdef(symbol, value);
             // see if segdef already exists
@@ -490,7 +603,37 @@ t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
             printf("segdef created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
         }
 
+        else if (bDeferred && !strcasecmp(args[0], "!entry"))
+        {
+            // very similiar to segdef
+            
+            char symbol[256];
+            int value;
+            
+            sscanf(buff, "%*s %s %*s %o", symbol, &value);
+            
+            segdef *s = newSegdef(symbol, value);
+            // see if segdef already exists
+            if (segments->defs)
+            {
+                segdef *elt;
+                
+                DL_SEARCH(currSegment->defs, elt, s, segdefNamecmp);
+                
+                if (elt)
+                {
+                    fprintf(stderr, "segdef/entrypoint '%s' already found for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
+                    freeSegdef(s);
+                    continue;
+                }
+            }
+            DL_APPEND(currSegment->defs, s);
+            
+            printf("entrypoint created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
+        }
+        
         else
+
                 
         // process !segref segname symbol
         if (bDeferred && strcasecmp(args[0], "!segref") == 0)
@@ -564,7 +707,7 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
             {
                 if (maddr > currSegment->size)
                 {
-                    printf("ERROR: load_oct(bDeferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
+                    printf("ERROR: load_oct(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
                     return SCPE_NXM;
                 }
                 else
@@ -726,7 +869,7 @@ t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     writeSDW0toYPair(s, yPair);
     
     word24 sdwaddress = DSBR.ADDR + (2 * segno);
-    fprintf(stderr, "Writing SDW to %o\n", sdwaddress);
+    fprintf(stderr, "Writing SDW to address %08o (DSBR.ADDR+2*%d) offset \n", sdwaddress, segno);
     // write sdw to segment table
     core_write2(sdwaddress, yPair[0], yPair[1]);
     
@@ -760,7 +903,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     }
 
     bool bVerbose = false;
-    if (sim_switches & SWMASK ('v'))                        /* -v? */
+    if (sim_switches & SWMASK ('V'))                        /* -v? */
         bVerbose = true;
 
     // load file into segment?
