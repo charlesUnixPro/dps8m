@@ -172,6 +172,7 @@ int removeSegment(char *seg)
     {
         DL_FOREACH_SAFE(segments, el, tmp)
         {
+            printf("Removing segment '%s'...\n", el->name);
             freeSegment(el);
             DL_DELETE(segments, el);
         }
@@ -182,6 +183,7 @@ int removeSegment(char *seg)
         DL_FOREACH_SAFE(segments, el, tmp)
             if (strcmp(seg, el->name) == 0)
             {
+                printf("Removing segment '%s'...\n", el->name);
                 freeSegment(el);
                 DL_DELETE(segments, el);
                 return SCPE_OK;
@@ -205,6 +207,8 @@ int removeSegdef(char *seg, char *sym)
             {
                 DL_FOREACH_SAFE(sel->defs, del, dtmp)
                 {
+                    printf("Removing segdef '%s$%s'...\n", sel->name, del->symbol);
+
                     freeSegdef(del);
                     DL_DELETE(sel->defs, del);
                 }
@@ -216,6 +220,8 @@ int removeSegdef(char *seg, char *sym)
                 {
                     if (strcmp(del->symbol, sym) == 0)
                     {
+                        printf("Removing segdef '%s$%s'...\n", sel->name, del->symbol);
+
                         freeSegdef(del);
                         DL_DELETE(sel->defs, del);
                         return SCPE_OK;
@@ -241,6 +247,8 @@ int removeSegref(char *seg, char *sym)
             {
                 DL_FOREACH_SAFE(sel->refs, del, dtmp)
                 {
+                    printf("Removing segref '%s$%s'...\n", sel->name, del->symbol);
+
                     freeSegref(del);
                     DL_DELETE(sel->refs, del);
                 }
@@ -252,6 +260,8 @@ int removeSegref(char *seg, char *sym)
                 {
                     if (strcmp(del->symbol, sym) == 0)
                     {
+                        printf("Removing serdef '%s$%s'...\n", sel->name, del->symbol);
+   
                         freeSegref(del);
                         DL_DELETE(sel->refs, del);
                         return SCPE_OK;
@@ -287,6 +297,14 @@ segment *findSegment(char *segname)
             return sg;
     return NULL;
 }
+segment *findSegmentNoCase(char *segname)
+{
+    segment *sg;
+    DL_FOREACH(segments, sg)
+    if (!strcasecmp(sg->name, segname))
+        return sg;
+    return NULL;
+}
 
 segdef *findSegdef(char *seg, char *sgdef)
 {
@@ -298,6 +316,19 @@ segdef *findSegdef(char *seg, char *sgdef)
     DL_FOREACH(s->defs, sd)
         if (strcmp(sd->symbol, sgdef) == 0)
             return sd;
+    
+    return NULL;
+}
+segdef *findSegdefNoCase(char *seg, char *sgdef)
+{
+    segment *s = findSegmentNoCase(seg);
+    if (!s)
+        return NULL;
+    
+    segdef *sd;
+    DL_FOREACH(s->defs, sd)
+    if (strcasecmp(sd->symbol, sgdef) == 0)
+        return sd;
     
     return NULL;
 }
@@ -357,6 +388,33 @@ int getAddress(int segno, int offset)
     return (s->ADDR + offset) & 0xffffff; // keep to 24-bits
 }
 
+/*
+ * for a given 24-bit address see if it can be mapped to a segment + offset
+ */
+bool getSegmentAddressString(int addr, char *msg)
+{
+    // look for address inside a defined segment ...
+    segment *s;
+    DL_FOREACH(segments, s)
+    {
+        int segno = s->segno;       // get segment number from list of known "deferred" segments
+        
+        _sdw0 *s0 = fetchSDW(segno);
+        int startAddr = s0->ADDR;   // get start address
+        if (addr >= startAddr && addr <= startAddr + (s0->BOUND << 4) - 1)
+            {
+                // addr is within bounds of this segment.....
+                int offset = addr - startAddr;
+                sprintf(msg, "%s|%o", s->name, offset);
+                
+                return true;
+            }
+    }
+    
+    // if we get here then address is not contained within one of the deferred segments
+    return false;
+}
+
 PRIVATE
 void writeSDW(int segno, _sdw0 *s0)
 {
@@ -391,11 +449,18 @@ void writeSDW(int segno, _sdw0 *s0)
  */
 int resolveLinks()
 {
-    int segno = 10;     // current segment number
+    int segno = -1;     // current segment number
     
-    printf("Examining segments ...\n");
-    
+    printf("Examining segments ... ");
+
+    // determine maximum segment no 
     segment *sg1;
+    DL_FOREACH(segments, sg1)
+        segno = max(segno, sg1->segno);
+    segno += 1; // ... and one more. This will be our starting segment number.
+    
+    printf("segment numbering begins at: %d\n", segno);
+    
     DL_FOREACH(segments, sg1)
     {
         printf("    Processing segment %s...\n", sg1->name);
@@ -448,7 +513,7 @@ int resolveLinks()
 }
 
 /*!
- * load add deferred segments into memory and set-up segment table for appending mode operation ...
+ * load/add deferred segments into memory and set-up segment table for appending mode operation ...
  */
 int loadDeferredSegments(void)
 {
@@ -460,6 +525,8 @@ int loadDeferredSegments(void)
     printf("Loading deferred segments ...\n");
     
     int ldaddr = DSBR.ADDR + 65536; // load segments *after* SDW table
+    
+    int maxSegno = -1;
     
     segment *sg;
     DL_FOREACH(segments, sg)
@@ -492,9 +559,15 @@ int loadDeferredSegments(void)
         
         // bump next load address to a 16-word boundary
         ldaddr += segwords;
-        ldaddr += ldaddr % 16;        
+        ldaddr += ldaddr % 16;
+        
+        // XXX Need to adjust DSBR.BND to reflext hoghest segment address???
+        // 1. If 2 * segno >= 16 * (DSBR.BND + 1)
+        
+        maxSegno = max2(maxSegno, segno);
         
     }
+    DSBR.BND = (2 * maxSegno) / 16;
 
     return 0;
 }
@@ -531,7 +604,7 @@ t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
         
         else
             
-        // process !go
+        // process !go (depreciate?)
         if (strcasecmp(args[0], "!go") == 0)
         {
             long addr = strtol(args[1], NULL, 0);
@@ -634,7 +707,6 @@ t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
         
         else
 
-                
         // process !segref segname symbol
         if (bDeferred && strcasecmp(args[0], "!segref") == 0)
         {

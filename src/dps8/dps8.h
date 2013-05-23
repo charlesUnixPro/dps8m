@@ -1480,6 +1480,7 @@ int removeSegref(char *seg, char *sym);
 int resolveLinks(void);
 int loadDeferredSegments(void);
 int getAddress(int, int);  // return the 24-bit absolute address of segment + offset
+bool getSegmentAddressString(int addr, char *msg);
 
 // loader stuff ...
 struct segdef          // definitions for externally available symbols
@@ -1528,7 +1529,10 @@ struct segment
 typedef struct segment segment;
 
 segment *findSegment(char *segname);
+segment *findSegmentNoCase(char *segname);  // same as above, but case insensitive
+
 segdef *findSegdef(char *seg, char *sgdef);
+segdef *findSegdefNoCase(char *seg, char *sgdef);
 
 
 

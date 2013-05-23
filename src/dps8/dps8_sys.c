@@ -1,3 +1,4 @@
+
 /**
  * \file dps8_sys.c
  * \project dps8
@@ -316,17 +317,16 @@ t_stat dpsCmd_Segment (int32 arg, char *buf)
      segment ??? remove
      segment ??? segref remove ????
      segment ??? segdef remove ????
-     
      */
     int nParams = sscanf(buf, "%s %s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3], cmds[4]);
-    if (nParams == 2 && !strcasecmp(cmds[1], "remove"))
-        return removeSegment(cmds[0]);
+    if (nParams == 2 && !strcasecmp(cmds[0], "remove"))
+        return removeSegment(cmds[1]);
     if (nParams == 4 && !strcasecmp(cmds[1], "segref") && !strcasecmp(cmds[2], "remove"))
         return removeSegref(cmds[0], cmds[3]);
     if (nParams == 4 && !strcasecmp(cmds[1], "segdef") && !strcasecmp(cmds[2], "remove"))
         return removeSegdef(cmds[0], cmds[3]);
     
-    return SCPE_OK;
+    return SCPE_ARG;
 }
 
 //! custom command "segments" - stuff to do with deferred segments
@@ -337,6 +337,8 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
     
     /*
      * segments resolve
+     * segments load deferred
+     * segments remove ???
      */
     int nParams = sscanf(buf, "%s %s %s %s", cmds[0], cmds[1], cmds[2], cmds[3]);
     //if (nParams == 2 && !strcasecmp(cmds[0], "segment") && !strcasecmp(cmds[1], "table"))
@@ -349,7 +351,10 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
     if (nParams == 2 && !strcasecmp(cmds[0], "load") && !strcasecmp(cmds[1], "deferred"))
         return loadDeferredSegments();    // load all deferred segments
     
-    return SCPE_OK;
+    if (nParams == 2 && !strcasecmp(cmds[0], "remove"))
+        return removeSegment(cmds[1]);
+
+    return SCPE_ARG;
 }
 
 CTAB dps8_cmds[] =
@@ -394,7 +399,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
     // a segment reference?
     if (strchr(cptr, '|'))
     {
-        char addspec[256];
+        static char addspec[256];
         strcpy(addspec, cptr);
         
         *strchr(addspec, '|') = ' ';
@@ -403,34 +408,41 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         int params = sscanf(addspec, "%s %s", seg, off);
         if (params != 2)
         {
-            printf("parse_addr(): illegal number of parameters");
+            printf("parse_addr(): illegal number of parameters\n");
+            *optr = cptr;   // signal error
             return 0;
         }
         
         // determine if segment is numeric or symbolic...
         char *endp;
         int segno = (int)strtoll(seg, &endp, 0);
-        if (endp == seg) // XXX don't think this is right
+        if (endp == seg)
         {
             // not numeric...
-            segment *s = findSegment(seg);
+            segment *s = findSegmentNoCase(seg);
             if (s == NULL)
             {
-                printf("parse_addr(): segment '%s' not found", seg);
+                printf("parse_addr(): segment '%s' not found\n", seg);
+                *optr = cptr;   // signal error
+
                 return 0;
             }
             segno = s->segno;
         }
+        
+        // XXX Add ability to use PR/AR syntax ...
         
         // determine if offset is numeric or symbolic entry point/segdef...
         int offset = (int)strtoll(off, &endp, 0);
         if (endp == off)
         {
             // not numeric...
-            segdef *s = findSegdef(seg, off);
+            segdef *s = findSegdefNoCase(seg, off);
             if (s == NULL)
             {
                 printf("parse_addr(): entrypoint '%s' not found in segment '%s'", off, seg);
+                *optr = cptr;   // signal error
+
                 return 0;
             }
             offset = s->value;
@@ -442,7 +454,8 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         
         t_addr absAddr = getAddress(segno, offset);
         
-        *optr = cptr + strlen(cptr);
+        // FixMe only luckily does this work
+        *optr = endp;   //cptr + strlen(cptr);
         
         return absAddr;
     }
@@ -453,7 +466,12 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
 
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr simh_addr)
 {
-    fprintf(stream, "%06o", simh_addr);
+    char temp[256];
+    bool bFound = getSegmentAddressString(simh_addr, temp);
+    if (bFound)
+        fprintf(stream, "%s (%08o)", temp, simh_addr);
+    else
+        fprintf(stream, "%06o", simh_addr);
 }
 
 /*! Based on the switch variable, symbolically output to stream ofile the data in array val at the specified addr
