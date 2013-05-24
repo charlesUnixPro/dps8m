@@ -1481,6 +1481,8 @@ int resolveLinks(void);
 int loadDeferredSegments(void);
 int getAddress(int, int);  // return the 24-bit absolute address of segment + offset
 bool getSegmentAddressString(int addr, char *msg);
+t_stat createLOT();    // create link offset table segment
+_sdw0 *fetchSDW(word15 segno);
 
 // loader stuff ...
 struct segdef          // definitions for externally available symbols
@@ -1522,6 +1524,9 @@ struct segment
     segref *refs;   ///< external symbols needed by this segment
     
     int     segno;  ///< segment# segment is assigned
+    
+    int     linkOffset; ///< link offset in segment
+    int     linkSize;   ///< size of segments linkage section
     
     struct segment *next;
     struct segment *prev;

@@ -36,7 +36,7 @@ bool bdeferLoad = false;    // defer load to after symbol resolution
 
 segdef *newSegdef(char *sym, int val)
 {
-    segdef *p = malloc(sizeof(segdef));
+    segdef *p = calloc(1, sizeof(segdef));
     p->symbol = strdup(sym);
     p->value = val;
     
@@ -116,11 +116,11 @@ void freeSegref(segref *p)
 
 segment *newSegment(char *name, int size)
 {
-    segment *s = malloc(sizeof(segment));
+    segment *s = calloc(1, sizeof(segment));
     if (name && strlen(name) > 0)
         s->name = strdup(name);
     if (size > 0)
-        s->M = malloc(sizeof(word36) * size);
+        s->M = calloc(1, sizeof(word36) * size);
     else
         s->M = NULL;
     s->size = size;
@@ -129,6 +129,9 @@ segment *newSegment(char *name, int size)
     s->refs = NULL;
     
     s->segno = -1;
+    
+    s->linkOffset = -1;
+    s->linkSize = 0;
     
     s->next = NULL;
     s->prev = NULL;
@@ -345,37 +348,37 @@ void makeITS(int segno, int offset, int tag, word36 *Ypair)
     Ypair[1] = odd;
 }
 
-PRIVATE
-_sdw0 *fetchSDW(int segno)
-{
-    int sdwAddr = DSBR.ADDR + (2 * segno);
-    
-    static _sdw0 SDW0;
-    
-    word36 SDWeven = M[sdwAddr + 0];
-    word36 SDWodd  = M[sdwAddr + 1];
-
-    // even word
-    SDW0.ADDR = (SDWeven >> 12) & 077777777;
-    SDW0.R1 = (SDWeven >> 9) & 7;
-    SDW0.R2 = (SDWeven >> 6) & 7;
-    SDW0.R3 = (SDWeven >> 3) & 7;
-    SDW0.F = TSTBIT(SDWeven, 2);
-    SDW0.FC = SDWeven & 3;
-    
-    // odd word
-    SDW0.BOUND = (SDWodd >> 21) & 037777;
-    SDW0.R = TSTBIT(SDWodd, 20);
-    SDW0.E = TSTBIT(SDWodd, 19);
-    SDW0.W = TSTBIT(SDWodd, 18);
-    SDW0.P = TSTBIT(SDWodd, 17);
-    SDW0.U = TSTBIT(SDWodd, 16);
-    SDW0.G = TSTBIT(SDWodd, 15);
-    SDW0.C = TSTBIT(SDWodd, 14);
-    SDW0.EB = SDWodd & 037777;
-
-    return &SDW0;
-}
+//PRIVATE
+//_sdw0 *fetchSDW(int segno)
+//{
+//    int sdwAddr = DSBR.ADDR + (2 * segno);
+//    
+//    static _sdw0 SDW0;
+//    
+//    word36 SDWeven = M[sdwAddr + 0];
+//    word36 SDWodd  = M[sdwAddr + 1];
+//
+//    // even word
+//    SDW0.ADDR = (SDWeven >> 12) & 077777777;
+//    SDW0.R1 = (SDWeven >> 9) & 7;
+//    SDW0.R2 = (SDWeven >> 6) & 7;
+//    SDW0.R3 = (SDWeven >> 3) & 7;
+//    SDW0.F = TSTBIT(SDWeven, 2);
+//    SDW0.FC = SDWeven & 3;
+//    
+//    // odd word
+//    SDW0.BOUND = (SDWodd >> 21) & 037777;
+//    SDW0.R = TSTBIT(SDWodd, 20);
+//    SDW0.E = TSTBIT(SDWodd, 19);
+//    SDW0.W = TSTBIT(SDWodd, 18);
+//    SDW0.P = TSTBIT(SDWodd, 17);
+//    SDW0.U = TSTBIT(SDWodd, 16);
+//    SDW0.G = TSTBIT(SDWodd, 15);
+//    SDW0.C = TSTBIT(SDWodd, 14);
+//    SDW0.EB = SDWodd & 037777;
+//
+//    return &SDW0;
+//}
 
 int getAddress(int segno, int offset)
 {
@@ -415,41 +418,44 @@ bool getSegmentAddressString(int addr, char *msg)
     return false;
 }
 
-PRIVATE
-void writeSDW(int segno, _sdw0 *s0)
-{
-    int addr = DSBR.ADDR + (2 * segno);
-    
-    // write a _sdw to memory
-    
-    word36 even = 0, odd = 0;
-    even = bitfieldInsert36(even, s0->ADDR, 12, 24);
-    even = bitfieldInsert36(even, s0->R1, 9, 3);
-    even = bitfieldInsert36(even, s0->R2, 6, 3);
-    even = bitfieldInsert36(even, s0->R3, 3, 3);
-    even = bitfieldInsert36(even, s0->F,  2, 1);
-    even = bitfieldInsert36(even, s0->FC, 0, 2);
-    
-    odd = bitfieldInsert36(odd, s0->BOUND, 21, 14);
-    odd = bitfieldInsert36(odd, s0->R, 20, 1);
-    odd = bitfieldInsert36(odd, s0->E, 19, 1);
-    odd = bitfieldInsert36(odd, s0->W, 18, 1);
-    odd = bitfieldInsert36(odd, s0->P, 17, 1);
-    odd = bitfieldInsert36(odd, s0->U, 16, 1);
-    odd = bitfieldInsert36(odd, s0->G, 15, 1);
-    odd = bitfieldInsert36(odd, s0->C, 14, 1);
-    odd = bitfieldInsert36(odd, s0->EB, 0, 14);
-
-    M[addr + 0] = even;
-    M[addr + 1] = odd;
-}
+//PRIVATE
+//void writeSDW(int segno, _sdw0 *s0)
+//{
+//    int addr = DSBR.ADDR + (2 * segno);
+//    
+//    // write a _sdw to memory
+//    
+//    word36 even = 0, odd = 0;
+//    even = bitfieldInsert36(even, s0->ADDR, 12, 24);
+//    even = bitfieldInsert36(even, s0->R1, 9, 3);
+//    even = bitfieldInsert36(even, s0->R2, 6, 3);
+//    even = bitfieldInsert36(even, s0->R3, 3, 3);
+//    even = bitfieldInsert36(even, s0->F,  2, 1);
+//    even = bitfieldInsert36(even, s0->FC, 0, 2);
+//    
+//    odd = bitfieldInsert36(odd, s0->BOUND, 21, 14);
+//    odd = bitfieldInsert36(odd, s0->R, 20, 1);
+//    odd = bitfieldInsert36(odd, s0->E, 19, 1);
+//    odd = bitfieldInsert36(odd, s0->W, 18, 1);
+//    odd = bitfieldInsert36(odd, s0->P, 17, 1);
+//    odd = bitfieldInsert36(odd, s0->U, 16, 1);
+//    odd = bitfieldInsert36(odd, s0->G, 15, 1);
+//    odd = bitfieldInsert36(odd, s0->C, 14, 1);
+//    odd = bitfieldInsert36(odd, s0->EB, 0, 14);
+//
+//    M[addr + 0] = even;
+//    M[addr + 1] = odd;
+//}
 
 /*
  * try to resolve external references for all deferred segments
  */
+
+const int StartingSegment = 8;
+
 int resolveLinks()
 {
-    int segno = -1;     // current segment number
+    int segno = StartingSegment - 1;//-1;     // current segment number
     
     printf("Examining segments ... ");
 
@@ -512,6 +518,43 @@ int resolveLinks()
     return 0;
 }
 
+PRIVATE
+int loadDeferredSegment(segment *sg, int addr24)
+{
+    printf("    loading %s as segment# %d\n", sg->name, sg->segno);
+        
+    int segno = sg->segno;
+        
+    word18 segwords = sg->size;
+    
+    memcpy(M + addr24, sg->M, sg->size * sizeof(word36));
+    
+    DSBR.BND = 037777;  // temporary max bound ...
+    
+    if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
+        printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
+    else
+        printf("      Error loading segment %d (%o)\n", segno, segno);
+    
+    // update in-code SDW to reflect segment info
+    // Done in loadUnpagedSegment()
+    
+//    _sdw0 *s0 = fetchSDW(segno);
+//    
+//    s0->ADDR = addr24; // 24-bit absolute address
+//    
+//    int bound = segwords;
+//    bound += bound % 16;
+//    
+//    s0->BOUND = ((bound-1) >> 4) & 037777; ///< The 14 high-order bits of the last Y-block16 address within the segment that can be referenced without an access violation, out of segment bound, fault
+//    s0->R1 = s0->R2 = s0->R3 = 0;
+//    // XXX probably need to fill in more
+//    
+//    writeSDW(segno, s0);
+    
+    return 0;
+}
+
 /*!
  * load/add deferred segments into memory and set-up segment table for appending mode operation ...
  */
@@ -531,51 +574,108 @@ int loadDeferredSegments(void)
     segment *sg;
     DL_FOREACH(segments, sg)
     {
-        printf("    loading %s as segment %d\n", sg->name, sg->segno);
+        loadDeferredSegment(sg, ldaddr);
         
-        int segno = sg->segno;
-        
-        word18 segwords = sg->size;
-        
-        memcpy(M + ldaddr, sg->M, sg->size * sizeof(word36));
-        
-        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
-            printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, ldaddr);
-        else
-            printf("      Error loading segment %d (%o)\n", segno, segno);
-        
-        // update in-code SDW to reflect segment info
-        _sdw0 *s0 = fetchSDW(segno);
-        
-        s0->ADDR = ldaddr; // 24-bit absolute address
-        int bound = ldaddr + segwords;
-        bound += bound % 16;
-        
-        s0->BOUND = ((bound-1) >> 10) & 037777; ///< The 14 high-order bits of the last Y-block16 address within the segment that can be referenced without an access violation, out of segment bound, fault
-        s0->R1 = s0->R2 = s0->R3 = 0;   
-        // XXX probably need to fill in more
-        
-        writeSDW(segno, s0);
+//        printf("    loading %s as segment# %d\n", sg->name, sg->segno);
+//        
+       int segno = sg->segno;
+//        
+       word18 segwords = sg->size;
+//        
+//        memcpy(M + ldaddr, sg->M, sg->size * sizeof(word36));
+//        
+//        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+//            printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, ldaddr);
+//        else
+//            printf("      Error loading segment %d (%o)\n", segno, segno);
+//        
+//        // update in-code SDW to reflect segment info
+//        _sdw0 *s0 = fetchSDW(segno);
+//        
+//        s0->ADDR = ldaddr; // 24-bit absolute address
+//        
+//        int bound = segwords;
+//        bound += bound % 16;
+//        
+//        s0->BOUND = ((bound-1) >> 4) & 037777; ///< The 14 high-order bits of the last Y-block16 address within the segment that can be referenced without an access violation, out of segment bound, fault
+//        s0->R1 = s0->R2 = s0->R3 = 0;   
+//        // XXX probably need to fill in more
+//        
+//        writeSDW(segno, s0);
         
         // bump next load address to a 16-word boundary
         ldaddr += segwords;
         ldaddr += ldaddr % 16;
         
-        // XXX Need to adjust DSBR.BND to reflext hoghest segment address???
-        // 1. If 2 * segno >= 16 * (DSBR.BND + 1)
-        
         maxSegno = max2(maxSegno, segno);
-        
     }
+
+    // XXX Need to adjust DSBR.BND to reflext highest segment address???
+    // 1. If 2 * segno >= 16 * (DSBR.BND + 1)
+    
     DSBR.BND = (2 * maxSegno) / 16;
 
     return 0;
 }
 
+/*
+ * create a linkage Offset Table segment ...
+ */
+t_stat createLOT()
+{
+    segment *s;
+    
+    // see if lot$ already exists ...
+    DL_FOREACH(segments, s)
+    {
+       if (!strcmp(s->name, "lot$"))
+       {
+           printf("Linkage Offset Table (lot$) segment already exists. Try 'segment lot$ remove'\n");
+           return SCPE_ARG;
+       }
+    }
+    
+    // if we get here we're free to create the lot$ segment ...
+    
+    // determine maximum segment number ...
+    int maxSeg = -1;
+    int numSeg = 0;     // number of segments
+    
+    DL_FOREACH(segments, s)
+    {
+        maxSeg = max2(maxSeg, s->segno);
+        numSeg += 1;
+    }
+    // create a lot segment ...
+    segment *lot = newSegment("lot$", maxSeg + 1);  
+
+    // Now go through each segment getting the linkage address and filling in the LOT table with the address (in sprn/lprn packed pointer format)
+    
+    // C(PRn.BITNO) → C(Y)0,5
+    // C(PRn.SNR)3,14 → C(Y)6,17
+    // C(PRn.WORDNO) → C(Y)18,35
+    
+    DL_FOREACH(segments, s)
+    {
+        word36 pp = 0;
+        pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
+        pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
+        
+        lot->M[s->segno] = pp;
+    }
+
+    DL_APPEND(segments, lot);
+    
+    printf("lot$ segment created with %d sparse entries.\n", numSeg);
+    
+    return SCPE_OK;
+}
+
+
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
+t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
 {
     long curpos = ftell(f);
     
@@ -644,6 +744,18 @@ t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
             currSegment = s;
             
             printf("segment created for '%s'\n", s->name);
+        }
+        
+        else
+            
+        if (bDeferred && strcasecmp(args[0], "!linkage") == 0)
+        {
+            // e.g. !LINKAGE 004456 4
+            int laddr = -1, lsize = 0;
+            
+            sscanf(buff, "%o %o", &laddr, &lsize);
+            currSegment->linkOffset = laddr;
+            currSegment->linkSize = lsize;
         }
 
         else
@@ -745,7 +857,6 @@ t_stat scanFile(FILE *f, bool bDeferred, bool bVerbose)
             //if (segments && maxaddr > 0)
             //    segments->M = malloc(sizeof(word36) * maxaddr);
         }
-        
     }
     
     fseek(f, curpos, SEEK_SET);    // restore original position
@@ -941,7 +1052,7 @@ t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     writeSDW0toYPair(s, yPair);
     
     word24 sdwaddress = DSBR.ADDR + (2 * segno);
-    fprintf(stderr, "Writing SDW to address %08o (DSBR.ADDR+2*%d) offset \n", sdwaddress, segno);
+    fprintf(stderr, "Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
     // write sdw to segment table
     core_write2(sdwaddress, yPair[0], yPair[1]);
     
@@ -1049,11 +1160,10 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
                 return SCPE_ARG;
             }
         }
-
     }
     
     // process any special directives from assembly
-    scanFile(fileref, bDeferred, bVerbose);
+    scanDirectives(fileref, bDeferred, bVerbose);
     
     switch (fmt) {                                          /* case fmt */
         case FMT_O:                                         /*!< OCT */

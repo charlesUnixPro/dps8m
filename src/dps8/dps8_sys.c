@@ -194,7 +194,6 @@ t_stat dpsCmd_InitSDWAM ()
     return SCPE_OK;
 }
 
-PRIVATE
 _sdw0 *fetchSDW(word15 segno)
 {
     word36 SDWeven, SDWodd;
@@ -354,6 +353,9 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
     if (nParams == 2 && !strcasecmp(cmds[0], "remove"))
         return removeSegment(cmds[1]);
 
+    if (nParams == 2 && !strcasecmp(cmds[0], "create") && !strcasecmp(cmds[1], "lot$"))
+        return createLOT();
+
     return SCPE_ARG;
 }
 
@@ -454,7 +456,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         
         t_addr absAddr = getAddress(segno, offset);
         
-        // FixMe only luckily does this work
+        // TODO: only luckily does this work
         *optr = endp;   //cptr + strlen(cptr);
         
         return absAddr;
@@ -484,18 +486,7 @@ t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 ssw
         fprintf(ofile, "%012llo", *val);
         return SCPE_OK;
     }
-    else if (sswitch & SIM_SW_REG)
-    {
-        // Print register
-        REG* regp = (void*) uptr;
-        char *reg_name = regp->name;
-    
-        if (!strcasecmp(reg_name, "ir"))
-            fprintf(ofile, "%s%06o", dumpFlags(rIR), (word18)*val);
-        
-        return SCPE_OK;
-    } else
-        return SCPE_ARG;
+    return SCPE_ARG;
 }
 
 /*!  – Based on the switch variable, parse character string cptr for a symbolic value val at the specified addr

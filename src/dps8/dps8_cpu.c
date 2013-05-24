@@ -104,10 +104,35 @@ struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
 
+
+/*
+ * register stuff ...
+ */
+const char *z1[] = {"0", "1"};
+BITFIELD dps8_IR_bits[] = {    
+    BITNCF(3),
+    BITFNAM(HEX,   1, z1),    /*!< base-16 exponent */ ///< 0000010
+    BITFNAM(ABS,   1, z1),    /*!< absolute mode */ ///< 0000020
+    BITFNAM(MIIF,  1, z1),	  /*!< mid-instruction interrupt fault */ ///< 0000040
+    BITFNAM(TRUNC, 1, z1),    /*!< truncation */ ///< 0000100
+    BITFNAM(NBAR,  1, z1),	  /*!< not BAR mode */ ///< 0000200
+    BITFNAM(PMASK, 1, z1),	  /*!< parity mask */ ///< 0000400
+    BITFNAM(PAR,   1, z1),    /*!< parity error */ ///< 0001000
+    BITFNAM(TALLY, 1, z1),	  /*!< tally runout */ ///< 0002000
+    BITFNAM(OMASK, 1, z1),    /*!< overflow mask */ ///< 0004000
+    BITFNAM(EUFL,  1, z1),	  /*!< exponent underflow */ ///< 0010000
+    BITFNAM(EOFL,  1, z1),	  /*!< exponent overflow */ ///< 0020000
+    BITFNAM(OFLOW, 1, z1),	  /*!< overflow */ ///< 0040000
+    BITFNAM(CARRY, 1, z1),	  /*!< carry */ ///< 0100000
+    BITFNAM(NEG,   1, z1),    /*!< negative */ ///< 0200000
+    BITFNAM(ZERO,  1, z1),	  /*!< zero */ ///< 0400000
+    ENDBITS
+};
+
 REG cpu_reg[] = {
     { ORDATA (IC, rIC, VASIZE) },
     //{ ORDATA (IR, rIR, 18) },
-    { ORDATAD (IR, rIR, 18, "Indicator Register"), REG_VMIO },
+    { ORDATADF (IR, rIR, 18, "Indicator Register", dps8_IR_bits) },
     
     //    { FLDATA (Zero, rIR, F_V_A) },
     //    { FLDATA (Negative, rIR, F_V_B) },
