@@ -117,6 +117,7 @@ struct tmln {
     int32               txdrp;                          /* xmt drop count */
     int32               txbsz;                          /* xmt buffer size */
     int32               txbfd;                          /* xmt buffered flag */
+    t_bool              modem_control;                  /* line supports modem control behaviors */
     int32               modembits;                      /* modem bits which are currently set */
     FILE                *txlog;                         /* xmt log file */
     FILEREF             *txlogref;                      /* xmt log file reference */
@@ -164,6 +165,7 @@ t_stat tmxr_close_master (TMXR *mp);
 t_stat tmxr_attach_ex (TMXR *mp, UNIT *uptr, char *cptr, t_bool async);
 t_stat tmxr_detach (TMXR *mp, UNIT *uptr);
 t_stat tmxr_attach_help(FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, char *cptr);
+char *tmxr_line_attach_string(TMLN *lp);
 t_stat tmxr_set_modem_control_passthru (TMXR *mp);
 t_stat tmxr_clear_modem_control_passthru (TMXR *mp);
 t_stat tmxr_set_get_modem_bits (TMLN *lp, int32 bits_to_set, int32 bits_to_clear, int32 *incoming_bits);
@@ -202,9 +204,9 @@ void _tmxr_debug (uint32 dbits, TMLN *lp, const char *msg, char *buf, int bufsiz
 extern FILE *sim_deb;                                   /* debug file */
 #define tmxr_debug(dbits, lp, msg, buf, bufsize) if (sim_deb && (lp)->mp->dptr && ((dbits) & (lp)->mp->dptr->dctrl)) _tmxr_debug (dbits, lp, msg, buf, bufsize); else (void)0
 #define tmxr_debug_trace(mp, msg) if (sim_deb && (mp)->dptr && (TMXR_DBG_TRC & (mp)->dptr->dctrl)) sim_debug (TMXR_DBG_TRC, mp->dptr, "%s\n", (msg)); else (void)0
-#define tmxr_debug_trace_line(lp, msg) if (sim_deb && (lp)->mp && (lp)->mp->dptr && (TMXR_DBG_TRC & (lp)->mp->dptr->dctrl)) sim_debug (TMXR_DBG_TRC, (lp)->mp->dptr, "%s\n", (msg)); else (void)0
+#define tmxr_debug_trace_line(lp, msg) if (sim_deb && (lp)->mp && (lp)->mp->dptr && (TMXR_DBG_TRC & (lp)->mp->dptr->dctrl)) sim_debug (TMXR_DBG_TRC, (lp)->mp->dptr, "Ln%d:%s\n", (int)((lp)-(lp)->mp->ldsc), (msg)); else (void)0
 #define tmxr_debug_connect(mp, msg) if (sim_deb && (mp)->dptr && (TMXR_DBG_CON & (mp)->dptr->dctrl)) sim_debug (TMXR_DBG_CON, mp->dptr, "%s\n", (msg)); else (void)0
-#define tmxr_debug_connect_line(lp, msg) if (sim_deb && (lp)->mp && (lp)->mp->dptr && (TMXR_DBG_CON & (lp)->mp->dptr->dctrl)) sim_debug (TMXR_DBG_CON, (lp)->mp->dptr, "%s\n", (msg)); else (void)0
+#define tmxr_debug_connect_line(lp, msg) if (sim_deb && (lp)->mp && (lp)->mp->dptr && (TMXR_DBG_CON & (lp)->mp->dptr->dctrl)) sim_debug (TMXR_DBG_CON, (lp)->mp->dptr, "Ln%d:%s\n", (int)((lp)-(lp)->mp->ldsc), (msg)); else (void)0
 
 #if defined(SIM_ASYNCH_IO) && defined(SIM_ASYNCH_MUX)
 #define tmxr_attach(mp, uptr, cptr) tmxr_attach_ex(mp, uptr, cptr, TRUE)

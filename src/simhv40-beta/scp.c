@@ -2857,12 +2857,14 @@ t_stat show_config (FILE *st, DEVICE *dnotused, UNIT *unotused, int32 flag, char
 {
 int32 i;
 DEVICE *dptr;
+t_bool only_enabled = (sim_switches & SWMASK ('E'));
 
 if (cptr && (*cptr != 0))
     return SCPE_2MARG;
-fprintf (st, "%s simulator configuration\n\n", sim_name);
+fprintf (st, "%s simulator configuration%s\n\n", sim_name, only_enabled ? " (enabled devices)" : "");
 for (i = 0; (dptr = sim_devices[i]) != NULL; i++)
-    show_device (st, dptr, flag);
+    if (!only_enabled || !qdisable (dptr))
+        show_device (st, dptr, flag);
 return SCPE_OK;
 }
 
@@ -4866,10 +4868,8 @@ GET_RADIX (rdx, rptr->radix);
 if ((rptr->flags & REG_VMAD) && sim_vm_fprint_addr)
     sim_vm_fprint_addr (ofile, sim_dflt_dev, (t_addr) val);
 else if (!(rptr->flags & REG_VMIO) ||
-//    (fprint_sym (ofile, rdx, &val, NULL, sim_switches | SIM_SW_REG) > 0)) {
-      (fprint_sym (ofile, rdx, &val, (UNIT*)rptr, sim_switches | SIM_SW_REG) > 0)) { // FixMe: HWR 18 May 2013
-
-         fprint_val (ofile, val, rdx, rptr->width, rptr->flags & REG_FMT);
+    (fprint_sym (ofile, rdx, &val, NULL, sim_switches | SIM_SW_REG) > 0)) {
+        fprint_val (ofile, val, rdx, rptr->width, rptr->flags & REG_FMT);
         if (rptr->fields) {
             fprintf (ofile, "\t");
             fprint_fields (ofile, val, val, rptr->fields);
@@ -6369,7 +6369,7 @@ if (!uptr->next)
 if (sim_clock_queue != QUEUE_LIST_END)
     sim_interval = sim_clock_queue->time;
 else sim_interval = noqueue_time = NOQUEUE_WAIT;
-if (sim_is_active(uptr)) {
+if (uptr->next) {
     if (sim_deb) {
         sim_debug (SIM_DBG_EVENT, sim_dflt_dev, "Cancel failed for %s\n", sim_uname(uptr));
         fclose(sim_deb);
