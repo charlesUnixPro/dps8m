@@ -1482,6 +1482,11 @@ int loadDeferredSegments(void);
 int getAddress(int, int);  // return the 24-bit absolute address of segment + offset
 bool getSegmentAddressString(int addr, char *msg);
 t_stat createLOT();    // create link offset table segment
+
+#define LOT "lot_"
+
+//t_stat createStack(int n);  // xreate stack for ring n
+
 _sdw0 *fetchSDW(word15 segno);
 
 // loader stuff ...
@@ -1523,7 +1528,10 @@ struct segment
     segdef *defs;   ///< symbols available to other segments
     segref *refs;   ///< external symbols needed by this segment
     
+    bool    deferred; ///< if true segment is deferred, not loaded into memory
+    
     int     segno;  ///< segment# segment is assigned
+    int     ldaddr; ///< address where to load segment
     
     int     linkOffset; ///< link offset in segment
     int     linkSize;   ///< size of segments linkage section
