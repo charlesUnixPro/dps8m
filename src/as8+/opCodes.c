@@ -123,7 +123,6 @@ void doOpcode(struct opnd *o)
     
     if (bInhibit)
         p->data |= (1LL << 7);    // set bit-28 - inhibit interrupt
-    // FixMe: Need to propagate this to the rest ot hte output reoutines
     
     p->src = strdup(LEXline);
     

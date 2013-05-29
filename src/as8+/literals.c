@@ -524,6 +524,9 @@ void fillLiteralPool()
  */
 void writeLiteralPool()
 {
+    if (litPool == NULL)
+        return;
+    
     word36 Ypair[2], lVal;
     
     word18 maxAddr = 0;

@@ -144,8 +144,8 @@ stmt: /* empty */
     ;
 
 instr
-    : OPCODE        operands                                        { opnd.o = $1; doOpcode(&opnd); }
-    | OPCODEMW      mfks                                            { doMWEis($1, $2);              }
+    : OPCODE        operands                                        { opnd.o = $1; doOpcode(&opnd);        }
+    | OPCODEMW      mfks                                            { doMWEis($1, $2);                     }
 
     | OPCODEARS     ptr_reg '|' operand                             { doARS($1, $2, $4->value,  0);        }
     | OPCODEARS     ptr_reg '|' operand ',' modifier                { doARS($1, $2, $4->value, $6);        }
@@ -241,8 +241,9 @@ ptr_reg : SYMBOL {
     ;
 
 external
-    :     SYMBOL     '$'     SYMBOL         { tuple *t = newTuple(); t->a.p = $1; t->b.p = $3; $$ = t;  }
-    | '<' SYMBOL '>' '|' '[' SYMBOL ']'     { tuple *t = newTuple(); t->a.p = $2; t->b.p = $6; $$ = t;  }
+    :     SYMBOL     '$'     SYMBOL         { tuple *t = newTuple(); t->a.p = $1; t->b.p = $3;   $$ = t;  }
+/*  |     SYMBOL     '$'                    { tuple *t = newTuple(); t->a.p = $1; t->b.p = NULL; $$ = t;  } */
+    | '<' SYMBOL '>' '|' '[' SYMBOL ']'     { tuple *t = newTuple(); t->a.p = $2; t->b.p = $6;   $$ = t;  }
     ;
 
 modifier
