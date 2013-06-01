@@ -1,8 +1,8 @@
         name    Play        " This is the "Play" segment
         segdef  Main        " ... and we want to share "Main"
        
-        segref  Utils, ioa, iob, ioc  " and we want to use these from the Utils segment
-        
+        "segref  Utils, ioa, iob, ioc  " and we want to use these from the Utils segment
+        segref  UtilsA, A0, A1, rd_clockA, ioa
         lpri    __pr        " set up pr's so we can addess segments easily ....
 
         lda     =42, dl
@@ -83,7 +83,7 @@ msg4:   ac4     /0123456789+-/
 
         even
 __pr:
-        its     0,0		pr0 -> seg 0 etc
+        its     0,0		"pr0 -> seg 0 etc
         its     1,0
         its     2,0
         its     3,0
@@ -97,7 +97,7 @@ __pr:
 
         "include Utils(New).as8
 
-        org     02000
+        "org     02000
         even
 d1:     bss     ,2
 
