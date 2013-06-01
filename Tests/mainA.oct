@@ -1,0 +1,47 @@
+!SIZE 000040
+!SEGNAME main
+!SEGDEF main 000000
+!LINKAGE 000040 4
+!SEGREF UtilsA ioa 000040
+!SEGREF UtilsA rd_clockA 000042
+!SEGREF lot_ lot_ 000044
+!SEGREF stack_0 stack_0 000046
+000000 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
+000001 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
+000002 xxxx 400000272120         tsp2	I"ioa
+000003 xxxx 024110157167         acc     /Howdy world! - It's /
+000004 xxxx 144171040167 
+000005 xxxx 157162154144 
+000006 xxxx 041040055040 
+000007 xxxx 111164047163 
+000010 xxxx 040040040040 
+000011 xxxx 400002272120         tsp2    <UtilsA>|[rd_clockA]
+000012 xxxx 000034757000         staq	Date        " MM/DD HH:MM
+000013 xxxx 400000272120         tsp2	ioa
+000014 xxxx 010047136147         acc     /'^g^g'\r\n/
+000015 xxxx 136147047015 
+000016 xxxx 012040040040 
+000017 xxxx 000034011000         nop     Date
+000020 xxxx 000035011000         nop     Date+1
+000021 xxxx 000037236000         ldq     =123456
+000022 xxxx 600050756100         stq     first
+000023 xxxx 600050235100         lda     first
+000024 xxxx 000036755000         sta     f
+000025 xxxx 400000272120         tsp2    ioa
+000026 xxxx 013106151162         acc     /First: ^d\r\n/
+000027 xxxx 163164072040 
+000030 xxxx 136144015012 
+000031 xxxx 000036011000         nop     f
+000032 xxxx 000000616000 	dis
+000033 xxxx 000000011000 	even "(allocating 1 nop)
+000034 xxxx 000000000000 Date:	bss	2
+000036 xxxx 000000000000 f:      bss 1
+000037 xxxx 000000361100 decimal literal (=123456)
+000040 xxxx 000000000043 link UtilsA$ioa
+000041 xxxx 000000000000 
+000042 xxxx 000000000043 link UtilsA$rd_clockA
+000043 xxxx 000000000000 
+000044 xxxx 000000000043 link lot_$lot_
+000045 xxxx 000000000000 
+000046 xxxx 000000000043 link stack_0$stack_0
+000047 xxxx 000000000000 
