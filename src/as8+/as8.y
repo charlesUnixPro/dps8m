@@ -214,8 +214,8 @@ operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
 
     | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
 
-    | external
-    | external ',' modifier
+    | external                          { expr *e = getExtRef($1); opnd.bit29 = true; opnd.hi = (word18)(4 << 15) | (word18)e->value; opnd.lo = 020;      }
+    | external ',' modifier             { expr *e = getExtRef($1); opnd.bit29 = true; opnd.hi = (word18)(4 << 15) | (word18)e->value; opnd.lo = $3 & 077; }
     ;
 
 ptr_reg : SYMBOL {

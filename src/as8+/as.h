@@ -853,4 +853,6 @@ void doPostpass(FILE *out);     ///< for any special post-pass processing ...
 void emitSegment(FILE *oct);    ///< emit segment directive
 void emitGo(FILE *oct);         ///< emit go directive
 
+expr *getExtRef(tuple *t);
+
 #endif

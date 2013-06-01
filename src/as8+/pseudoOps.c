@@ -2246,8 +2246,8 @@ struct segRef
 {
     char    *name;      // name to make external
     char    *segname;
-    word18  value;      // value of name
-    
+    //word18  value;      // value of name
+    expr    *Value; 
     symtab  *sym;       // symtab entry associated with the segRef
     
     struct segRef *prev;
@@ -2260,7 +2260,8 @@ segRef *newsegRef()
     return (segRef*)calloc(1, sizeof(segRef));
 }
 
-extern int linkCount;
+extern int linkCount;   // running total of links in linkage section
+
 void doSegref(list *lst)
 {
     int cnt = 0;
@@ -2299,7 +2300,7 @@ void doSegref(list *lst)
                 expr *e = newExpr();
                 e->type = eExprSegRef;
                 e->lc = ".link.";
-                e->bit29 = true;    // symbol will be references via pr4
+                e->bit29 = true;            // symbol will be referenced via pr4
                 e->value = 2 * linkCount;   // offset into link section
                 
                 //sym = addsym(a, 0);
@@ -2314,8 +2315,10 @@ void doSegref(list *lst)
                 segRef *el = newsegRef();
                 el->name = a;
                 el->segname = segname;
-                el->value = 2 * linkCount;  // each link takes up 2 words
+                //el->value = 2 * linkCount;  // each link takes up 2 words
                 el->sym = sym;
+                
+                el->Value = e;
                 
                 DL_APPEND(segRefs, el);
 
@@ -2323,6 +2326,53 @@ void doSegref(list *lst)
             }
         }
     }
+}
+
+/*
+ * search sumbols to se if a symbol with an external reference has already been defined ...
+ */
+segRef *findExtRef(tuple *t)
+{
+    segRef *sg;
+    DL_FOREACH(segRefs, sg)
+        if (!strcmp(sg->segname, t->a.p) && !strcmp(sg->name, t->b.p))
+            return sg;  
+    
+    return NULL;
+}
+
+expr *getExtRef(tuple *t)
+{
+    segRef *sg = findExtRef(t);
+    if (sg)
+        return sg->Value;
+    
+    if (nPass == 1)
+    {
+        // see if segref already exists for this segment/offset
+        
+        expr *e = newExpr();
+        e->type = eExprLink;
+        e->lc = ".ext.";            // an external symbol
+        //e->bit29 = true;           // symbol will be references via pr4
+        e->value = 2 * linkCount;   // offset into link section
+                
+        segRef *el = newsegRef();
+        //el->name = s;
+        //el->segname = t->a.p;
+        el->name = t->b.p;
+        el->segname = t->a.p;
+                
+        //el->value = 2 * linkCount;  // each link takes up 2 words
+        el->Value = e;
+                
+        DL_APPEND(segRefs, el);
+                
+        linkCount += 1;
+        
+        return el->Value;
+    }
+    return NULL;
 }
 
 void doLink(char *s, tuple *t)
@@ -2337,30 +2387,53 @@ void doLink(char *s, tuple *t)
         }
         else
         {
-            expr *e = newExpr();
-            e->type = eExprLink;
-            e->lc = ".ext.";            // an external symbol
-            //e->bit29 = true;          // symbol will be references via pr4
-            e->value = 2 * linkCount;   // offset into link section
-                
-            //sym = addsym(a, 0);
-            sym = addsymx(s, e);
-            sym->segname = t->a.p;      // segment name
-            sym->extname = t->b.p;      // name in segment
-            sym->Value = e;
-            sym->value = e->value;
-                
-            if (debug) printf("Adding link symbol '%s'\n", s);
-                
-            segRef *el = newsegRef();
-            el->name = s;
-            el->segname = t->a.p;
-            el->value = 2 * linkCount;  // each link takes up 2 words
-            el->sym = sym;
-                
-            DL_APPEND(segRefs, el);
+            expr *e = NULL;
+            // see if segref already exists for this segment/offset
             
-            linkCount += 1;
+            segRef *sg = findExtRef(t);
+            if (sg)
+            {
+                e = sg->Value;
+
+                sym = addsymx(s, e);
+                sym->segname = t->a.p;      // segment name
+                sym->extname = t->b.p;      // name in segment
+                sym->Value = e;
+                sym->value = e->value;
+                sym->value = e->value;
+            }
+            else
+            {
+                e = newExpr();
+                e->type = eExprLink;
+                e->lc = ".ext.";            // an external symbol
+                //e->bit29 = true;           // symbol will be references via pr4
+                e->value = 2 * linkCount;   // offset into link section
+    
+                //sym = addsym(a, 0);
+                sym = addsymx(s, e);
+                sym->segname = t->a.p;      // segment name
+                sym->extname = t->b.p;      // name in segment
+                sym->Value = e;
+                sym->value = e->value;
+                
+                if (debug) printf("Adding link symbol '%s'\n", s);
+
+                segRef *el = newsegRef();
+                //el->name = s;
+                //el->segname = t->a.p;
+                el->name = t->b.p;
+                el->segname = t->a.p;
+
+                //el->value = 2 * linkCount;  // each link takes up 2 words
+                el->sym = sym;
+                
+                el->Value = e;
+                
+                DL_APPEND(segRefs, el);
+            
+                linkCount += 1;
+            }
         }
     }
 }
@@ -2400,19 +2473,19 @@ void fillExtRef()
     if (!linkCount)     // and s required?
         return;
     
-    
     if ((addr) % 2)    // linkage (ITS) pairs must be on an even boundary
         addr += 1;
     
     linkAddr = addr;    // offset of linkage section
     
-    segRef *s;
-    DL_FOREACH(segRefs, s)
-    {
-        s->value = (s->value + linkAddr) & AMASK;
-        
-        addr += 2;
-    }
+//    segRef *s;
+//    DL_FOREACH(segRefs, s)
+//    {
+//        //s->value = (s->value + linkAddr) & AMASK;
+//        s->Value->value = (s->Value->value + linkAddr) & AMASK;
+//        
+//        addr += 2;
+//    }
 }
 
 #endif
@@ -2427,7 +2500,7 @@ void emitSegrefs()
 
     segRef *s;
     DL_FOREACH(segRefs, s)
-        outas8Direct("segref", s->segname, s->name, s->value);
+        outas8Direct("segref", s->segname, s->name, s->Value->value + linkAddr);
 }
 
 void writeSegrefs()
