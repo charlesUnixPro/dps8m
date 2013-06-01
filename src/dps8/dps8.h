@@ -1477,11 +1477,13 @@ extern char *strDSBR();
 int removeSegment(char *seg);
 int removeSegdef(char *seg, char *sym);
 int removeSegref(char *seg, char *sym);
-int resolveLinks(void);
-int loadDeferredSegments(void);
+int resolveLinks(bool);
+int loadDeferredSegments(bool);
 int getAddress(int, int);  // return the 24-bit absolute address of segment + offset
 bool getSegmentAddressString(int addr, char *msg);
-t_stat createLOT();    // create link offset table segment
+t_stat createLOT(bool);     // create link offset table segment
+t_stat snapLOT(bool);       // fill in link offset table segment
+t_stat createStack(int, bool);    // create ring n stack
 
 #define LOT "lot_"
 

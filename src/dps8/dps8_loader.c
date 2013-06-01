@@ -361,7 +361,8 @@ bool getSegmentAddressString(int addr, char *msg)
         
         _sdw0 *s0 = fetchSDW(segno);
         int startAddr = s0->ADDR;   // get start address
-        if (addr >= startAddr && addr <= startAddr + (s0->BOUND << 4) - 1)
+        //if (addr >= startAddr && addr <= startAddr + (s0->BOUND << 4) - 1)
+        if (addr >= startAddr && addr <= startAddr + s->size)
             {
                 // addr is within bounds of this segment.....
                 int offset = addr - startAddr;
@@ -422,11 +423,11 @@ bool getSegmentAddressString(int addr, char *msg)
 
 const int StartingSegment = 8;
 
-int resolveLinks()
+int resolveLinks(bool bVerbose)
 {
     int segno = StartingSegment - 1;//-1;     // current segment number
     
-    printf("Examining segments ... ");
+    if (bVerbose) printf("Examining segments ... ");
 
     // determine maximum segment no 
     segment *sg1;
@@ -434,11 +435,11 @@ int resolveLinks()
         segno = max(segno, sg1->segno);
     segno += 1; // ... and one more. This will be our starting segment number.
     
-    printf("segment numbering begins at: %d\n", segno);
+    if (bVerbose) printf("segment numbering begins at: %d\n", segno);
     
     DL_FOREACH(segments, sg1)
     {
-        printf("    Processing segment %s...\n", sg1->name);
+        if (bVerbose) printf("    Processing segment %s...\n", sg1->name);
 
         if (sg1->segno == -1)
             sg1->segno = segno ++;  // assign segment # to segment
@@ -448,7 +449,7 @@ int resolveLinks()
         segref *sr;
         DL_FOREACH(sg1->refs, sr)
         {
-            printf("        Resolving segref %s$%s...", sr->segname, sr->symbol);
+            if (bVerbose) printf("        Resolving segref %s$%s...", sr->segname, sr->symbol);
             
             // now loop through all segrefs trying to find the segdef needed
             
@@ -471,15 +472,15 @@ int resolveLinks()
                     if (strcmp(sd->symbol, sr->symbol) == 0)
                     {
                         bFound = true;
-                        printf("found %s (%06o)\n", sr->symbol, sr->value);
+                        if (bVerbose) printf("found %s (%06o)\n", sr->symbol, sr->value);
                         
                         word36 *Ypair = &sg1->M[sr->value];
                         makeITS(sg2->segno, sd->value, 0, Ypair);   // "snap" link for segref in sg1
-                        printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
+                        if (bVerbose) printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
                     }
                 }
             }
-            if (bFound == false)
+            if (bVerbose && bFound == false)
                 printf("not found\n");
         }
     }
@@ -527,14 +528,14 @@ int loadDeferredSegment(segment *sg, int addr24)
 /*!
  * load/add deferred segments into memory and set-up segment table for appending mode operation ...
  */
-int loadDeferredSegments(void)
+int loadDeferredSegments(bool bVerbose)
 {
     // First, check to see if DSBR is set up .....
     if (DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
         if (!get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
             return -1;
 
-    printf("Loading deferred segments ...\n");
+    if (bVerbose) printf("Loading deferred segments ...\n");
     
     int ldaddr = DSBR.ADDR + 65536;     // load segments *after* SDW table
     if (ldaddr % 16)
@@ -545,31 +546,38 @@ int loadDeferredSegments(void)
     segment *sg;
     DL_FOREACH(segments, sg)
     {
-        // use specified address or no?
-        int lda = sg->ldaddr == -1 ? ldaddr : sg->ldaddr;
+        if (!sg->deferred)
+            continue;
         
-        loadDeferredSegment(sg, lda);
+        // use specified address or no?
+       
+        //int lda = sg->ldaddr == -1 ? ldaddr : sg->ldaddr;
+        
+        sg->ldaddr = ldaddr;
+        //loadDeferredSegment(sg, lda);
+        loadDeferredSegment(sg, ldaddr);
         int segno = sg->segno;
 
-        // set OR4 to point to LOT
+        // set PR4 to point to LOT
+        // ToDo: probably better to just set up the initial stack.header
         if (strcmp(sg->name, LOT) == 0)
         {
-            PR[4].BITNO = 0 ;
+            PR[4].BITNO = 0;
             PR[4].CHAR = 0;
             PR[4].SNR = segno;
-            PR[4].WORDNO = lda;
+            PR[4].WORDNO = 0;
             int n = 4;
-            printf("LOT=>PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) printf("LOT=>PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
         }
         
         // bump next load address to a 16-word boundary
-        if (sg->ldaddr == -1)
-        {
+        //if (sg->ldaddr == -1)
+        //{
             word18 segwords = sg->size;
             ldaddr += segwords;
             if (ldaddr % 16)
                 ldaddr += 16 - (ldaddr % 16);
-        }
+        //}
         maxSegno = max2(maxSegno, segno);
     }
 
@@ -582,7 +590,7 @@ int loadDeferredSegments(void)
 /*
  * create a linkage Offset Table segment ...
  */
-t_stat createLOT()
+t_stat createLOT(bool bVerbose)
 {
     segment *s;
     
@@ -612,26 +620,29 @@ t_stat createLOT()
     }
     
     // create a lot segment ...
-    segment *lot = newSegment(LOT, maxSeg + 1, true);
-    lot->segno = maxSeg + 1;
+    //segment *lot = newSegment(LOT, maxSeg + 1, true);
+    segment *lot = newSegment(LOT, 255, true);  // sooo wrong
+    //lot->segno = maxSeg + 1;
+    
     lot->defs = newSegdef(LOT, 0);
-
+    lot->deferred = true;
+    
     // Now go through each segment getting the linkage address and filling in the LOT table with the address (in sprn/lprn packed pointer format)
     
     // C(PRn.BITNO) → C(Y)0,5
     // C(PRn.SNR)3,14 → C(Y)6,17
     // C(PRn.WORDNO) → C(Y)18,35
     
-    DL_FOREACH(segments, s)
-    {
-        word36 pp = 0;
-        if (s->linkOffset != -1)
-        {
-            pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
-            pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
-        }
-        lot->M[s->segno] = pp & DMASK;
-    }
+//    DL_FOREACH(segments, s)
+//    {
+//        word36 pp = 0;
+//        if (s->linkOffset != -1)
+//        {
+//            pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
+//            pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
+//        }
+//        lot->M[s->segno] = pp & DMASK;
+//    }
 
     DL_APPEND(segments, lot);
     
@@ -640,52 +651,105 @@ t_stat createLOT()
     return SCPE_OK;
 }
 
-//t_stat createStack(int n)
-//{
-//    if (n < 0 || n > 7)
-//        return SCPE_ARG;
-//    
-//    char name[32];
-//    sprintf(name, "stack_%d", n);
-//    
-//    segment *s;
-//    
-//    // see if lot$ already exists ...
-//    DL_FOREACH(segments, s)
-//    {
-//        if (!strcmp(s->name, name))
-//        {
-//            DL_DELETE(segments, s);
-//            break;
-//        }
-//    }
-//    
-//    // if we get here we're free to create the lot$ segment ...
-//    
-//    // determine maximum segment number ...
-//    int maxSeg = -1;
-//
-//    DL_FOREACH(segments, s)
-//        maxSeg = max2(maxSeg, s->segno);
-//    
-//    // create a stack_0 segment ...
-//    segment *stk = newSegment(name, 48 * 1024);
-//    stk->defs = newSegdef(name, 0);
-//    
-//    // DSBR.STACK: The upper 12 bits of the 15-bit stack base segment number. Only used by call6 instruction
-//    // since this segment will be stored in DSBR.STACK we need to make certain that the segment # has the form xxxx0
-//    stk->segno = maxSeg + 1;
-//    if ((stk->segno % 8) != n)
-//        stk->segno += 8 - (stk->segno % 8) + n;
-//    
-//    DSBR.STACK = stk->segno >> 3;
-//    
-//    DL_APPEND(segments, stk);
-//    
-//    printf("%s segment created as segment# %d\n", name, stk->segno);
-//    
-//    return SCPE_OK;
-//}
+t_stat snapLOT(bool bVerbose)
+{
+    segment *s, *lot;
+    bool bFound = false;
+    // see if lot$ already exists ...
+    DL_FOREACH(segments, lot)
+    {
+        if (!strcmp(lot->name, LOT))
+        {
+            bFound = true;
+            break;
+        }
+    }
+    if (!bFound)
+    {
+        printf("snapLOT(): segment '%s' not found!\n", LOT);
+        return SCPE_UNK;
+    }
+    
+    // if we get here we're free to fill in lot$ segment ...
+        
+    // Now go through each segment getting the linkage address and filling in the LOT table with the address (in sprn/lprn packed pointer format)
+    
+    if (bVerbose) printf("snapping %s links", LOT);
+    
+    DL_FOREACH(segments, s)
+    {
+        if (!strcmp(s->name, LOT))
+            continue;
+        
+        word36 pp = 0;
+        if (s->linkOffset != -1)
+        {
+            // C(PRn.BITNO) → C(Y)0,5
+            // C(PRn.SNR)3,14 → C(Y)6,17
+            // C(PRn.WORDNO) → C(Y)18,35
+            
+            pp = bitfieldInsert36(pp, s->linkOffset, 0, 18);    // link address (0-based offset)
+            pp = bitfieldInsert36(pp, s->segno, 18, 12);        // 12-bit(?) segment #
+            
+            //lot->M[lot->ldaddr + s->segno] = pp & DMASK;
+            M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
+
+            if (bVerbose) printf("%o %o %012llo.", lot->ldaddr, s->segno, pp);
+            //printf(".");
+        }
+    }
+    if (bVerbose) printf("\n");
+    
+    return SCPE_OK;
+}
+
+t_stat createStack(int n, bool bVerbose)
+{
+    if (n < 0 || n > 7)
+        return SCPE_ARG;
+    
+    char name[32];
+    sprintf(name, "stack_%d", n);
+    
+    segment *s;
+    
+    // see if stack_n segment already exists ...
+    DL_FOREACH(segments, s)
+    {
+        if (!strcmp(s->name, name))
+        {
+            DL_DELETE(segments, s);
+            break;
+        }
+    }
+    
+    // if we get here we're free to create the stack_n segment ...
+    
+    // determine maximum segment number ...
+    int maxSeg = -1;
+
+    DL_FOREACH(segments, s)
+        maxSeg = max2(maxSeg, s->segno);
+    
+    // create a stack_0 segment ...
+    segment *stk = newSegment(name, 48 * 1024, true);
+    stk->defs = newSegdef(name, 0);
+    stk->deferred = true;
+    
+    // DSBR.STACK: The upper 12 bits of the 15-bit stack base segment number. Only used by call6 instruction
+    // since this segment will be stored in DSBR.STACK we need to make certain that the segment # has the form xxxx0
+    stk->segno = maxSeg + 1;
+    if ((stk->segno % 8) != n)
+        stk->segno += 8 - (stk->segno % 8) + n;
+    
+    DSBR.STACK = stk->segno >> 3;
+    
+    DL_APPEND(segments, stk);
+    
+    printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, DSBR.STACK);
+    
+    return SCPE_OK;
+}
 
 /*
  * setup faux execution environment ...

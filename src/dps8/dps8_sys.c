@@ -170,7 +170,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
     
     
     word15 segno = 0;
-    while (2 * segno < 16 * (DSBR.BND + 1))
+    while (2 * segno < (16 * (DSBR.BND + 1)))
     {
         //generate target segment SDW for DSBR.ADDR + 2 * segno.
         word24 a = DSBR.ADDR + 2 * segno;
@@ -333,6 +333,8 @@ t_stat dpsCmd_Segment (int32 arg, char *buf)
 //! custom command "segments" - stuff to do with deferred segments
 t_stat dpsCmd_Segments (int32 arg, char *buf)
 {
+    bool bVerbose = !sim_quiet;
+
     char cmds [8][32];
     memset(cmds, 0, sizeof(cmds));  // clear cmds buffer
     
@@ -347,26 +349,33 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
     //if (nParams == 1 && !strcasecmp(cmds[0], "sdwam"))
     //    return dpsCmd_InitSDWAM();
     if (nParams == 1 && !strcasecmp(cmds[0], "resolve"))
-        return resolveLinks();    // resolve external reverences in deferred segments
+        return resolveLinks(bVerbose);    // resolve external reverences in deferred segments
    
     if (nParams == 2 && !strcasecmp(cmds[0], "load") && !strcasecmp(cmds[1], "deferred"))
-        return loadDeferredSegments();    // load all deferred segments
+        return loadDeferredSegments(bVerbose);    // load all deferred segments
     
     if (nParams == 2 && !strcasecmp(cmds[0], "remove"))
         return removeSegment(cmds[1]);
 
-    if (nParams == 2 && !strcasecmp(cmds[0], "create") && !strcasecmp(cmds[1], "lot"))
-        return createLOT();
+    if (nParams == 2 && !strcasecmp(cmds[0], "lot") && !strcasecmp(cmds[1], "create"))
+        return createLOT(bVerbose);
+    if (nParams == 2 && !strcasecmp(cmds[0], "lot") && !strcasecmp(cmds[1], "snap"))
+        return snapLOT(bVerbose);
 
+    if (nParams == 3 && !strcasecmp(cmds[0], "create") && !strcasecmp(cmds[1], "stack"))
+    {
+        int _n = (int)strtoll(cmds[2], NULL, 8);
+        return createStack(_n, bVerbose);
+    }
     return SCPE_ARG;
 }
 
 CTAB dps8_cmds[] =
 {
-    {"DPSINIT", dpsCmd_Init,        0, "dps8/m initialize stuff ..."},
-    {"DPSDUMP", dpsCmd_Dump,        0, "dps8/m dump stuff ..."},
-    {"SEGMENT", dpsCmd_Segment,     0, "dps8/m segment stuff ..."},
-    {"SEGMENTS", dpsCmd_Segments,   0, "dps8/m segments stuff ..."},
+    {"DPSINIT", dpsCmd_Init,        0, "dps8/m initialize stuff ...\n"},
+    {"DPSDUMP", dpsCmd_Dump,        0, "dps8/m dump stuff ...\n"},
+    {"SEGMENT", dpsCmd_Segment,     0, "dps8/m segment stuff ...\n"},
+    {"SEGMENTS", dpsCmd_Segments,   0, "dps8/m segments stuff ...\n"},
     
     { NULL, NULL, 0, NULL}
 };
@@ -385,6 +394,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr);
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr addr);
 
 extern CTAB *sim_vm_cmd;
+
 void dps8_init(void)    //CustomCmds(void)
 {
     // special dps8 initialization stuff that cant be done in reset, etc .....
