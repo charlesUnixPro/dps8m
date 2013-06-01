@@ -1,0 +1,99 @@
+" parts taken from :
+" pl1_operators_.alm
+
+	name	simh_operators_
+
+	include	stack_header.incl.alm
+	include	stack_frame.incl.alm
+
+"
+	segdef	alm_call
+	segdef	alm_entry
+	segdef	alm_operators_begin
+	segdef	alm_operators_end
+	segdef	alm_push
+	segdef	alm_return
+	segdef	alm_return_no_pop
+
+	segdef	transfer_vector
+"
+"	transfer vector for operators not referenced directly
+"	by the pl/1 program.  new operators may be added at the
+"	end of the list only.
+"
+
+	org		tv_offset
+	
+transfer_vector:
+	BSS	271					" words 0-270
+	tra	alm_call			" 271	special for alm
+	tra	alm_push			" 272	special for alm
+	tra	alm_return			" 273	special for alm
+	tra	alm_return_no_pop	" 274	special for alm
+	tra	alm_entry			" 275	special for alm
+	
+
+"	The following operators are used by ALM
+"	The order of the following operators must be maintained because of
+"	coding of default_error_handler_
+"
+alm_operators_begin:
+
+
+alm_call:
+	sprilp	sp|stack_frame.return_ptr 		" save return pointer
+	sti		sp|stack_frame.return_ptr+1		" save indicators
+	epplp	sp|stack_frame.lp_ptr,* 		" set up our lp
+	callsp	bp|0							" do the call
+"
+alm_push:
+	spribp	sb|stack_header.stack_end_ptr,* " save return from operator
+	eppbp	sb|stack_header.stack_end_ptr,* " get pointer to new stack frame
+	sprisp	bp|stack_frame.prev_sp 			" save previous ptr in new frame
+	spriap	bp|stack_frame.arg_ptr 			" save argument ptr
+	sprilp	bp|stack_frame.lp_ptr 			" save linkage ptr
+	eppsp	bp|0							" move up to new frame
+	eppbp	sp|0,7							" get pointer to end of this new frame
+	spribp	sb|stack_header.stack_end_ptr 	" and update stack end pointer
+	spribp	sp|stack_frame.next_sp 			" and set next sp of new frame
+	eax7	1								" set ALM translator ID for debugging
+	stx7	sp|stack_frame.translator_id
+	tra		sp|0,*							" return to alm program
+"
+"          alm_entry_op
+alm_entry:
+    eppbp	bp|-1               			" generate pointer to entry structure
+	epplp	sb|stack_header.stack_end_ptr,*	" get a pointer to the next stack frame
+	spribp	lp|stack_frame.entry_ptr
+	epaq	bp|0							" get seg no of object in a
+	lprplb	sb|stack_header.isot_ptr,*au 	" get packed ptr to static from isot
+	sprplb	lp|stack_frame.static_ptr 		" save in next stack frame
+	lprplp	sb|stack_header.lot_ptr,*au 	" get packed ptr to linkage from lot
+	tra		bp|1							" return to alm prog
+"
+
+
+          
+          
+"
+alm_return:
+	inhibit	on
+	sprisp	sb|stack_header.stack_end_ptr 	" update stack end ptr
+	eppsp	sp|stack_frame.prev_sp,* 		" pop stack
+	inhibit	off
+	epbpsb	sp|0							" set up stack base in case we just switched stacks
+	eppap	sp|stack_frame.operator_ptr,* 	" set op ptr of frame being returned to
+	ldi		sp|stack_frame.return_ptr+1		" restore indicators for caller
+	rtcd	sp|stack_frame.return_ptr 		" return to calling program
+"
+alm_return_no_pop:
+	epbpsb	sp|0							" set up stack base in case returning to outer ring
+	eppap	sp|stack_frame.operator_ptr,* 	" set up operator ptr of frame being returned to
+	ldi		sp|stack_frame.return_ptr+1		" restore indicators for caller
+	rtcd	sp|stack_frame.return_ptr 		" return to calling program
+"
+alm_operators_end:
+" 
+	
+	
+	end
