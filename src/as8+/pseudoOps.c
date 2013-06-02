@@ -2299,7 +2299,7 @@ void doSegref(list *lst)
             {
                 expr *e = newExpr();
                 e->type = eExprSegRef;
-                e->lc = ".link.";
+                e->lc = ".ext.";
                 e->bit29 = true;            // symbol will be referenced via pr4
                 e->value = 2 * linkCount;   // offset into link section
                 
@@ -2375,7 +2375,7 @@ expr *getExtRef(tuple *t)
     return NULL;
 }
 
-void doLink(char *s, tuple *t)
+void doLinkOld(char *s, tuple *t)
 {
     if (nPass == 1)
     {
@@ -2406,7 +2406,7 @@ void doLink(char *s, tuple *t)
             {
                 e = newExpr();
                 e->type = eExprLink;
-                e->lc = ".ext.";            // an external symbol
+                e->lc = ".link.";            // an external symbol
                 //e->bit29 = true;           // symbol will be references via pr4
                 e->value = 2 * linkCount;   // offset into link section
     
@@ -2432,6 +2432,63 @@ void doLink(char *s, tuple *t)
                 
                 DL_APPEND(segRefs, el);
             
+                linkCount += 1;
+            }
+        }
+    }
+}
+void doLink(char *s, tuple *t)
+{
+    if (nPass == 1)
+    {
+        symtab *sym = getsym(s);
+        if (sym)
+        {
+            yyprintf("link: symbol '%s' already defined", s);
+            return;
+        }
+        else
+        {
+            expr *e = newExpr();
+            e->type = eExprLink;
+            e->lc = ".link.";            // an external symbol
+
+            // see if segref already exists for this segment/offset ... 
+            segRef *sg = findExtRef(t);
+            if (sg)
+            {
+                // if so, get it's value ...
+                e->value = sg->Value->value;
+                
+                sym = addsymx(s, e);
+                sym->segname = t->a.p;      // segment name
+                sym->extname = t->b.p;      // name in segment
+                sym->Value = e;
+                sym->value = e->value;
+            }
+            else
+            {
+                e->value = 2 * linkCount;   // offset into link section
+                
+                //sym = addsym(a, 0);
+                sym = addsymx(s, e);
+                sym->segname = t->a.p;      // segment name
+                sym->extname = t->b.p;      // name in segment
+                sym->Value = e;
+                sym->value = e->value;
+                
+                if (debug) printf("Adding link symbol '%s'\n", s);
+                
+                segRef *el = newsegRef();
+                el->name = t->b.p;
+                el->segname = t->a.p;
+                
+                el->sym = sym;
+                
+                el->Value = e;
+                
+                DL_APPEND(segRefs, el);
+                
                 linkCount += 1;
             }
         }
