@@ -1,0 +1,60 @@
+
+
+	name	main
+	segdef	main
+
+	segref	UtilsA, ioa ,rd_clockA
+	segref	lot_,lot_
+    segref  stack_0, stack_0
+
+    link    I, <UtilsA>|[ioa]
+    link    D, <UtilsA>|[rd_clockA]
+
+    temp    first       " a stack temporary @ sp+50(8)
+
+main:
+        tsx2    setupFXE
+
+        "lprplp  lot_            " set-up lp to point to this segments linkage section
+        "eppsp   stack_0         " set-up stack pointer
+
+        LDA     I
+        tsp2	pr4|I, *        " ioa
+        acc     /Howdy world! - It's /
+
+        "tsp2    rd_clockA
+        "tsp2     <UtilsA>|[rd_clockA]
+        tsp2    lp|D,*
+        "tsp2    UtilsA$rd_clockA
+
+        staq	Date        " MM/DD HH:MM
+        
+        tsp2	ioa
+        acc     /'^g^g'\r\n/
+        nop     Date
+        nop     Date+1
+
+        ldq     =123456
+        stq     first
+        lda     first
+        sta     f
+
+        tsp2    ioa
+        acc     /first: ^d\r\n/
+        nop     f
+
+	dis
+
+   tsp2    UtilsA$rd_clockA-1
+   tsp2    UtilsA$rd_clockA+0
+   tsp2    UtilsA$rd_clockA+1
+
+
+
+	even
+Date:	bss	2
+f:      bss 1
+
+    INCLUDE     setupFXE.as8
+    
+	end

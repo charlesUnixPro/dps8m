@@ -1,47 +1,112 @@
-!SIZE 000040
+!SIZE 000104
 !SEGNAME main
 !SEGDEF main 000000
-!LINKAGE 000040 4
-!SEGREF UtilsA ioa 000040
-!SEGREF UtilsA rd_clockA 000042
-!SEGREF lot_ lot_ 000044
-!SEGREF stack_0 stack_0 000046
-000000 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
-000001 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
-000002 xxxx 400000272120         tsp2	I"ioa
+!LINKAGE 000104 14
+!SEGREF UtilsA ioa 000104
+!SEGREF UtilsA rd_clockA 000106
+!SEGREF lot_ lot_ 000110
+!SEGREF stack_0 stack_0 000112
+!SEGREF UtilsA rd_clockA 000114
+!SEGREF UtilsA rd_clockA 000116
+!SEGREF UtilsA rd_clockA 000120
+!SEGREF lot ? 000122
+!SEGREF pl1_operators_ operator_table 000124
+!SEGREF pl1_operators_ operator_table 000126
+!SEGREF pl1_operators_ operator_table 000130
+!SEGREF pl1_operators_ operator_table 000132
+!SEGREF pl1_operators_ operator_table 000134
+!SEGREF pl1_operators_ operator_table 000136
+000000 xxxx 000041702000         tsx2    setupFXE
+000001 xxxx 000000235000         LDA     I
+000002 xxxx 400000272120         tsp2	pr4|I, *        " ioa
 000003 xxxx 024110157167         acc     /Howdy world! - It's /
 000004 xxxx 144171040167 
 000005 xxxx 157162154144 
 000006 xxxx 041040055040 
 000007 xxxx 111164047163 
 000010 xxxx 040040040040 
-000011 xxxx 400002272120         tsp2    <UtilsA>|[rd_clockA]
-000012 xxxx 000034757000         staq	Date        " MM/DD HH:MM
+000011 xxxx 400002272120         tsp2    lp|D,*
+000012 xxxx 000036757000         staq	Date        " MM/DD HH:MM
 000013 xxxx 400000272120         tsp2	ioa
 000014 xxxx 010047136147         acc     /'^g^g'\r\n/
 000015 xxxx 136147047015 
 000016 xxxx 012040040040 
-000017 xxxx 000034011000         nop     Date
-000020 xxxx 000035011000         nop     Date+1
-000021 xxxx 000037236000         ldq     =123456
+000017 xxxx 000036011000         nop     Date
+000020 xxxx 000037011000         nop     Date+1
+000021 xxxx 000076236000         ldq     =123456
 000022 xxxx 600050756100         stq     first
 000023 xxxx 600050235100         lda     first
-000024 xxxx 000036755000         sta     f
+000024 xxxx 000040755000         sta     f
 000025 xxxx 400000272120         tsp2    ioa
-000026 xxxx 013106151162         acc     /First: ^d\r\n/
+000026 xxxx 013146151162         acc     /first: ^d\r\n/
 000027 xxxx 163164072040 
 000030 xxxx 136144015012 
-000031 xxxx 000036011000         nop     f
+000031 xxxx 000040011000         nop     f
 000032 xxxx 000000616000 	dis
-000033 xxxx 000000011000 	even "(allocating 1 nop)
-000034 xxxx 000000000000 Date:	bss	2
-000036 xxxx 000000000000 f:      bss 1
-000037 xxxx 000000361100 decimal literal (=123456)
-000040 xxxx 000000000043 link UtilsA$ioa
-000041 xxxx 000000000000 
-000042 xxxx 000000000043 link UtilsA$rd_clockA
-000043 xxxx 000000000000 
-000044 xxxx 000000000043 link lot_$lot_
-000045 xxxx 000000000000 
-000046 xxxx 000000000043 link stack_0$stack_0
-000047 xxxx 000000000000 
+000033 xxxx 400010272120    tsp2    UtilsA$rd_clockA-1
+000034 xxxx 400012272120    tsp2    UtilsA$rd_clockA+0
+000035 xxxx 400014272120    tsp2    UtilsA$rd_clockA+1
+000036 xxxx 000000000000 Date:	bss	2
+000040 xxxx 000000000000 f:      bss 1
+000041 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
+000042 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
+000043 xxxx 400006373520         eppsb   stack_0         " set-up stack base
+000044 xxxx 000000710012         tra		0,2				" ... and return to caller
+000045 xxxx 700023352120 	eppbp	sb|stack_header.stack_begin_ptr+1,*		" get beginning offset
+000046 xxxx 700022252100 	spribp	sb|stack_header.stack_begin_ptr 		" save it
+000047 xxxx 700024252100 	spribp	sb|stack_header.stack_end_ptr
+000050 xxxx 400016352120 	eppbp	lot$						" set the lot ptrs
+000051 xxxx 700026252100 	spribp	sb|stack_header.lot_ptr
+000052 xxxx 700052252100 	spribp	sb|stack_header.isot_ptr
+000053 xxxx 000100352020 	eppbp	=its(-2,2),*		" signal ptr terminates process
+000054 xxxx 700030252100 	spribp	sb|stack_header.signal_ptr
+000055 xxxx 400020352120 	eppbp	pl1_operators_$operator_table  		" Get a ptr to  PL/I operators table.
+000056 xxxx 700034252100 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
+000057 xxxx 400022352120 	eppbp	pl1_operators_$operator_table+call_offset,*
+000060 xxxx 700036252100 	spribp	sb|stack_header.call_op_ptr
+000061 xxxx 400024352120 	eppbp	pl1_operators_$operator_table+push_offset,*
+000062 xxxx 700040252100 	spribp	sb|stack_header.push_op_ptr
+000063 xxxx 400026352120 	eppbp	pl1_operators_$operator_table+return_offset,*
+000064 xxxx 700042252100 	spribp	sb|stack_header.return_op_ptr
+000065 xxxx 400030352120 	eppbp	pl1_operators_$operator_table+return_no_pop_offset,*
+000066 xxxx 700044252100 	spribp	sb|stack_header.ret_no_pop_op_ptr
+000067 xxxx 400032352120 	eppbp	pl1_operators_$operator_table+entry_offset,*
+000070 xxxx 700046252100 	spribp	sb|stack_header.entry_op_ptr
+000071 xxxx 000102352020 	eppbp	=its(-1,1),*
+000072 xxxx 700070252100 	spribp	sb|stack_header.heap_header_ptr
+000073 xxxx 000000710012 	tra		0,2				" ... and return to caller
+000074 xxxx 000000000004 no_args:	zero	0,4
+000075 xxxx 000000000000 	zero	0,0
+000076 xxxx 000000361100 decimal literal (=123456)
+000100 xxxx 077776000043 its literal (=its(77776,000002,00))
+000101 xxxx 000002000000 
+000102 xxxx 077777000043 its literal (=its(77777,000001,00))
+000103 xxxx 000001000000 
+000104 xxxx 000000000043 link UtilsA$ioa
+000105 xxxx 000000000000 
+000106 xxxx 000000000043 link UtilsA$rd_clockA
+000107 xxxx 000000000000 
+000110 xxxx 000000000043 link lot_$lot_
+000111 xxxx 000000000000 
+000112 xxxx 000000000043 link stack_0$stack_0
+000113 xxxx 000000000000 
+000114 xxxx 000000000043 link UtilsA$rd_clockA-1
+000115 xxxx 777777000000 
+000116 xxxx 000000000043 link UtilsA$rd_clockA+0
+000117 xxxx 000000000000 
+000120 xxxx 000000000043 link UtilsA$rd_clockA+1
+000121 xxxx 000001000000 
+000122 xxxx 000000000043 link lot$
+000123 xxxx 000000000000 
+000124 xxxx 000000000043 link pl1_operators_$operator_table
+000125 xxxx 000000000000 
+000126 xxxx 000000000043 link pl1_operators_$operator_table+632
+000127 xxxx 001170000000 
+000130 xxxx 000000000043 link pl1_operators_$operator_table+633
+000131 xxxx 001171000000 
+000132 xxxx 000000000043 link pl1_operators_$operator_table+634
+000133 xxxx 001172000000 
+000134 xxxx 000000000043 link pl1_operators_$operator_table+635
+000135 xxxx 001173000000 
+000136 xxxx 000000000043 link pl1_operators_$operator_table+636
+000137 xxxx 001174000000 

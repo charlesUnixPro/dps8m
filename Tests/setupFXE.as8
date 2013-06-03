@@ -1,0 +1,116 @@
+"
+" Set up initial stach header/frams for out faux Multics execution environment ...
+"
+"
+" this is to be included in the main assembly.....
+
+		include stack_header.incl.alm
+		include	stack_frame.incl.alm
+		
+setupFXE:
+
+        lprplp  lot_            " set-up lp to point to this segments linkage section
+        eppsp   stack_0         " set-up stack pointer
+        eppsb   stack_0         " set-up stack base
+
+        tra		0,2				" ... and return to caller
+        "end
+
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Bull Inc., 1987                *
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+" *                                                         *
+" ***********************************************************
+
+" HISTORY COMMENTS:
+"  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+"     audit(86-11-18,Schroth), install(86-11-20,MR12.0-1222):
+"     intialized the stack ring 0 heap_header_ptr to null
+"                                                      END HISTORY COMMENTS
+
+
+" name	bootload_1
+
+" Initialize PL/1 environment for collection 1.
+" Written by C. Hornig, November 1982.
+
+" This program is transfered to at location zero by bootload_1.
+" As a special favor, PR5 -> the LOT.
+" Fixed June 1983 by KPL to set isot_ptr
+" Renamed from bootload_2, '83 by KPL
+" Modifed April 15/86 by Doug Howe to initialize heap header ptr 
+"		     in the stack header. 
+
+" begin:
+"	epaq	*				" get our segment number
+"	lprplp	lb|0,au			" get linkage ptr
+"	eppsb	inzr_stk0$		" find the stack segment
+"	eppbb	prds$
+
+"	eppbp	prds$processor_stack	" initialize the prds
+"	spribp	bb|stack_header.stack_begin_ptr
+"	spribp	bb|stack_header.stack_end_ptr	
+
+	eppbp	sb|stack_header.stack_begin_ptr+1,*		" get beginning offset
+	spribp	sb|stack_header.stack_begin_ptr 		" save it
+	spribp	sb|stack_header.stack_end_ptr
+
+	eppbp	lot$						" set the lot ptrs
+"	spribp	bb|stack_header.lot_ptr
+	spribp	sb|stack_header.lot_ptr
+"	spribp	bb|stack_header.isot_ptr	" and isot as a favor
+	spribp	sb|stack_header.isot_ptr
+
+	eppbp	=its(-2,2),*		" signal ptr terminates process
+"	spribp	bb|stack_header.signal_ptr
+	spribp	sb|stack_header.signal_ptr
+
+	eppbp	pl1_operators_$operator_table  		" Get a ptr to  PL/I operators table.
+	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
+"	spribp	bb|stack_header.pl1_operators_ptr 	" Store in  prds.
+
+	eppbp	pl1_operators_$operator_table+call_offset,*
+	spribp	sb|stack_header.call_op_ptr
+"	spribp	bb|stack_header.call_op_ptr
+
+	eppbp	pl1_operators_$operator_table+push_offset,*
+	spribp	sb|stack_header.push_op_ptr
+"	spribp	bb|stack_header.push_op_ptr
+
+	eppbp	pl1_operators_$operator_table+return_offset,*
+	spribp	sb|stack_header.return_op_ptr
+"	spribp	bb|stack_header.return_op_ptr
+
+	eppbp	pl1_operators_$operator_table+return_no_pop_offset,*
+	spribp	sb|stack_header.ret_no_pop_op_ptr
+"	spribp	bb|stack_header.ret_no_pop_op_ptr
+
+	eppbp	pl1_operators_$operator_table+entry_offset,*
+	spribp	sb|stack_header.entry_op_ptr
+"	spribp	bb|stack_header.entry_op_ptr
+
+" initialize the heap header in the stack header to null 
+
+	eppbp	=its(-1,1),*
+	spribp	sb|stack_header.heap_header_ptr
+"	spribp	bb|stack_header.heap_header_ptr
+
+"	eppap	no_args				" no arguments
+"	eppsp	=its(-1,1),*		" null stack pointer
+"	tra	initializer$initializer	" call PL/1
+
+	tra		0,2				" ... and return to caller
+    
+	even
+no_args:	zero	0,4
+	zero	0,0
+" 
+"	include	stack_header
+
+"	end	bootload_1
+
+
+
+
