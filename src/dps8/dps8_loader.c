@@ -298,8 +298,11 @@ void makeITS(int segno, int offset, int tag, word36 *Ypair)
 {
     word36 even = 0, odd = 0;
     
+    word36 segoff = (bitfieldExtract36(Ypair[1], 18, 18) + offset) & AMASK;
+    
     even = ((word36)segno << 18) | 043;
-    odd = (word36)(offset << 18) | (tag & 077);
+  //odd = (word36)(offset << 18) | (tag & 077);
+    odd = (word36)(segoff << 18) | (tag & 077);
     
     Ypair[0] = even;
     Ypair[1] = odd;
@@ -559,7 +562,6 @@ int loadDeferredSegments(bool bVerbose)
         int segno = sg->segno;
 
         // set PR4 to point to LOT
-        // ToDo: probably better to just set up the initial stack.header
         if (strcmp(sg->name, LOT) == 0)
         {
             PR[4].BITNO = 0;
@@ -567,7 +569,7 @@ int loadDeferredSegments(bool bVerbose)
             PR[4].SNR = segno;
             PR[4].WORDNO = 0;
             int n = 4;
-            if (bVerbose) printf("LOT=>PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
         }
         
         // bump next load address to a 16-word boundary
@@ -621,7 +623,7 @@ t_stat createLOT(bool bVerbose)
     
     // create a lot segment ...
     //segment *lot = newSegment(LOT, maxSeg + 1, true);
-    segment *lot = newSegment(LOT, 255, true);  // sooo wrong
+    segment *lot = newSegment(LOT, 07777, true);
     //lot->segno = maxSeg + 1;
     
     lot->defs = newSegdef(LOT, 0);
@@ -925,19 +927,19 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             segref *s = newSegref(segment, symbol, addr);
             
             // see if segref already exists
-            if (currSegment->refs)
-            {
-                segref *elt;
-                
-                DL_SEARCH(currSegment->refs, elt, s, segrefNamecmp);
-                
-                if (elt)
-                {
-                    fprintf(stderr, "symbol '%s' already referenced in segment '%s'. Use 'segment segref remove'\n", elt->symbol, currSegment->name);
-                    freeSegref(s);
-                    continue;
-                }
-            }
+//            if (currSegment->refs)
+//            {
+//                segref *elt;
+//                
+//                DL_SEARCH(currSegment->refs, elt, s, segrefNamecmp);
+//                
+//                if (elt)
+//                {
+//                    fprintf(stderr, "symbol '%s' already referenced in segment '%s'. Use 'segment segref remove'\n", elt->symbol, currSegment->name);
+//                    freeSegref(s);
+//                    continue;
+//                }
+//            }
             DL_APPEND(currSegment->refs, s);
             printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
         }
