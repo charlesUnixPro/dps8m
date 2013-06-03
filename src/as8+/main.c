@@ -99,7 +99,7 @@ int main(int argc, char **argv)
     argv += optind;
     
     if (verbose)
-        printf("Hello, World This is as8+! (build: %s %s)\n", __DATE__, __TIME__);
+        printf("Hello, World! This is as8+ (build: %s %s)\n", __DATE__, __TIME__);
     
 
     // only one file name allowed. That's the input file

@@ -622,7 +622,8 @@ outRec *outas8Direct(char *dir, ...)
         char *segname = va_arg( argPointer, char *);
         word18 lnkValue = va_arg( argPointer, word18);
         
-        asprintf(&p->dirStr, "!SEGREF %s %s %06o", name, segname, lnkValue);
+        //asprintf(&p->dirStr, "!SEGREF %s %s %06o", name, segname, lnkValue);
+        asprintf(&p->dirStr, "!SEGREF %s %s %06o", name, strlen(segname) ? segname : "?", lnkValue);
     }
     else if (!strcasecmp(dir, "linkage"))
     {

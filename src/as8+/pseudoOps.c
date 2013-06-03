@@ -19,8 +19,8 @@ extern char* yytext;
 char *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8, *arg9, *arg10;
 
 // XXX remove these when ready 
-word36 Eval(char *s) { return 0; }
-word36 boolEval(char *s) { return 0; }
+//word36 Eval(char *s) { return 0; }
+//word36 boolEval(char *s) { return 0; }
 
 void doOptions(tuple *tt)
 {
@@ -2141,22 +2141,22 @@ void doName(char *arg1)
  *      segment segno   " tells that this assembly is to be loaded as segment segno
  *      go      address " tells simh that the entry point (go address) is 'address'
  */
-int doSegment_segno = -1;
-
-void doSegment(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
-{
-    switch (nPass)
-    {
-        case 1:
-            if (doSegment_segno != -1)
-            {
-                fprintf(stderr, "Warning: only one (1) \"segment\" directive allowed per assembly. Ignoring\n");
-                return;
-            }
-            doSegment_segno = strtol(arg1, NULL, 0) & 077777;
-            break;
-    }
-}
+//int doSegment_segno = -1;
+//
+//void doSegment(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
+//{
+//    switch (nPass)
+//    {
+//        case 1:
+//            if (doSegment_segno != -1)
+//            {
+//                fprintf(stderr, "Warning: only one (1) \"segment\" directive allowed per assembly. Ignoring\n");
+//                return;
+//            }
+//            doSegment_segno = strtol(arg1, NULL, 0) & 077777;
+//            break;
+//    }
+//}
 
 /*
  * sedgef name1, name2, ...,nameN. Makes the labels name1 through nameN available to the linker for referencing from
@@ -2246,8 +2246,10 @@ struct segRef
 {
     char    *name;      // name to make external
     char    *segname;
-    //word18  value;      // value of name
-    expr    *Value; 
+    //word18  value;    // value of name
+    expr    *Value;     // offset in link section
+    expr    *offset;    // offset from segname|name in words
+    
     symtab  *sym;       // symtab entry associated with the segRef
     
     struct segRef *prev;
@@ -2335,26 +2337,36 @@ segRef *findExtRef(tuple *t)
 {
     segRef *sg;
     DL_FOREACH(segRefs, sg)
-        if (!strcmp(sg->segname, t->a.p) && !strcmp(sg->name, t->b.p))
-            return sg;  
-    
+    {
+        if (sg->offset && !t->c.e)
+            continue;
+        if (!sg->offset && t->c.e)
+            continue;
+
+        if (sg->offset && t->c.e)
+        {
+            if (!strcmp(sg->segname, t->a.p) && !strcmp(sg->name, t->b.p) && sg->offset->value == t->c.e->value)
+                return sg;
+        }
+        else
+            if (!strcmp(sg->segname, t->a.p) && !strcmp(sg->name, t->b.p))
+                return sg;
+    }
     return NULL;
 }
 
 expr *getExtRef(tuple *t)
 {
+    // see if segref already exists for this segment/offset
     segRef *sg = findExtRef(t);
     if (sg)
         return sg->Value;
     
     if (nPass == 1)
     {
-        // see if segref already exists for this segment/offset
-        
         expr *e = newExpr();
         e->type = eExprLink;
         e->lc = ".ext.";            // an external symbol
-        //e->bit29 = true;           // symbol will be references via pr4
         e->value = 2 * linkCount;   // offset into link section
                 
         segRef *el = newsegRef();
@@ -2362,7 +2374,9 @@ expr *getExtRef(tuple *t)
         //el->segname = t->a.p;
         el->name = t->b.p;
         el->segname = t->a.p;
-                
+        
+        el->offset = t->c.e;
+        
         //el->value = 2 * linkCount;  // each link takes up 2 words
         el->Value = e;
                 
@@ -2437,6 +2451,10 @@ void doLinkOld(char *s, tuple *t)
         }
     }
 }
+
+/*
+ *  "link name, extexpression" defines the symbol name with the value equal to the offset from lp to the link pair generated for the external expression extexpression. The name is not an external symbol, so an instruction should refer to this link by: pr4|name,* 
+ */
 void doLink(char *s, tuple *t)
 {
     if (nPass == 1)
@@ -2470,7 +2488,6 @@ void doLink(char *s, tuple *t)
             {
                 e->value = 2 * linkCount;   // offset into link section
                 
-                //sym = addsym(a, 0);
                 sym = addsymx(s, e);
                 sym->segname = t->a.p;      // segment name
                 sym->extname = t->b.p;      // name in segment
@@ -2482,6 +2499,7 @@ void doLink(char *s, tuple *t)
                 segRef *el = newsegRef();
                 el->name = t->b.p;
                 el->segname = t->a.p;
+                el->offset = t->c.e;
                 
                 el->sym = sym;
                 
@@ -2501,30 +2519,6 @@ void doLink(char *s, tuple *t)
 extern int linkCount;
 extern word18 linkAddr;
 
-#if OLD
-void fillExtRef()
-{
-    if (!linkCount)
-        return;
-    
-    symtab *s = Symtab;
-    
-    if ((addr) % 2)    // linkage (ITS) pairs must be on an even boundary
-        addr += 1;
-    
-    linkAddr = addr;    // offset of linkage section
-    
-    while (s->name)
-    {
-        if (s->segname && s->extname)
-        {
-            s->value = (s->value + addr) & AMASK;
-            addr += 2;
-        }
-        s += 1;
-    }
-}
-#else
 void fillExtRef()
 {
     if (!linkCount)     // and s required?
@@ -2545,7 +2539,6 @@ void fillExtRef()
 //    }
 }
 
-#endif
 
 void emitSegrefs()
 {
@@ -2557,7 +2550,7 @@ void emitSegrefs()
 
     segRef *s;
     DL_FOREACH(segRefs, s)
-        outas8Direct("segref", s->segname, s->name, s->Value->value + linkAddr);
+        outas8Direct("segref", s->segname, s->name, s->Value->value + linkAddr, s->offset ? s->offset->value : 0);
 }
 
 void writeSegrefs()
@@ -2578,13 +2571,16 @@ void writeSegrefs()
     segRef *s;
     DL_FOREACH(segRefs, s)
     {
-        int segno = 0;                              // filled in by loader
-        int offset = 0;                             // filled in by loader
-        word36 even = ((word36)segno << 18) | 043;  // ITS addressing
-        word36 odd = (word36)(offset << 18);        // no modifications (yet)| (arg3 ? getmod(arg3) : 0);
+        int segno = 0;                                      // filled in by loader
+        int offset = s->offset ? (int)s->offset->value : 0; // filled in by loader
+        word36 even = ((word36)segno << 18) | 043;          // ITS addressing
+        word36 odd = (word36)(offset << 18) & DMASK;        // no modifications (yet)| (arg3 ? getmod(arg3) : 0);
                 
         char desc[256];
-        sprintf(desc, "link %s$%s", s->segname, s->name);
+        if (s->offset)
+            sprintf(desc, "link %s$%s%+d", s->segname, s->name, (int)s->offset->value);
+        else
+            sprintf(desc, "link %s$%s", s->segname, s->name);
         
         outas8data(even, addr++, desc);
         outas8data(odd,  addr++, NULL);
@@ -3092,38 +3088,38 @@ void doInhibit(char *o)
  *
  */
 
-char *doGo_AddrString = NULL;
+//char *doGo_AddrString = NULL;
+//
+//void emitGo(FILE *oct)
+//{
+//    /// emit go directive (if any)
+//    if (doGo_AddrString)
+//    {
+//        if (debug) fprintf(stderr, "!GO %06o\n", (word18)Eval(doGo_AddrString) & 0777777);
+//       
+//        
+//        doGo_AddrString = NULL;
+//    }
+//}
 
-void emitGo(FILE *oct)
-{
-    /// emit go directive (if any)
-    if (doGo_AddrString)
-    {
-        if (debug) fprintf(stderr, "!GO %06o\n", (word18)Eval(doGo_AddrString) & 0777777);
-       
-        
-        doGo_AddrString = NULL;
-    }
-}
-
-void doGo(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
-{
-   
-    switch (nPass)
-    {
-        case 1:
-            doGo_AddrString = strdup(arg1);
-            break;
-        case 2:
-            if (doGo_AddrString)
-            {
-                fprintf(stderr, "Warning: only one (1) \"go\" directive allowed per assembly. Ignoring\n");
-                return;
-            }
-            break;
-    }
-
-}
+//void doGo(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
+//{
+//   
+//    switch (nPass)
+//    {
+//        case 1:
+//            doGo_AddrString = strdup(arg1);
+//            break;
+//        case 2:
+//            if (doGo_AddrString)
+//            {
+//                fprintf(stderr, "Warning: only one (1) \"go\" directive allowed per assembly. Ignoring\n");
+//                return;
+//            }
+//            break;
+//    }
+//
+//}
 
 int getmod(const char *arg_in);
 
@@ -3262,8 +3258,8 @@ pseudoOp pseudoOps[] =
     /// experimental stuff ...
     //{".entry",      0, doFmt1    },   ///< depreciated
 
-    {"segment",     0, doSegment },
-    {"go",          0, doGo      },
+    //{"segment",     0, doSegment },
+    //{"go",          0, doGo      },
     
     {"name",        0, NULL,    NAME  },     ///< segment name directive
     {"segdef",      0, NULL,    SEGDEF},     ///< segdef directive

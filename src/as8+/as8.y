@@ -71,8 +71,8 @@
 %type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
 %type <lst> symlist exprlist lexprlist optexplist optarglist optintlist opterrlist decs declist
 %type <lit> literal
-%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option external
-%type <e> expr lexpr operand optarg arg2 entry
+%type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option external external0
+%type <e> expr lexpr operand optarg arg2 entry extoffset
 
 /*%right '='
  %right '?' ':'
@@ -240,10 +240,35 @@ ptr_reg : SYMBOL {
     | integer { $$ = $1 & 07; }
     ;
 
+/*
+external0
+    :     SYMBOL     '$'     SYMBOL         { tuple *t = newTuple(); t->a.p = $1; t->b.p = $3; $$ = t;  }
+    |     SYMBOL     '$'                    { tuple *t = newTuple(); t->a.p = $1; t->b.p = ""; $$ = t;  }
+    | '<' SYMBOL '>' '|' '[' SYMBOL ']'     { tuple *t = newTuple(); t->a.p = $2; t->b.p = $6; $$ = t;  }
+    | '<' SYMBOL '>' '|'                    { tuple *t = newTuple(); t->a.p = $2; t->b.p = ""; $$ = t;  }
+    ;
 external
-    :     SYMBOL     '$'     SYMBOL         { tuple *t = newTuple(); t->a.p = $1; t->b.p = $3;   $$ = t;  }
-/*  |     SYMBOL     '$'                    { tuple *t = newTuple(); t->a.p = $1; t->b.p = NULL; $$ = t;  } */
-    | '<' SYMBOL '>' '|' '[' SYMBOL ']'     { tuple *t = newTuple(); t->a.p = $2; t->b.p = $6;   $$ = t;  }
+    :    external0           { $$ = $1; $1->c.e =   NULL;  }
+    |    external0 '+' expr  { $$ = $1; $1->c.e =     $3;  }
+    |    external0 '-' expr  { $$ = $1; $1->c.e = neg($3); }
+    ;
+*/
+external0
+    :     SYMBOL     '$'     SYMBOL         { tuple *t = newTuple(); t->a.p = $1; t->b.p = $3; $$ = t;  }
+    |     SYMBOL     '$'                    { tuple *t = newTuple(); t->a.p = $1; t->b.p = ""; $$ = t;  }
+    | '<' SYMBOL '>' '|' '[' SYMBOL ']'     { tuple *t = newTuple(); t->a.p = $2; t->b.p = $6; $$ = t;  }
+    | '<' SYMBOL '>' '|'                    { tuple *t = newTuple(); t->a.p = $2; t->b.p = ""; $$ = t;  }
+/*  | '<' SYMBOL '>' '|'     expr           { tuple *t = newTuple(); t->a.p = $2; t->b.p = ""; t->c.e = $5; $$ = t;  } */
+    ;
+    
+extoffset
+    :    /* empty */            { $$ = NULL;    }
+    |    '+' expr               { $$ =     $2;  }
+    |    '-' expr               { $$ = neg($2); }
+    ;
+
+external
+    :   external0 extoffset     { $$ = $1; $$->c.e = $2;   }
     ;
 
 modifier

@@ -124,36 +124,6 @@ int name_sort(symtab *a, symtab *b)
     return strcasecmp(a->name,b->name);
 }
 
-#if OLD
-void dumpSymtab(bool bSort)
-{
-    printf("======== %sSymbol Table ========\n", bSort ? "Sorted " : "");
-
-    if (bSort)
-        HASH_SORT(Symtab, name_sort);
-    
-    int i = 0;
-    symtab *s = Symtab;
-    while (s)
-	{
-        char temp[256];
-        
-        if (s->segname)
-            sprintf(temp, "%s$%s", s->segname, s->name);
-        else
-            sprintf(temp, "%s", s->name);
-        
-        printf("%-10s %06llo   ", temp, s->value & DMASK);
-        i++;
-        if (i % 4 == 0)
-            printf("\n");
-        
-        s = s->hh.next;
-	}
-    if (i % 4)
-        printf("\n");
-}
-#else
 void dumpSymtab(bool bSort)
 {
     printf("======== %sSymbol Table ========\n", bSort ? "Sorted " : "");
@@ -169,10 +139,10 @@ void dumpSymtab(bool bSort)
         //if (s->segname)
         //    sprintf(temp, "%s$%s", s->segname, s->name);
         //else
-            sprintf(temp, "%s", s->name);
+        sprintf(temp, "%s", s->name);
         
         // pretty-print name and value
-        printf("%12llo    %8s %-30s    ", s->value & DMASK, s->Value->lc, temp);
+        printf("%12llo %8s %-30s    ", s->value & DMASK, s->Value->lc, temp);
         
         // ... and where symbol is defined
         strcpy(temp, "");
@@ -191,9 +161,6 @@ void dumpSymtab(bool bSort)
         s = s->hh.next;
 	}
 }
-#endif
-
-
 
 
 /**

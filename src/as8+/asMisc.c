@@ -122,7 +122,7 @@ removeWhite(char *src)
 }
 
 
-
+#if 0
 word18 encodePR(char *arg, bool *bit29)
 {
     /// is arg1 a PRn|xxx ???
@@ -166,4 +166,4 @@ word18 encodePR(char *arg, bool *bit29)
         return Eval(arg) & 0777777;
 
 }
-
+#endif
