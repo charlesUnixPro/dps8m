@@ -2539,7 +2539,9 @@ void fillExtRef()
 //    }
 }
 
-
+/*
+ * emit segref directives ...
+ */
 void emitSegrefs()
 {
     // process segrefs
@@ -2553,6 +2555,9 @@ void emitSegrefs()
         outas8Direct("segref", s->segname, s->name, s->Value->value + linkAddr, s->offset ? s->offset->value : 0);
 }
 
+/*
+ * write segment references to linkage section ...
+ */
 void writeSegrefs()
 {
     // process segrefs
@@ -2788,12 +2793,6 @@ void doTemp(pseudoOp *p, tuple *lst)        // for TEMP pseudo-ops
 }
 
 
-word18 getEntryPoint(char *entrypoint)
-{
-    // XXX finish
-    return 0;
-}
-
 struct entryName
 {
     char    *name;      // name to make external
@@ -2804,24 +2803,36 @@ struct entryName
     
     struct entryName *prev;
     struct entryName *next;
-} *entryNames = NULL;
-
+};// *entryNames = NULL; this causes entryNames to change during pass2
 typedef struct entryName entryName;
+
+PRIVATE entryName *entryNames = NULL;   // this does not/ Compiler bug?
 
 entryName * newEntryName()
 {
     return (entryName*)calloc(1, sizeof(entryName));
 }
 
+
+entryName *getEntryPoint(char *entrypoint)
+{
+    entryName *n;
+    DL_FOREACH(entryNames, n)
+        if (strcmp(n->name, entrypoint) == 0)
+            return n;
+    return NULL;
+}
+
+
 void doEntry(list *lst)                           // multics CSR Entry pseudo-op
 {
-    // set up entry-points for symbols in list
+    // set up entry-points for symbols in entry list
     if (nPass == 1)
     {
         list *lel;
         DL_FOREACH(lst, lel)
         {
-            if (debug) printf("adding entry name symbol '%s'\n", lel->p);
+            if (debug) printf("Adding entry name symbol '%s'\n", lel->p);
             
             // check for dup entry names
             if (entryNames)
@@ -2857,7 +2868,7 @@ int fillinEntrySequences()
     {
         if (debug) printf("filling-in entry info for symbol '%s'\n", e->name);
         
-        char *name = e->name;   // gen name of entry point
+        char *name = e->name;   // get name of entry point
         symtab *sym = getsym(name);
         if (sym == NULL)
         {
@@ -2892,7 +2903,7 @@ int fillinEntrySequences()
 
 void writeEntrySequences()
 {
-    //int sizeOfEntrySequences = fillinEntrySequences();
+    fillinEntrySequences(); // consistency check for pass2
     
     entryName *e;
     DL_FOREACH(entryNames, e)
@@ -2908,6 +2919,15 @@ void writeEntrySequences()
         outas8Stri(w, addr, "");
         addr += 1;
     }
+}
+
+void dumpEntrySequences()
+{
+    entryName *e;
+    printf("entryNames=%p\n", entryNames);
+    DL_FOREACH(entryNames, e)
+        printf("dumping entry sequence for symbol '%s'\n", e->name);
+    
 }
 
 void emitEntryDirectives()
@@ -3022,7 +3042,8 @@ void doShortCall(char *entrypoint)      // multics CSR Short_Call pseudo-op
     
     char w[256];
     
-    word18 ep = getEntryPoint(entrypoint);
+    entryName *n = getEntryPoint(entrypoint);
+    word18 ep = n->intValue;
     
     sprintf(w, "%o%05o%06o", 4, ep & 077777,  getEncoding("epp2") | (word18)BIT(29) | (word18)020);
     outas8Stri(w, addr, LEXline);

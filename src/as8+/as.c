@@ -86,7 +86,11 @@ int asMain(int argc, char **argv)
     doInterpass(oct);   // do any special interpass processing
 
     // pass 2 - do code generation
+    //dumpEntrySequences();
+    
     pass(2, src, NULL);
+    
+    //dumpEntrySequences();
     
     if (yyErrorCount)
         fprintf(stderr, "%d Error%s detected.\n", yyErrorCount, yyErrorCount == 1 ? "" : "s");
@@ -129,7 +133,10 @@ void doInterpass(FILE *out)
     // make literal signature
     //makeLiteralSignatures();
     
+    // generate any entry sequences
     addr += fillinEntrySequences();
+    
+    //dumpEntrySequences();
     
     // fill in literals
     fillLiteralPool();
@@ -154,6 +161,7 @@ void doInterpass(FILE *out)
         if (debug) fprintf(stderr, "!NAME %s\n", segName);
         outas8Direct("name", segName);
     }
+    //dumpEntrySequences();
     
     // write segdefs
     emitSegdefs();
@@ -172,6 +180,9 @@ void doInterpass(FILE *out)
     
     // emit any !GO directive
     //emitGo(out);
+    
+    //dumpEntrySequences();
+    
 }
 
 void doPostpass(FILE *out)

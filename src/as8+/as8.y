@@ -269,6 +269,8 @@ extoffset
 
 external
     :   external0 extoffset     { $$ = $1; $$->c.e = $2;   }
+/*  |     SYMBOL     '$'     expr           { tuple *t = newTuple(); t->a.p = $1; t->b.p = ""; t->c.e = $3; $$ = t;  } */
+/*  | '<' SYMBOL '>' '|'     expr           { tuple *t = newTuple(); t->a.p = $2; t->b.p = ""; t->c.e = $5; $$ = t;  } */
     ;
 
 modifier
