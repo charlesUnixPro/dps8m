@@ -1510,6 +1510,7 @@ struct segref      // references to external symbols in this segment
     char    *segname;   ///< name of segment external symbol resides
     char    *symbol;    ///< name of extern symbol
     int     value;      ///< address of ITS pair in segment
+    int     offset;     ///< if ext reference is an offset from segname/symbol (display purposes only for now)
     int     relType;    ///< relocation type (RFU)
     
     int     segno;      ///< when filled-in is the segment # where the segref is to be found (default=-1)

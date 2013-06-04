@@ -41,7 +41,7 @@ void freeSegdef(segdef *p)
 }
 
 
-segref *newSegref(char *seg, char *sym, int val)
+segref *newSegref(char *seg, char *sym, int val, int off)
 {
     segref *p = calloc(1, sizeof(segref));
     if (seg && strlen(seg) > 0)
@@ -49,6 +49,8 @@ segref *newSegref(char *seg, char *sym, int val)
     if (sym && strlen(sym) > 0)
         p->symbol = strdup(sym);
     p->value = val;     // address in segment to put ITS pair
+    p->offset = off;
+    
     p->snapped = false; // not snapped yet
     
     p->segno = -1;
@@ -475,8 +477,13 @@ int resolveLinks(bool bVerbose)
                     if (strcmp(sd->symbol, sr->symbol) == 0)
                     {
                         bFound = true;
-                        if (bVerbose) printf("found %s (%06o)\n", sr->symbol, sr->value);
-                        
+                        if (bVerbose)
+                        {
+                        if (sr->offset)
+                            printf("found %s%+d (%06o)\n", sr->symbol, sr->offset, sr->value);
+                        else
+                            printf("found %s (%06o)\n", sr->symbol, sr->value);
+                        }
                         word36 *Ypair = &sg1->M[sr->value];
                         makeITS(sg2->segno, sd->value, 0, Ypair);   // "snap" link for segref in sg1
                         if (bVerbose) printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
@@ -696,8 +703,9 @@ t_stat snapLOT(bool bVerbose)
             //lot->M[lot->ldaddr + s->segno] = pp & DMASK;
             M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
 
-            if (bVerbose) printf("%o %o %012llo.", lot->ldaddr, s->segno, pp);
-            //printf(".");
+            if (bVerbose)
+                //printf("%o %o %012llo.", lot->ldaddr, s->segno, pp);
+                printf(".");
         }
     }
     if (bVerbose) printf("\n");
@@ -784,7 +792,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
         
         sscanf(buff, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
-        // process !segment
+        // process !segment (depreciate?)
         if (strcasecmp(args[0], "!segment") == 0)
         {
             if (currSegment)
@@ -873,14 +881,14 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
                 
                 if (elt)
                 {
-                    fprintf(stderr, "symbol '%s' already loaded for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
+                    printf("symbol '%s' already loaded for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
                     freeSegdef(s);
                     continue;
                 }
             }
             DL_APPEND(currSegment->defs, s);
             
-            printf("segdef created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
+            printf("segdef created for segment %s, symbol '%s', addr:%06o\n", currSegment->name, symbol, value);
         }
 
         //else if (bDeferred && !strcasecmp(args[0], "!entry"))
@@ -903,7 +911,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
                 
                 if (elt)
                 {
-                    fprintf(stderr, "segdef/entrypoint '%s' already found for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
+                    printf("segdef/entrypoint '%s' already found for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
                     freeSegdef(s);
                     continue;
                 }
@@ -920,11 +928,15 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
         if (strcasecmp(args[0], "!segref") == 0)
         {
             char segment[256], symbol[256];
-            int addr;
+            int addr, offset = 0;
             
-            sscanf(buff, "%*s %s %s %i", segment, symbol, &addr);
+            sscanf(buff, "%*s %s %s %i %d", segment, symbol, &addr, &offset);
             
-            segref *s = newSegref(segment, symbol, addr);
+            // XXX a ? is treated same as segment$segment
+            if (strcmp(symbol, "?") == 0)
+                strcpy(symbol, segment);
+            
+            segref *s = newSegref(segment, symbol, addr, offset);
             
             // see if segref already exists
 //            if (currSegment->refs)
@@ -941,7 +953,10 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
 //                }
 //            }
             DL_APPEND(currSegment->refs, s);
-            printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
+            if (offset)
+                printf("segref created for segment '%s' symbol:%s%+d, addr:%06o\n", segment, symbol, offset, addr);
+            else
+                printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
         }
         
         else
