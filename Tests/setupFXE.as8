@@ -13,7 +13,7 @@ setupFXE:
         eppsp   stack_0         " set-up stack pointer
         eppsb   stack_0         " set-up stack base
 
-        tra		0,2				" ... and return to caller
+        "tra		0,2				" ... and return to caller
         "end
 
 " ***********************************************************
@@ -57,7 +57,7 @@ setupFXE:
 	spribp	sb|stack_header.stack_begin_ptr 		" save it
 	spribp	sb|stack_header.stack_end_ptr
 
-	eppbp	lot$						" set the lot ptrs
+	eppbp	lot_$						" set the lot ptrs
 "	spribp	bb|stack_header.lot_ptr
 	spribp	sb|stack_header.lot_ptr
 "	spribp	bb|stack_header.isot_ptr	" and isot as a favor
@@ -67,27 +67,27 @@ setupFXE:
 "	spribp	bb|stack_header.signal_ptr
 	spribp	sb|stack_header.signal_ptr
 
-	eppbp	pl1_operators_$operator_table  		" Get a ptr to  PL/I operators table.
+	eppbp	simh_operators_$operator_table  		" Get a ptr to  PL/I operators table.
 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
 "	spribp	bb|stack_header.pl1_operators_ptr 	" Store in  prds.
 
-	eppbp	pl1_operators_$operator_table+call_offset,*
+	eppbp	simh_operators_$operator_table+call_offset,*
 	spribp	sb|stack_header.call_op_ptr
 "	spribp	bb|stack_header.call_op_ptr
 
-	eppbp	pl1_operators_$operator_table+push_offset,*
+	eppbp	simh_operators_$operator_table+push_offset,*
 	spribp	sb|stack_header.push_op_ptr
 "	spribp	bb|stack_header.push_op_ptr
 
-	eppbp	pl1_operators_$operator_table+return_offset,*
+	eppbp	simh_operators_$operator_table+return_offset,*
 	spribp	sb|stack_header.return_op_ptr
 "	spribp	bb|stack_header.return_op_ptr
 
-	eppbp	pl1_operators_$operator_table+return_no_pop_offset,*
+	eppbp	simh_operators_$operator_table+return_no_pop_offset,*
 	spribp	sb|stack_header.ret_no_pop_op_ptr
 "	spribp	bb|stack_header.ret_no_pop_op_ptr
 
-	eppbp	pl1_operators_$operator_table+entry_offset,*
+	eppbp	simh_operators_$operator_table+entry_offset,*
 	spribp	sb|stack_header.entry_op_ptr
 "	spribp	bb|stack_header.entry_op_ptr
 
