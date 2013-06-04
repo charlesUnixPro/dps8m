@@ -49,7 +49,7 @@
 #endif
 
 #if !defined(SIM_GIT_COMMIT_ID)
-#define SIM_GIT_COMMIT_ID e5ee32d4116680421ccc5c5810e28dada32e8359
+#define SIM_GIT_COMMIT_ID f386776a96f1d744a8df363369c4f23967a5b690
 #endif
 
 /*
@@ -238,7 +238,7 @@ patch   date            module(s) and fix(es)
 
                         pdp11_io.c:
                         - fixed Qbus interrupts to treat all IO devices (except clock) as BR4
-			- fixed order of int_internal (Jordi Guillaumes i Pons)
+                        - fixed order of int_internal (Jordi Guillaumes i Pons)
 
                         ppd11_rf.c
                         - fixed bug in updating mem addr extension (Peter Schorn)
