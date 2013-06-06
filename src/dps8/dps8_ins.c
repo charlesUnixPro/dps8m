@@ -2288,7 +2288,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             PPR.PSR = TPR.TSR;
             PPR.IC = TPR.CA;
             
-            return STOP_UNIMP;  //CONT_TRA;
+            return CONT_TRA;
             
             
         case 0630:  ///< ret

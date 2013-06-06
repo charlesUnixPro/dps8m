@@ -38,6 +38,7 @@ void doAddrModPtrReg(DCDstruct *i)
 {
     word3 n = GET_PRN(i->IWB);  // get PRn
     word15 offset = GET_OFFSET(i->IWB);
+    int soffset = SIGNEXT15(GET_OFFSET(i->IWB));
     
     TPR.TSR = PR[n].SNR;
     TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -121,7 +122,7 @@ _ptw0* modifyDSPTW(word15 segno)
 _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%d\n", segno);
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
 
     for(int _n = 0 ; _n < 64 ; _n++)
     {
@@ -130,7 +131,7 @@ _sdw* fetchSDWfromSDWAM(word15 segno)
         if (SDWAM[_n].F && segno == SDWAM[_n].POINTER)
         {
             if (apndTrace)
-                sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %d at _n=%d\n", segno, _n);
+                sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
 
             SDW = &SDWAM[_n];
             
@@ -151,7 +152,7 @@ _sdw* fetchSDWfromSDWAM(word15 segno)
         }
     }
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %d not found in SDWAM\n", segno);
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
 
     return NULL;    // segment not referenced in SDWAM
 }
@@ -162,7 +163,7 @@ _sdw* fetchSDWfromSDWAM(word15 segno)
 _sdw0* fetchPSDW(word15 segno)
 {
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%d\n", segno);
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
 
     _ptw0 *p = fetchDSPTW(segno);
 
@@ -202,18 +203,18 @@ _sdw0* fetchPSDW(word15 segno)
 _sdw0 *fetchNSDW(word15 segno)
 {
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%d\n", segno);
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
 
     if (2 * segno >= 16 * (DSBR.BND + 1))
     {
         if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%d DBSR.BND=%d\n", segno, DSBR.BND);
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DBSR.BND=%d\n", segno, DSBR.BND);
 
         // XXX: generate access violation, out of segment bounds fault
         ;
     }
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %06o\n", DSBR.ADDR + 2 * segno);
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
 
     word36 SDWeven, SDWodd;
     

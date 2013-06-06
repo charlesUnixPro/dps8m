@@ -122,7 +122,7 @@ typedef word72      float72;    // double precision float
 #define SIGN            SIGN36
 #define SIGNEX          0100000000000LL                   /*!< extended sign helper for mpf/mpy */
 #define SIGN15          040000                            ///< sign mask 15-bit number
-#define SIGNMASK15      0xffff0000                        ///< mask to sign exterd a 15-bit number to a 32-bit integer
+#define SIGNMASK15      0xffff8000                        ///< mask to sign exterd a 15-bit number to a 32-bit integer
 #define MAGMASK         0377777777777LL                   /*!< magnitude mask */
 #define ONES            0777777777777LL
 #define NEG136          0777777777777LL                   ///< -1
@@ -717,7 +717,7 @@ struct DCDstruct
     bool   i;           ///< interrupt inhinit bit.
     word6  tag;         ///< instruction tag XXX replace with rTAG
     
-    bool    stiTally;   ///< for sti instruction
+    word18 stiTally;    ///< for sti instruction
     
     EISstruct *e;       ///< info if instruction is a MW EIS instruction
 };
