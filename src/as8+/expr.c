@@ -22,9 +22,11 @@ expr *newExpr()
     return p;
 }
 
+static expr nulExp = {1, eExprUnknown, "?", false };
+
 expr *exprSymbolValue(char *s)
 {
-    static expr nulExp;
+    //static expr nulExp; // ToDo: this *should* be set to something
     
     symtab *y = getsym(s);
     

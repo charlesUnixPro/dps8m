@@ -7,6 +7,9 @@
 	segref	lot_,lot_
     segref  stack_0, stack_0
 
+    segref  power_of_two, power_of_two
+    
+
     link    I, <UtilsA>|[ioa]
     link    D, <UtilsA>|[rd_clockA]
 
@@ -14,7 +17,7 @@
 
 main:
         tsx2    setupFXE
-
+        tra pot
         "lprplp  lot_            " set-up lp to point to this segments linkage section
         "eppsp   stack_0         " set-up stack pointer
 
@@ -43,8 +46,44 @@ main:
         acc     /first: ^d\r\n/
         nop     f
 
-	dis
+pot:
+    lda     =512
+    sta     .arg1
+    
+    ldaq	.one_arg_header
+    staq	.po2_arg_list
+    epp1	.arg1
+    spri1	.po2_arg_list+2
+    epp1	.retval
+    spri1	.po2_arg_list+4
 
+
+    eppap	.po2_arg_list
+    
+    sprp4       f
+    short_call  power_of_two
+    lprp4       f
+    
+    tsp2	ioa
+    acc     /We did it!!! 2**^d=^d\r\n/
+    nop     .retval
+    nop     .arg1
+	dis
+    
+  	"tempd	.temp
+    "tempd	.po2_arg_list(2)
+  	even
+
+    bss     .arg1,2
+    bss     .retval,2
+    bss     .po2_arg_list, 4
+
+.one_arg_header:
+   	vfd	17/2,1/0,18/4
+   	vfd	18/0,18/0
+
+    
+    
    tsp2    UtilsA$rd_clockA-1
    tsp2    UtilsA$rd_clockA+0
    tsp2    UtilsA$rd_clockA+1

@@ -2537,6 +2537,7 @@ void fillExtRef()
 //        
 //        addr += 2;
 //    }
+    addr += 2 * linkCount;
 }
 
 /*
@@ -2799,29 +2800,29 @@ struct entryName
     word18  intValue;   // where in this segment 'name'  begins
     word18  extValue;   // entrypoint for external calls
     
-    symtab *sym;        // symbol that represents entry point
+    symtab  *sym;       // symbol that represents entry point
     
     struct entryName *prev;
     struct entryName *next;
-};// *entryNames = NULL; this causes entryNames to change during pass2
+};// *entryNames = NULL; //this causes entryNames to change during pass2
+
 typedef struct entryName entryName;
 
-PRIVATE entryName *entryNames = NULL;   // this does not/ Compiler bug?
+PRIVATE entryName *entryNames = NULL;   // this does not! Compiler bug?
 
 entryName * newEntryName()
 {
     return (entryName*)calloc(1, sizeof(entryName));
 }
 
-
-entryName *getEntryPoint(char *entrypoint)
-{
-    entryName *n;
-    DL_FOREACH(entryNames, n)
-        if (strcmp(n->name, entrypoint) == 0)
-            return n;
-    return NULL;
-}
+//entryName *getEntryPoint(char *entrypoint)
+//{
+//    entryName *n;
+//    DL_FOREACH(entryNames, n)
+//        if (strcmp(n->name, entrypoint) == 0)
+//            return n;
+//    return NULL;
+//}
 
 
 void doEntry(list *lst)                           // multics CSR Entry pseudo-op
@@ -3041,9 +3042,13 @@ void doShortCall(char *entrypoint)      // multics CSR Short_Call pseudo-op
      */
     
     char w[256];
-    
-    entryName *n = getEntryPoint(entrypoint);
-    word18 ep = n->intValue;
+    symtab *eps = getsym(entrypoint);
+    if (eps == NULL)
+    {
+        yyprintf("undefined symbol '%s'", entrypoint);
+        return;
+    }
+    word18 ep = (word18)eps->Value->value;
     
     sprintf(w, "%o%05o%06o", 4, ep & 077777,  getEncoding("epp2") | (word18)BIT(29) | (word18)020);
     outas8Stri(w, addr, LEXline);

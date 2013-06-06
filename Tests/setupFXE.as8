@@ -51,13 +51,17 @@ setupFXE:
 
 "	eppbp	prds$processor_stack	" initialize the prds
 "	spribp	bb|stack_header.stack_begin_ptr
-"	spribp	bb|stack_header.stack_end_ptr	
+"	spribp	bb|stack_header.stack_end_ptr
+
+    eppsb   stack_0
+    eppsp   stack_0
+    adwpsp  0100
 
 	eppbp	sb|stack_header.stack_begin_ptr+1,*		" get beginning offset
 	spribp	sb|stack_header.stack_begin_ptr 		" save it
 	spribp	sb|stack_header.stack_end_ptr
 
-	eppbp	lot_$						" set the lot ptrs
+	eppbp	lot_						" set the lot ptrs
 "	spribp	bb|stack_header.lot_ptr
 	spribp	sb|stack_header.lot_ptr
 "	spribp	bb|stack_header.isot_ptr	" and isot as a favor
@@ -100,6 +104,10 @@ setupFXE:
 "	eppap	no_args				" no arguments
 "	eppsp	=its(-1,1),*		" null stack pointer
 "	tra	initializer$initializer	" call PL/1
+
+
+    "eax7    48
+    "tsp2    pr7|stack_header.push_op_ptr,*
 
 	tra		0,2				" ... and return to caller
     

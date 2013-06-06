@@ -398,6 +398,12 @@ enum enumExpr
     eExprAbsolute    = 1,   // an absolute expression (default)
     eExprRelocatable = 2,   // relocatable expression
     eExprRelative    = 2,   // relocatable expression
+    
+    // XXX this is completely inadequate/wrong for a wide range of relocatable types.
+    // XXX if this was going to be a production assembler then I would need to revamp the type system
+    // XXX but since this is just to be used to test/exercise the simulator it probably isn't worth the effort
+    // XXX since when we get Multics running we'll have a *real* assembler to use
+    
     eExprTemporary   = 4,   // a stack temporary
     eExprSegRef      = 5,   // referenced through a segref
     eExprLink        = 6,   // referenced via a link to an external

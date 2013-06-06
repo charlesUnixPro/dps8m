@@ -1,5 +1,5 @@
 !SIZE 001237
-!NAME simh_operators_
+!SEGNAME simh_operators_
 !SEGDEF alm_call 001175
 !SEGDEF alm_entry 001215
 !SEGDEF alm_operators_begin 001175
@@ -8,7 +8,8 @@
 !SEGDEF alm_return 001225
 !SEGDEF alm_return_no_pop 001233
 !SEGDEF transfer_vector 000551
-000551 xxxx 000000000000 	BSS	271
+!SEGDEF operator_table 000000
+000551 xxxx 000000000000 	BSS	271					" words 0-270
 001170 xxxx 001175710000 	tra	alm_call			" 271	special for alm
 001171 xxxx 001201710000 	tra	alm_push			" 272	special for alm
 001172 xxxx 001225710000 	tra	alm_return			" 273	special for alm

@@ -16,12 +16,15 @@
 	segdef	alm_return_no_pop
 
 	segdef	transfer_vector
+	segdef	operator_table
+	
 "
 "	transfer vector for operators not referenced directly
 "	by the pl/1 program.  new operators may be added at the
 "	end of the list only.
 "
 
+operator_table:	
 	org		tv_offset
 	
 transfer_vector:
