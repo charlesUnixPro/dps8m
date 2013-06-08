@@ -410,11 +410,22 @@ enum enumExpr
 };
 typedef enum enumExpr enumExpr;
 
+enum enumExprLoc
+{
+    eExprLocUnknown = 0,    // unknown location type
+    eExprLocTemp,           // a stack temporary
+    eExprLocLnk,            // a link section
+    eExprLocExt,            // an external reference
+};
+typedef enum enumExprLoc enumExprLoc;
 
 struct expr
 {
     word36 value;   // value of expression
     enumExpr type;  // type of expression
+    
+    enumExprLoc valType;  // absolute or relative ?
+    
     char *lc;       // location counter (.text.,)
     
     bool bit29;     // true if bit29 should be set .... >HACK<

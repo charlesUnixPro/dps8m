@@ -144,8 +144,8 @@ literal *doNumericLiteral(int base, word36 val)
             break;
     }
     
-    l = addliteral(addr, -1, litGeneric, temp);   // literal addresses will be filled in after pass1
-    l->values[0] = val & DMASK;    // keep to 36-bits
+    l = addliteral(addr, -1, litGeneric, temp);     // literal addresses will be filled in after pass1
+    l->values[0] = val & DMASK;                     // keep to 36-bits
     
     l->signature = makeLiteralSignature(l);
     return l;
@@ -397,9 +397,9 @@ literal *addliteraln(word18 srcAddr, word18 litAddr, eLiteralType litType, int n
     
     l = newLit();
     l->name = strdup(lName);
-    l->key.srcAddr = srcAddr;       // where lit is referenced
+    l->key.srcAddr = srcAddr & AMASK;       // where lit is referenced
     l->key.seqNo = litPosInLine;
-    l->addr = litAddr;          // where literal lives in assembly
+    l->addr = litAddr & AMASK;          // where literal lives in assembly
     l->litType = litType;
     l->nWords = nWords;              // usually takes up 1 word
     

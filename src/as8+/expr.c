@@ -22,7 +22,7 @@ expr *newExpr()
     return p;
 }
 
-static expr nulExp = {1, eExprUnknown, "?", false };
+static expr nulExp = {1, eExprUnknown, eExprLocUnknown, "?", false };
 
 expr *exprSymbolValue(char *s)
 {
@@ -80,8 +80,17 @@ expr *exprPtrExpr(int ptr_reg, expr *e)
     return res;    
 }
 
+bool isAbsolute(expr *e)
+{
+    return true;
+}
+bool isRelative(expr *e)
+{
+    return true;
+}
+
 /*
- * the values of symbols and expressions may be wither absolute or relative to some location counter (lc).
+ * the values of symbols and expressions may be either absolute or relative to some location counter (lc).
  * The operands of the arothmetic operators are restricted to the combinations in the following list:
  * 
  * operand 1        operator        operand 2       = result

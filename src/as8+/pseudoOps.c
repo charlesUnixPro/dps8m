@@ -1269,9 +1269,15 @@ void doMCall(expr *entry, word36 mod, expr *arg)  // for call pseudoop
 {
     if (nPass == 1)
     {
-        addr += 7;
+        addr += 1;
         
-        // XXX add a =0 literal if necessary
+        // add a =0 literal
+        // set up arg as a =0 literal
+        litPosInLine += 1;          // bump literal in line position counter
+        doNumericLiteral(10, 0);    // create a =0 literal
+
+        addr += 6;
+
         return;
     }
     
@@ -1292,14 +1298,18 @@ void doMCall(expr *entry, word36 mod, expr *arg)  // for call pseudoop
      *  lreg    pr6|32
      */
 
-    outas8ins(0600000254100LL, addr, LEXline);
+    outas8ins(0600000254100LL, addr, LEXline);      // spri pr6|0
     addr += 1;
 
-    char w[256];
+    outas8ins(0600040753100LL, addr, "");          // sreg pr6|32
+    addr += 1;
 
+    
+    char w[256];
     if (arg)
         sprintf(w, "%06o%06o", (word18)arg->value & AMASK, getEncoding("epp0") | (arg->bit29 ? (1 << 6) : 0));
-    else {
+    else
+    {
         // set up arg as a =0 literal
         litPosInLine += 1;                          // bump literal in line position counter
         literal *arg0 = doNumericLiteral(10, 0);    // create a =0 literal
@@ -1309,12 +1319,19 @@ void doMCall(expr *entry, word36 mod, expr *arg)  // for call pseudoop
         
     addr += 1;
     
-    sprintf(w, "%06o%06o", (word18)(entry->value) & AMASK,  getEncoding("epp2") | (word18)mod | (entry->bit29 ? (1 << 6) : 0));
-    outas8Stri(w, addr, NULL);
-    addr += 1;
+    //sprintf(w, "%06o%06o", (4 << 15) | (word18)(entry->value & 077777) & AMASK,  getEncoding("epp2") | (word18)mod | (entry->bit29 ? (1 << 6) : 0));
+    //outas8Stri(w, addr, NULL);
+    //addr += 1;
     
-    outas8ins(0600040753100LL, addr, NULL);
+    int ep = (word18)(entry->value & 077777);
+    sprintf(w, "%o%05o%06o", 4, ep & 077777,  getEncoding("epp2") | (word18)BIT(29) | (word18)020);
+    outas8Stri(w, addr, LEXline);
     addr += 1;
+
+    
+    
+    //outas8ins(0600040753100LL, addr, NULL);
+    //addr += 1;
 
     outas8ins(0700036670120LL, addr, NULL);
     addr += 1;
