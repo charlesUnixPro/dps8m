@@ -55,11 +55,15 @@ setupFXE:
 
     eppsb   stack_0
     eppsp   stack_0
-    adwpsp  0100
+    adwpsp  =0100,du
 
-	eppbp	sb|stack_header.stack_begin_ptr+1,*		" get beginning offset
-	spribp	sb|stack_header.stack_begin_ptr 		" save it
-	spribp	sb|stack_header.stack_end_ptr
+	"eppbp	sb|stack_header.stack_begin_ptr+1,*		" get beginning offset
+	"spribp	sb|stack_header.stack_begin_ptr 		" save it
+	"spribp	sb|stack_header.stack_end_ptr
+
+    sprisp	sb|stack_header.stack_begin_ptr 		" save beginning of 1st stack frame
+    sprisp	sb|stack_header.stack_end_ptr
+
 
 	eppbp	lot_						" set the lot ptrs
 "	spribp	bb|stack_header.lot_ptr
@@ -108,7 +112,13 @@ setupFXE:
 
     "eax7    48
     "tsp2    pr7|stack_header.push_op_ptr,*
+    
+    " set up initial stach frame
 
+    "tsp2 pr7|stack_header.entry_op_ptr, *
+
+    "push    
+    
 	tra		0,2				" ... and return to caller
     
 	even

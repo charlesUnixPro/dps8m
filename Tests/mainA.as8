@@ -1,4 +1,5 @@
 
+    option  Multics     " Multics style calling conventions
 
 	name	main
 	segdef	main
@@ -7,7 +8,7 @@
 	segref	lot_,lot_
     segref  stack_0, stack_0
 
-    segref  power_of_two, power_of_two
+    segref  power_of_two, power_of_two, power_of_two2
     
 
     link    I, <UtilsA>|[ioa]
@@ -17,10 +18,21 @@
 
 main:
         tsx2    setupFXE
-        tra pot
         "lprplp  lot_            " set-up lp to point to this segments linkage section
         "eppsp   stack_0         " set-up stack pointer
 
+    ldaq	.one_arg_header
+    staq	.po2_arg_list
+    epp1	.arg1
+    spri1	.po2_arg_list+2     " pointer to arg1
+    epp1	.retval
+    spri1	.po2_arg_list+4     " pointer to retval
+
+    eppap	.po2_arg_list
+    
+
+    "    tra     pot2
+        
         LDA     I
         tsp2	pr4|I, *        " ioa
         acc     /Howdy world! - It's /
@@ -37,44 +49,49 @@ main:
         nop     Date
         nop     Date+1
 
-        ldq     =123456
-        stq     first
-        lda     first
-        sta     f
+        "ldq     =123456
+        "stq     first
+        "lda     first
+        "sta     f
 
-        tsp2    ioa
-        acc     /first: ^d\r\n/
-        nop     f
+        "tsp2    ioa
+        "acc     /first: ^d\r\n/
+        "nop     f
 
 pot:
-    lda     =512
-    sta     .arg1
+    "lda     =512
+    "sta     .arg1
     
-    ldaq	.one_arg_header
-    staq	.po2_arg_list
-    epp1	.arg1
-    spri1	.po2_arg_list+2
-    epp1	.retval
-    spri1	.po2_arg_list+4
-
-
-    eppap	.po2_arg_list
-    
+    sprpap      g
     sprp4       f
     short_call  power_of_two
     lprp4       f
-    
+    lprpap      g
+    "getlp      " seems to be broken
+
     tsp2	ioa
     acc     /We did it!!! 2**^d=^d\r\n/
     nop     .retval
     nop     .arg1
+    
+pot2:
+    lda     =2048
+    sta     .arg1
+    
+    call    power_of_two2(ap|0)
+    
+    tsp2	ioa
+    acc     /We did it again!!! 2**^d=^d\r\n/
+    nop     .retval
+    nop     .arg1
+
 	dis
     
   	"tempd	.temp
     "tempd	.po2_arg_list(2)
   	even
 
-    bss     .arg1,2
+    "bss     .arg1,2
     bss     .retval,2
     bss     .po2_arg_list, 4
 
@@ -82,18 +99,49 @@ pot:
    	vfd	17/2,1/0,18/4
    	vfd	18/0,18/0
 
-    
-    
-   tsp2    UtilsA$rd_clockA-1
-   tsp2    UtilsA$rd_clockA+0
-   tsp2    UtilsA$rd_clockA+1
-
-
 
 	even
-Date:	bss	2
-f:      bss 1
+Date:	bss     2
+f:      bss     1
+g:      bss     1
+
+.arg1:  dec     512, 0
 
     INCLUDE     setupFXE.as8
     
 	end
+
+arg_header:
+	oct     000006000004		" 3 args, inter_seg call
+	oct     0                   " no descriptors
+
+	tempd	arglist(4)	"
+
+    ldaq	arg_header
+	staq	arglist
+	"spri5	str_ptr_save		"must preserve 2
+	"epp5	src_temp
+	spri5	arglist+2
+	"epp5	src_str_pr|picture_image_ptr_offset,*
+	spri5	arglist+4
+	"epp5	src_str_pr|address_offset,*
+	spri5	arglist+6
+
+	ldaq	null			" initialize output values
+	staq	ap|4,*			" ... null argument pointer
+	stz     ap|6,*			" ... zero length
+	stz     ap|8,*			" ... zero error code
+
+	lda     ap|2,*			" pick up argument number
+
+    001161  aa   000000 0110 03   1172  	even
+    001162                        1173  one_arg_nd:
+    001162  aa   000002 000004    1174  	zero	2,4
+    001163  aa   000000 000000    1175  	zero	0
+                                  1176  
+    001164                        1177  two_args_nd:
+    001164  aa   000004 000004    1178  	zero	4,4
+    001165  aa   000000 000000    1179  	zero	0
+                                  1180  
+    001166  aa   077777 000043    1181  nullptr:	its	-1,1
+    001167  aa   000001 000000 
