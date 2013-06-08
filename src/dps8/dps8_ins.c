@@ -67,6 +67,8 @@ word18 getCrAR(word4 reg)
     return 0;
 }
 
+PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
+
 t_stat executeInstruction(DCDstruct *ci)
 {
     word36 IWB  = ci->IWB;          ///< instruction working buffer
@@ -128,8 +130,10 @@ t_stat executeInstruction(DCDstruct *ci)
         sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n", rX[0], rX[1], rX[2], rX[3]);
         sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
         for(int n = 0 ; n < 8 ; n++)
-            sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                      n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+        {
+            sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
+                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+        }
         for(int n = 0 ; n < 8 ; n++)
             sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR[%d]: WORDNO=%06o CHAR:%o BITNO:%02o\n",
                       n, AR[n].WORDNO, AR[n].CHAR, AR[n].BITNO);

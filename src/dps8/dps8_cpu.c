@@ -736,7 +736,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 void doFault(int faultNumber, int faultGroup, char *faultMsg)
 {
-    fprintf(stderr, "fault: %d %d '%s'\r\n", faultNumber, faultGroup, faultMsg ? faultMsg : "?");
+    printf("fault: %d %d '%s'\r\n", faultNumber, faultGroup, faultMsg ? faultMsg : "?");
     
     // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
     // XXX do it properly - later..

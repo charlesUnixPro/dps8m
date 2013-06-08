@@ -201,8 +201,10 @@ _sdw0 *fetchSDW(word15 segno)
     core_read2(DSBR.ADDR + 2 * segno, &SDWeven, &SDWodd);
     
     // even word
+    static _sdw0 _s;
     
-    _sdw0 *SDW = calloc(1, sizeof(_sdw0));
+    _sdw0 *SDW = &_s;   //calloc(1, sizeof(_sdw0));
+    memset(SDW, 0, sizeof(_s));
     
     SDW->ADDR = (SDWeven >> 12) & 077777777;
     SDW->R1 = (SDWeven >> 9) & 7;
@@ -408,6 +410,42 @@ void (*sim_vm_init) (void) = &dps8_init;    //CustomCmds;
 
 extern segment *findSegment(char *);
 
+PRIVATE struct PRtab {
+    char *alias;    ///< pr alias
+    int   n;        ///< number alias represents ....
+} _prtab[] = {
+    {"pr0", 0}, ///< pr0 - 7
+    {"pr1", 1},
+    {"pr2", 2},
+    {"pr3", 3},
+    {"pr4", 4},
+    {"pr5", 5},
+    {"pr6", 6},
+    {"pr7", 7},
+
+    {"pr[0]", 0}, ///< pr0 - 7
+    {"pr[1]", 1},
+    {"pr[2]", 2},
+    {"pr[3]", 3},
+    {"pr[4]", 4},
+    {"pr[5]", 5},
+    {"pr[6]", 6},
+    {"pr[7]", 7},
+    
+    // from: ftp://ftp.stratus.com/vos/multics/pg/mvm.html
+    {"ap",  0},
+    {"ab",  1},
+    {"bp",  2},
+    {"bb",  3},
+    {"lp",  4},
+    {"lb",  5},
+    {"sp",  6},
+    {"sb",  7},
+    
+    {0,     0}
+    
+};
+
 static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
 {
     // a segment reference?
@@ -429,22 +467,39 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         
         // determine if segment is numeric or symbolic...
         char *endp;
+        int PRoffset = 0;   // offset from PR[n] register (if any)
         int segno = (int)strtoll(seg, &endp, 8);
         if (endp == seg)
         {
             // not numeric...
-            segment *s = findSegmentNoCase(seg);
-            if (s == NULL)
+            // 1st, see if it's a PR or alias thereof
+            struct PRtab *prt = _prtab;
+            while (prt->alias)
             {
-                printf("parse_addr(): segment '%s' not found\n", seg);
-                *optr = cptr;   // signal error
-
-                return 0;
+                if (strcasecmp(seg, prt->alias) == 0)
+                {
+                    segno = PR[prt->n].SNR;
+                    PRoffset = PR[prt->n].WORDNO;
+                    
+                    break;
+                }
+                
+                prt += 1;
             }
-            segno = s->segno;
+            
+            if (!prt->alias)    // not a PR or alias
+            {
+                segment *s = findSegmentNoCase(seg);
+                if (s == NULL)
+                {
+                    printf("parse_addr(): segment '%s' not found\n", seg);
+                    *optr = cptr;   // signal error
+                    
+                    return 0;
+                }
+                segno = s->segno;
+            }
         }
-        
-        // XXX Add ability to use PR/AR syntax ...
         
         // determine if offset is numeric or symbolic entry point/segdef...
         int offset = (int)strtoll(off, &endp, 8);
@@ -466,12 +521,37 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         // So, fetch the actual address given the segment & offset ...
         // ... and return this absolute, 24-bit address
         
-        t_addr absAddr = getAddress(segno, offset);
+        t_addr absAddr = getAddress(segno, offset + PRoffset);
         
         // TODO: only luckily does this work FixMe
         *optr = endp;   //cptr + strlen(cptr);
         
         return absAddr;
+    }
+    else
+    {
+        // a PR or alias thereof
+        int segno = 0;
+        int offset = 0;
+        struct PRtab *prt = _prtab;
+        while (prt->alias)
+        {
+            if (strncasecmp(cptr, prt->alias, strlen(prt->alias)) == 0)
+            {
+                segno = PR[prt->n].SNR;
+                offset = PR[prt->n].WORDNO;
+                break;
+            }
+            
+            prt += 1;
+        }
+        if (prt->alias)    // a PR or alias
+        {
+            t_addr absAddr = getAddress(segno, offset);
+            *optr = cptr + strlen(prt->alias);
+        
+            return absAddr;
+        }
     }
     
     // No, determine absolute address given by cptr

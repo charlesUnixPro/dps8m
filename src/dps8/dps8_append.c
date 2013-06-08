@@ -694,7 +694,7 @@ H:; ///< Final address nonpaged
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(H:FANP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
     
     goto L;
     
@@ -711,7 +711,7 @@ I:;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(I:FAP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
     goto L;
     
 L:;
@@ -1363,7 +1363,7 @@ H:; ///< Final address nonpaged
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(H:FANP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
     goto J;
     
 I:;
@@ -1379,7 +1379,7 @@ I:;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(I:FAP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
     
     goto J;
     
@@ -1395,7 +1395,7 @@ J:;
     else
     {
         if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (Non-ITS/ITP): finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (Non-ITS/ITP): finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
         return finalAddress;
     }
     
@@ -1405,7 +1405,7 @@ J:;
     word36 newwrd = (TPR.CA << 18) | rTAG;
     
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (ITS/ITP): newwrd=%012o\n", newwrd);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (ITS/ITP): newwrd=%012llo\n", newwrd);
     
     if (apndTrace)
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Need to read from CA:%6o FA:%08o\n", TPR.CA, finalAddress);
@@ -1418,7 +1418,7 @@ J:;
 word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word36 writeData, word36 *readData)
 {
     if (apndTrace)
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry): accessType=%s IWB=%012lo A=%d\n", strAccessType(accessType), i->IWB, GET_A(i->IWB));
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry): accessType=%s IWB=%012llo A=%d\n", strAccessType(accessType), i->IWB, GET_A(i->IWB));
     
     word36 fa = 0;
     switch (accessType)
@@ -1753,7 +1753,7 @@ H:; ///< Final address nonpaged
     {
         core_write(finalAddress, writeData);  // I think now is the time to do it ...
         if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP) Write: finalAddress=%08o writeData=%012o\n", finalAddress, writeData);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
         
     }
     //XXX how about RTCD operand???
@@ -1761,7 +1761,7 @@ H:; ///< Final address nonpaged
     {
         core_read(finalAddress, readData);  // I think now is the time to do it ...
         if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
         
         if (accessType == InstructionFetch)
             iwb = getIWBInfo();
@@ -1792,7 +1792,7 @@ I:;
     {
         core_write(finalAddress, writeData);  // I think now is the time to do it ...
         if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I:FAP) Write: finalAddress=%08o writeData=%012o\n", finalAddress, writeData);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I:FAP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
 
     }
     //XXX how about RTCD operand???
@@ -1800,7 +1800,7 @@ I:;
     {
         core_read(finalAddress, readData);  // I think now is the time to do it ...
         if (apndTrace)
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I:FAP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
         
         //if (accessType == InstructionFetch)
         //    iwb = getIWBInfo();

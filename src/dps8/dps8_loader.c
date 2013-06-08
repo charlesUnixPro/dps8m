@@ -501,7 +501,7 @@ int resolveLinks(bool bVerbose)
 PRIVATE
 int loadDeferredSegment(segment *sg, int addr24)
 {
-    printf("    loading %s as segment# %d\n", sg->name, sg->segno);
+    if (!sim_quiet) printf("    loading %s as segment# %d\n", sg->name, sg->segno);
         
     int segno = sg->segno;
         
@@ -511,11 +511,13 @@ int loadDeferredSegment(segment *sg, int addr24)
     
     DSBR.BND = 037777;  // temporary max bound ...
     
-    if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
-        printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
-    else
-        printf("      Error loading segment %d (%o)\n", segno, segno);
-    
+    if (!sim_quiet)
+    {
+        if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
+            printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
+        else
+            printf("      Error loading segment %d (%o)\n", segno, segno);
+    }
     // update in-code SDW to reflect segment info
     // Done in loadUnpagedSegment()
     
@@ -655,7 +657,7 @@ t_stat createLOT(bool bVerbose)
 
     DL_APPEND(segments, lot);
     
-    printf("%s segment created with %d sparse entries.\n", LOT, numSeg);
+    if (!sim_quiet) printf("%s segment created with %d sparse entries.\n", LOT, numSeg);
     
     return SCPE_OK;
 }
@@ -756,7 +758,7 @@ t_stat createStack(int n, bool bVerbose)
     
     DL_APPEND(segments, stk);
     
-    printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, DSBR.STACK);
+    if (bVerbose) printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, DSBR.STACK);
     
     return SCPE_OK;
 }
@@ -832,7 +834,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
                 
                 if (elt)
                 {
-                    fprintf(stderr, "segment '%s' already loaded. Use 'segment remove'\n", elt->name);
+                    printf("segment '%s' already loaded. Use 'segment remove'\n", elt->name);
                     freeSegment(s);
                     continue;
                 }
@@ -841,7 +843,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             DL_APPEND(segments, s);
             currSegment = s;
             
-            printf("segment created for '%s'\n", s->name);
+            if (!sim_quiet) printf("segment created for '%s'\n", s->name);
         }
         
         else
@@ -888,7 +890,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             }
             DL_APPEND(currSegment->defs, s);
             
-            printf("segdef created for segment %s, symbol '%s', addr:%06o\n", currSegment->name, symbol, value);
+            if (!sim_quiet) printf("segdef created for segment %s, symbol '%s', addr:%06o\n", currSegment->name, symbol, value);
         }
 
         //else if (bDeferred && !strcasecmp(args[0], "!entry"))
@@ -918,7 +920,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             }
             DL_APPEND(currSegment->defs, s);
             
-            printf("entrypoint created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
+            if (!sim_quiet) printf("entrypoint created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
         }
         
         else
@@ -953,10 +955,13 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
 //                }
 //            }
             DL_APPEND(currSegment->refs, s);
-            if (offset)
-                printf("segref created for segment '%s' symbol:%s%+d, addr:%06o\n", segment, symbol, offset, addr);
-            else
-                printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
+            if (!sim_quiet)
+            {
+                if (offset)
+                    printf("segref created for segment '%s' symbol:%s%+d, addr:%06o\n", segment, symbol, offset, addr);
+                else
+                    printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
+            }
         }
         
         else
@@ -1021,7 +1026,7 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
         else
             strcpy(buff, "");
         
-        printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
+        if (!sim_quiet) printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
     }
     else
     if (segno == -1)// just do an absolute load
@@ -1047,7 +1052,7 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
                 words++;
             }
         }
-        printf("%d (%06o) words loaded\n", words, words);
+        if (!sim_quiet) printf("%d (%06o) words loaded\n", words, words);
     }
     else
     {
@@ -1081,11 +1086,13 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
         }
         word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
         //fprintf(stderr, "segwords:%d maxaddr:%d\n", segwords, maxaddr);
-        
-        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
-            printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
-        else
-            printf("Error loading segment %d (%o)\n", segno, segno);
+        if (!sim_quiet)
+        {
+            if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+                printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
+            else
+                printf("Error loading segment %d (%o)\n", segno, segno);
+        }
     }
     
     return SCPE_OK;
@@ -1177,7 +1184,7 @@ t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     writeSDW0toYPair(s, yPair);
     
     word24 sdwaddress = DSBR.ADDR + (2 * segno);
-    fprintf(stderr, "Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
+    if (!sim_quiet) printf("Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
     // write sdw to segment table
     core_write2(sdwaddress, yPair[0], yPair[1]);
     
