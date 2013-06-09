@@ -1635,7 +1635,7 @@ void dtb(EISstruct *e)
     // Zero: If C(Y-char92) = 0, then ON: otherwise OFF
     SCF(e->x == 0, e->_flags, I_ZERO);
     
-    EISwriteToBinaryStringReverse(&e->ADDR1, 2);
+    EISwriteToBinaryStringReverse(&e->ADDR2, 2);
     
     rIR = e->_flags;
 
