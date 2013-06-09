@@ -627,7 +627,7 @@ struct opCode EISopcodes[01000] = {
     {"sar6", RMW, 0},
     {"sar7", RMW, 0},
     {}, {}, {}, {},
-    {"sra", STORE_OPERAND, 0},
+    {"sra",  PREPARE_CA | STORE_OPERAND, 0},
     {}, {}, {},
      /* 760 - 777 */
     {"lar0", READ_OPERAND, 0},

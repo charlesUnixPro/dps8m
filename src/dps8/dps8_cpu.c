@@ -481,6 +481,8 @@ t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum e
 }
 t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag)
 {
+    //return SCPE_OK;
+    
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
     else {

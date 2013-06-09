@@ -38,6 +38,42 @@ writeOperand(DCDstruct *i)
 }
 
 /**
+ * writeOperand2() - write (a potentially modified) YPair to memory at TPR.CA/TPR.CA+1 using whatever modifications are necessary ...
+ */
+void
+writeOperand2(DCDstruct *i, word36 *YPair)
+{
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperand2(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
+    }
+    
+    // TPR.CA may be different from instruction spec because of various addr mod operations.
+    // This is especially true in a R/M/W cycle such as stxn. So, restore it.
+    
+    if (i->iwb->flags == RMW)  /// Is this always the right thing todo???? or only for R/M/W instructions
+    {
+        TPR.CA = i->address;   // address from opcode
+        rY = i->address;
+    }
+    
+    // XXX this may be way too simplistic .....
+    Write2(i, TPR.CA, YPair[0], YPair[1], DataWrite, i->tag);
+    
+    
+    // XXX may need to check for alignment restrictions/faults here ...
+    
+    //TPR.CA &= 0777776;  // make even address
+    
+    //CY = YPair[0];
+    //doComputedAddressFormation(i, writeCY);
+    
+    //CY = YPair[1];
+    //TPR.CA += 1;
+    //doComputedAddressFormation(i, writeCY);
+}
+
+/**
  * get register value indicated by reg for Address Register operations
  * (not for use with address modifications)
  */
@@ -88,9 +124,13 @@ t_stat executeInstruction(DCDstruct *ci)
     if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
     {
         if (processorAddressingMode == ABSOLUTE_MODE)
+        {
             sim_debug(DBG_TRACE, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
         if (processorAddressingMode == APPEND_MODE)
+        {
             sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
     }
     
     if (iwb->ndes == 0)
@@ -107,7 +147,8 @@ t_stat executeInstruction(DCDstruct *ci)
         // do any address modifications (and fetch operand if necessary)
         
         /*
-         * XXX TODO: make read/write all operands autoomagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR the store automatically after instruction exec ala STORE_OPERAND, etc.....
+         * XXX TODO: make read/write all operands automagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR the store automatically after instruction exec ala STORE_OPERAND, etc.....
+         
          */
         
         if (iwb->flags & (READ_OPERAND | PREPARE_CA ))
@@ -271,9 +312,43 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /* check status  core_read2(rY, &rA, &rQ); */
             // XXX incomplete
             
-            return STOP_UNIMP;  // not implemented yet
-            break;
+            // The lcaq instruction changes the number to its negative while moving it from Y-pair to AQ. The operation is executed by forming the twos complement of the string of 72 bits. In twos complement arithmetic, the value 0 is its own negative. An overflow condition exists if C(Y-pair) = -2**71.
             
+            Read2(i, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
+            
+            if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
+                SETF(rIR, I_OFLOW);
+            else if (Ypair[1] == 0 && Ypair[1] == 0)
+            {
+                rA = 0;
+                rQ = 0;
+                
+                SETF(rIR, I_ZERO);
+                CLRF(rIR, I_NEG);
+            }
+            else
+            {
+                tmp72 = 0;
+
+                tmp72 = bitfieldInsert72(tmp72, Ypair[0], 36, 36);
+                tmp72 = bitfieldInsert72(tmp72, Ypair[1],  0, 36);
+            
+                tmp72 = ~tmp72 + 1;
+            
+                rA = bitfieldExtract72(tmp72, 36, 36);
+                rQ = bitfieldExtract72(tmp72,  0, 36);
+            
+                if (rA == 0 && rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rA & SIGN)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
+            break;
+
         case 0235:  ///< lda
             rA = CY;
             
@@ -466,7 +541,10 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0757:  ///< staq
-            Write2(i, TPR.CA, rA, rQ, OperandWrite, rTAG);
+            //Write2(i, TPR.CA, rA, rQ, OperandWrite, rTAG);
+            Ypair[0] = rA;
+            Ypair[1] = rQ;
+            
             break;
             
         case 0551:  ///< stba
@@ -508,7 +586,28 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0357: //< stcd
-             return STOP_UNIMP;
+            // C(PPR) → C(Y-pair) as follows:
+            
+            //  000 → C(Y-pair)0,2
+            //  C(PPR.PSR) → C(Y-pair)3,17
+            //  C(PPR.PRR) → C(Y-pair)18,20
+            //  00...0 → C(Y-pair)21,29
+            //  (43)8 → C(Y-pair)30,35
+            
+            //  C(PPR.IC)+2 → C(Y-pair)36,53
+            //  00...0 → C(Y-pair)54,71
+            
+            Ypair[0] = 0;
+            Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PSR, 18, 15);
+            Ypair[0] = bitfieldInsert36(Ypair[0], PPR.PRR, 15,  3);
+            Ypair[0] = bitfieldInsert36(Ypair[0],     043,  0,  6);
+            
+            Ypair[1] = 0;
+            Ypair[1] = bitfieldInsert36(Ypair[0], rIC + 2, 18, 18);
+            
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+
+            break;
             
             
         case 0754: ///< sti
@@ -897,6 +996,10 @@ t_stat DoBasicInstruction(DCDstruct *i)
             NEG: If C(A)0 = 1, then ON; otherwise OFF
             OVR: If range of A is exceeded, then ON
             CARRY: If a carry out of A0 is generated, then ON; otherwise OFF
+             
+            XXX: check Michael Mondy's notes on 36-bit addition and T&D stuff. Need to reimplement code
+             
+             
             */
         
             rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
@@ -2013,14 +2116,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] = ((word36)rE << 28) | ((rA & 0777777777400LL) >> 8);
             Ypair[1] = ((rA & 0377) << 28) | ((rQ & 0777777777400LL) >> 8);
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             break;
             
         case 0472:  ///< dfstr
             
             dfstr(Ypair);
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             break;
             
             //return STOP_UNIMP;
@@ -2773,7 +2876,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= PR[1].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
             
@@ -2790,7 +2893,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= PR[3].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
             
@@ -2807,7 +2910,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= PR[5].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
         
@@ -2824,7 +2927,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= PR[7].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
         
@@ -2874,7 +2977,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[1] = PR[0].WORDNO << 18;
             Ypair[1]|= PR[0].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
             
@@ -2896,7 +2999,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[1] = PR[2].WORDNO << 18;
             Ypair[1]|= PR[2].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
   
@@ -2918,7 +3021,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[1] = PR[4].WORDNO << 18;
             Ypair[1]|= PR[4].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
     
@@ -2940,7 +3043,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[1] = PAR[6].WORDNO << 18;
             Ypair[1]|= PR[6].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
     
@@ -3123,7 +3226,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 013:   ///< puls2
             bPuls2 = true;
             break;
-            
+         
+            // TODo: implement RPD/RPL
         case 0560:  ///< rpd
         case 0500:  ///< rpl
             return STOP_UNIMP;
@@ -3429,7 +3533,10 @@ t_stat DoBasicInstruction(DCDstruct *i)
     
     if (i->iwb->flags & STORE_OPERAND)
         writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
-        
+    
+    if (i->iwb->flags & STORE_YPAIR)
+        writeOperand2(i, Ypair); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
+  
     return 0;
 }
 
@@ -3659,7 +3766,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= PR[0].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
         
@@ -3676,7 +3783,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= PR[2].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
             
             break;
             
@@ -3693,7 +3800,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= PR[4].RNR << 15;
             Ypair[1] = 0;
         
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
             
             break;
   
@@ -3710,7 +3817,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= PR[6].RNR << 15;
             Ypair[1] = 0;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -3732,7 +3839,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[1] = PR[1].WORDNO << 18;
             Ypair[1]|= PR[1].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
     
@@ -3754,7 +3861,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[1] = PR[3].WORDNO << 18;
             Ypair[1]|= PR[3].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -3776,7 +3883,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[1] = PR[5].WORDNO << 18;
             Ypair[1]|= PR[5].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -3798,7 +3905,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[1] = PR[7].WORDNO << 18;
             Ypair[1]|= PR[7].BITNO << 9;
             
-            Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -3806,7 +3913,8 @@ t_stat DoEISInstruction(DCDstruct *i)
             /// 00...0 → C(Y)0,32
             /// C(RALR) → C(Y)33,35
             
-            Write(i, TPR.CA, (word36)rRALR, OperandWrite, rTAG);
+            //Write(i, TPR.CA, (word36)rRALR, OperandWrite, rTAG);
+            CY = (word36)rRALR;
             
             break;
             
@@ -3902,7 +4010,7 @@ t_stat DoEISInstruction(DCDstruct *i)
         case 0663:
         case 0664:
         case 0665:
-        case 0666:  // beware!!!!
+        case 0666:  // beware!!!! :-)
         case 0667:
             {
                 // For n = 0, 1, ..., or 7 as determined by operation code
@@ -4674,6 +4782,9 @@ t_stat DoEISInstruction(DCDstruct *i)
 
     if (i->iwb->flags & STORE_OPERAND)
         writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
+
+    if (i->iwb->flags & STORE_YPAIR)
+        writeOperand2(i, Ypair); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
 
     return 0;
 
