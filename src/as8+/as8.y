@@ -400,7 +400,7 @@ pop
     | ZERO           literal                     { doZero($2->addr, 0);            }
     | ZERO           expr    ',' expr            { doZero($2->value, $4->value);   }
     | ZERO           expr                        { doZero($2->value, 0);           }
-    | ZERO           VFDLIT vfdArgs              { literal *l = doVFDLiteral($3); doZero(l->addr,0);  popAndReset();  }
+    | ZERO               VFDLIT vfdArgs          { literal *l = doVFDLiteral($3); doZero(l->addr,0);  popAndReset();  }
     | ZERO           ',' VFDLIT vfdArgs          { literal *l = doVFDLiteral($4); doZero(0,l->addr);  popAndReset();  }
 
     | ARG            operands                                             { doArg(&opnd);  }
@@ -409,6 +409,7 @@ pop
 
     | OCT            lexprlist                                            { doOct($2);  }
     | DEC            declist                                              { doDec($2);  }
+
     | DESC                       expr                                     { doDescriptor($1, $2->value,         0,  0,  0,      -1); }
     | DESC                       expr '(' expr ')'                        { doDescriptor($1, $2->value, $4->value,  0,  0,      -1); }
     | DESC           ptr_reg '|' expr              ',' rexpr              { doDescriptor($1, $4->value,  0, $6,  0, (int)$2);        }
@@ -420,6 +421,7 @@ pop
     | DESC                       expr              ',' rexpr ',' expr     { doDescriptor($1, $2->value,  0, $4, $6->value,      -1); }
     | DESC           ptr_reg '|' expr '(' expr ')' ',' rexpr ',' expr     { doDescriptor($1, $4->value, $6->value, $9, $11->value,(int)$2); }
     | DESC2          exprlist                                             { doDescriptor2($1, $2);                                   }
+
     | PSEUDOOPD2     symlist
 
     | STROP          STRING                  { doStrop($1, $2, 0);       }

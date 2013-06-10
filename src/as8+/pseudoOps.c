@@ -1325,7 +1325,7 @@ void doMCall(expr *entry, word36 mod, expr *arg)  // for call pseudoop
     
     int ep = (word18)(entry->value & 077777);
     sprintf(w, "%o%05o%06o", 4, ep & 077777,  getEncoding("epp2") | (word18)BIT(29) | (word18)020);
-    outas8Stri(w, addr, LEXline);
+    outas8Stri(w, addr, NULL);
     addr += 1;
 
     

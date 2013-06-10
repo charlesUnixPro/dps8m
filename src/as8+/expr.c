@@ -82,11 +82,12 @@ expr *exprPtrExpr(int ptr_reg, expr *e)
 
 bool isAbsolute(expr *e)
 {
-    return true;
+    return e->type == eExprAbsolute || e->type == eExprUnknown;
 }
+
 bool isRelative(expr *e)
 {
-    return true;
+    return !isAbsolute(e);
 }
 
 /*
@@ -116,21 +117,25 @@ expr *add(expr *op1, expr *op2)
      * absolute             +           relative to lc  = relative to lc
      */
     expr *res = newExpr();
-    
+
     res->value = (op1->value + op2->value) & DMASK;   // keep to 36-bits
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
     }
-    else if (op1->type == eExprRelative && op2->type == eExprAbsolute)
+    //else if (op1->type == eExprRelative && op2->type == eExprAbsolute)
+    else if (isRelative(op1) && isAbsolute(op2))
     {
-        res->type = eExprRelative;
+        res->type = op1->type; //eExprRelative;
         res->lc = op1->lc;
     }
-    else if (op1->type == eExprAbsolute && op2->type == eExprRelative)
+    //else if (op1->type == eExprAbsolute && op2->type == eExprRelative)
+    else if (isAbsolute(op1) && isRelative(op2))
     {
-        res->type = eExprRelative;
+        res->type = op2->type;  //eExprRelative;
         res->lc = op2->lc;
     }
     else
@@ -153,17 +158,20 @@ expr *subtract(expr *op1, expr *op2)
     expr *res = newExpr();
 
     res->value = (op1->value - op2->value) & DMASK;   // keep to 36-bits
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
     }
-    else if (op1->type == eExprRelative && op2->type == eExprAbsolute)
+    //else if (op1->type == eExprRelative && op2->type == eExprAbsolute)
+    else if (isRelative(op1) && isAbsolute(op2))
     {
-        res->type = eExprRelative;
+        res->type = op1->type;  //eExprRelative;
         res->lc = op1->lc;
     }
-    else if (op1->type == eExprRelative && op2->type == eExprRelative)
+    //else if (op1->type == eExprRelative && op2->type == eExprRelative)
+    else if (isRelative(op1) && isRelative(op2))
     {
         if (nPass == 2 && strcasecmp(op1->lc, op2->lc))
             yyprintf("relocation error for subtraction (%s <> %s)", op1->lc, op2->lc);
@@ -189,7 +197,8 @@ expr *multiply(expr *op1, expr *op2)
     expr *res = newExpr();
 
     res->value = (op1->value * op2->value) & DMASK;   // keep to 36-bits
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -218,7 +227,8 @@ expr *divide(expr *op1, expr *op2)
     } else
         res->value = (op1->value / op2->value) & DMASK;   // keep to 36-bits
     
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -246,7 +256,8 @@ expr *modulus(expr *op1, expr *op2)
     } else
         res->value = (op1->value / op2->value) & DMASK;   // keep to 36-bits
     
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -269,7 +280,8 @@ expr *and(expr *op1, expr *op2)
      * absolute             &           absolute        = absolute
      */
     res->value = (op1->value & op2->value) & DMASK;   // keep to 36-bits
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -291,7 +303,8 @@ expr *or(expr *op1, expr *op2)
      * absolute             |           absolute        = absolute
      */
     res->value = (op1->value | op2->value) & DMASK;   // keep to 36-bits
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -313,7 +326,8 @@ expr *xor(expr *op1, expr *op2)
      * absolute             ^           absolute        = absolute
      */
     res->value = (op1->value ^ op2->value) & DMASK;   // keep to 36-bits
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -335,7 +349,8 @@ expr *andnot(expr *op1, expr *op2)
      * absolute           (bool) /           absolute        = absolute
      */
     res->value = op1->value & ~op2->value;
-    if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute && op2->type == eExprAbsolute)
+    if (isAbsolute(op1) && isAbsolute(op2))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -358,7 +373,8 @@ expr *not(expr *op1)
      * -none-           (unary)~        absolute        = absolute
      */
     res->value = ~op1->value;
-    if (op1->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute)
+    if (isAbsolute(op1))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -380,7 +396,8 @@ expr *neg(expr *op1)
      * -none-           (unary)-        absolute        = absolute
      */
     res->value = -op1->value;
-    if (op1->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute)
+    if (isAbsolute(op1))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;
@@ -394,6 +411,7 @@ expr *neg(expr *op1)
 
     return res;
 }
+
 expr *neg8(expr *op1)
 {
     expr *res = newExpr();
@@ -402,7 +420,8 @@ expr *neg8(expr *op1)
      * -none-           (unary)-        absolute        = absolute
      */
     res->value = op1->value ^ 0400000000000LL; /* flip the sign bit */
-    if (op1->type == eExprAbsolute)
+    //if (op1->type == eExprAbsolute)
+    if (isAbsolute(op1))
     {
         res->type = eExprAbsolute;
         res->lc = op1->lc;

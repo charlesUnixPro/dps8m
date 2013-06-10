@@ -416,15 +416,18 @@ enum enumExprLoc
     eExprLocTemp,           // a stack temporary
     eExprLocLnk,            // a link section
     eExprLocExt,            // an external reference
+    eExprLocPR,             // a reference through a PR
+//    eExprTemporary   = eExprLocTemp,  // a stack temporary
+//    eExprSegRef      = eExprLocExt,   // referenced through a segref
+//    eExprLink        = eExprLocLnk,   // referenced via a link to an external
 };
 typedef enum enumExprLoc enumExprLoc;
 
 struct expr
 {
-    word36 value;   // value of expression
-    enumExpr type;  // type of expression
-    
-    enumExprLoc valType;  // absolute or relative ?
+    word36      value;      // value of expression
+    enumExpr    type;    // type of expression
+    enumExprLoc relType;    // absolute or relative ?
     
     char *lc;       // location counter (.text.,)
     
