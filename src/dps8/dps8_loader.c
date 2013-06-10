@@ -511,12 +511,13 @@ int loadDeferredSegment(segment *sg, int addr24)
     
     DSBR.BND = 037777;  // temporary max bound ...
     
-    if (!sim_quiet)
+    if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
     {
-        if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
-            printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
-        else
-            printf("      Error loading segment %d (%o)\n", segno, segno);
+        if (!sim_quiet) printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
+    }
+    else
+    {
+        if (!sim_quiet) printf("      Error loading segment %d (%o)\n", segno, segno);
     }
     // update in-code SDW to reflect segment info
     // Done in loadUnpagedSegment()
@@ -1086,12 +1087,13 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
         }
         word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
         //fprintf(stderr, "segwords:%d maxaddr:%d\n", segwords, maxaddr);
-        if (!sim_quiet)
+        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
         {
-            if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
-                printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
-            else
-                printf("Error loading segment %d (%o)\n", segno, segno);
+            if (!sim_quiet) printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
+        }
+        else
+        {
+            if (!sim_quiet) printf("Error loading segment %d (%o)\n", segno, segno);
         }
     }
     

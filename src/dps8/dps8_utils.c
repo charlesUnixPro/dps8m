@@ -971,6 +971,9 @@ word72 bitfieldInsert72(word72 a, word72 b, int c, int d)
  Description
  
  Returns the result of inserting bits B at offset C of length D in the bitfield A.
+ 
+ XXX: c & d should've been expressed in dps8 big-endian rather than little-endian numbering. Oh, well.
+ 
  */
 word36 bitfieldInsert36(word36 a, word36 b, int c, int d)
 {

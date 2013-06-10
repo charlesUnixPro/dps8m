@@ -9,6 +9,10 @@
 
 #include "dps8.h"
 
+word36 Ypair[2];        ///< 2-words
+word36 Yblock8[8];      ///< 8-words
+word36 Yblock16[16];    ///< 16-words
+
 int bitfieldExtract(int a, int b, int c);
 int bitfieldInsert(int a, int b, int c, int d);
 
@@ -24,8 +28,9 @@ void
 writeOperand(DCDstruct *i)
 {
     if (adrTrace)
+    {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperand(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
-
+    }
     // TPR.CA may be different from instruction spec because of various addr mod operations.
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
     
@@ -38,10 +43,10 @@ writeOperand(DCDstruct *i)
 }
 
 /**
- * writeOperand2() - write (a potentially modified) YPair to memory at TPR.CA/TPR.CA+1 using whatever modifications are necessary ...
+ * writeOperand2() - write (a potentially modified) YPair to memory at TPR.CA/TPR.CA+1 
  */
 void
-writeOperand2(DCDstruct *i, word36 *YPair)
+writeOperand2(DCDstruct *i)//, word36 *YPair)
 {
     if (adrTrace)
     {
@@ -57,8 +62,8 @@ writeOperand2(DCDstruct *i, word36 *YPair)
         rY = i->address;
     }
     
-    // XXX this may be way too simplistic .....
-    Write2(i, TPR.CA, YPair[0], YPair[1], DataWrite, i->tag);
+    // XXX this may be way too simplistic ..... 
+    Write2(i, TPR.CA, Ypair[0], Ypair[1], DataWrite, i->tag);
     
     
     // XXX may need to check for alignment restrictions/faults here ...
@@ -113,7 +118,7 @@ t_stat executeInstruction(DCDstruct *ci)
     bool   opcodeX = ci->opcodeX;   ///< opcode extension
     word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
     bool   a = ci->a;               ///< bit-29 - addressing via pointer register
-    bool   i = ci->i;               ///< interrupt inhinit bit.
+    bool   i = ci->i;               ///< interrupt inhibit bit.
     word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
     
     TPR.CA = ci->address;           // address from opcode
@@ -153,7 +158,13 @@ t_stat executeInstruction(DCDstruct *ci)
         
         if (iwb->flags & (READ_OPERAND | PREPARE_CA ))
             doComputedAddressFormation(ci, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
-        
+
+        // XXX this may be too simplistic ....
+
+        // ToDo: Read72 is also used to read in 72-bits, bit not into Ypair! Fix this
+        if (iwb->flags & READ_YPAIR)
+            Read2(ci, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
+
         finalAddress = (word24)CY;
     }
     
@@ -224,10 +235,6 @@ t_stat doInstruction(DCDstruct *i)
 //}
 
 word72 CYpair = 0;
-word36 Ypair[2];
-
-word36 Yblock8[8];    ///< 8-words
-word36 Yblock16[16];  ///< 16-words
 
 word18 tmp18 = 0;
 
@@ -309,12 +316,9 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0337:  ///< lcaq
-            /* check status  core_read2(rY, &rA, &rQ); */
-            // XXX incomplete
-            
             // The lcaq instruction changes the number to its negative while moving it from Y-pair to AQ. The operation is executed by forming the twos complement of the string of 72 bits. In twos complement arithmetic, the value 0 is its own negative. An overflow condition exists if C(Y-pair) = -2**71.
             
-            Read2(i, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
+            //Read2(i, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
             
             if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
                 SETF(rIR, I_OFLOW);
@@ -380,8 +384,9 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0237:  ///< ldaq
-            /* check status */ //core_read2(rY, &rA, &rQ);
-            Read2(i, TPR.CA, &rA, &rQ, DataRead, rTAG);
+            //Read2(i, TPR.CA, &rA, &rQ, DataRead, rTAG);
+            rA = Ypair[0];
+            rQ = Ypair[1];
             
             if (rA == 0 && rQ == 0)
                 SETF(rIR, I_ZERO);
@@ -497,7 +502,6 @@ t_stat DoBasicInstruction(DCDstruct *i)
         
         case 0753:  ///< sreg
             memset(Yblock8, 0, sizeof(Yblock8)); // clear block (changed to memset() per DJ request)
-            
             
             SETHI(Yblock8[0], rX[0]);
             SETLO(Yblock8[0], rX[1]);
@@ -2417,7 +2421,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             processorCycle = RTCD_OPERAND_FETCH;
 
-            Read2(i, TPR.CA, &Ypair[0], &Ypair[1], OperandRead, rTAG);
+            //Read2(i, TPR.CA, &Ypair[0], &Ypair[1], OperandRead, rTAG);
             
             /// C(Y-pair)3,17 → C(PPR.PSR)
             PPR.PSR = GETHI(Ypair[0]) & 077777LL;
@@ -3532,10 +3536,10 @@ t_stat DoBasicInstruction(DCDstruct *i)
     }
     
     if (i->iwb->flags & STORE_OPERAND)
-        writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
+        writeOperand(i);         // write C(Y) to TPR.CA for any instructions that needs it .....
     
     if (i->iwb->flags & STORE_YPAIR)
-        writeOperand2(i, Ypair); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
+        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
   
     return 0;
 }
@@ -3817,7 +3821,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= PR[6].RNR << 15;
             Ypair[1] = 0;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
+            //fWrite2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
 
@@ -4784,7 +4788,7 @@ t_stat DoEISInstruction(DCDstruct *i)
         writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
 
     if (i->iwb->flags & STORE_YPAIR)
-        writeOperand2(i, Ypair); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
+        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
 
     return 0;
 

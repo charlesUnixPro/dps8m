@@ -899,7 +899,9 @@ H:; ///< Final address nonpaged
     
 I:;
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I)\n");
+    }
     
     // final address paged
     appendingUnitCycleType = FAP;
@@ -910,8 +912,9 @@ I:;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I:FAP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
-    
+    }
     return finalAddress;
 }
 
@@ -933,7 +936,9 @@ doAppendDataWrite(DCDstruct *i, word36 writeData, bool bNotOperand)
             if (didITSITP)
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
             else if (bNotOperand)
+            {
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+            }
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): wrote operand detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
         }
         goto A;
@@ -1357,18 +1362,24 @@ H:; ///< Final address nonpaged
     appendingUnitCycleType = FANP;
     
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    }
     
     finalAddress = SDW->ADDR + TPR.CA;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    }
     goto J;
     
 I:;
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(I)\n");
+    }
     
     // final address paged
     appendingUnitCycleType = FAP;
@@ -1379,13 +1390,16 @@ I:;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
-    
+    }
     goto J;
     
 J:;
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) ISITS(%d) ISITP(%d)\n", ISITS(*readData), ISITP(*readData));
+    }
     
     //if ((Tdes == TM_IR || Tdes == TM_RI) && (ISITS(*readData) || ISITP(*readData)))
     //    doITSITP(*readData, Tdes);
@@ -1395,7 +1409,9 @@ J:;
     else
     {
         if (apndTrace)
+        {
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (Non-ITS/ITP): finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+        }
         return finalAddress;
     }
     
@@ -1405,10 +1421,10 @@ J:;
     word36 newwrd = (TPR.CA << 18) | rTAG;
     
     if (apndTrace)
+    {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (ITS/ITP): newwrd=%012llo\n", newwrd);
-    
-    if (apndTrace)
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Need to read from CA:%6o FA:%08o\n", TPR.CA, finalAddress);
+    }
     
     *readData = newwrd;
     return finalAddress;

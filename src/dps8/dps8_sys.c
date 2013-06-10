@@ -160,7 +160,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
 {
     if (DSBR.U == 0)
     {
-        fprintf(stderr, "Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
+        printf("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
         return SCPE_OK;    // need a better return value
     }
     
@@ -182,7 +182,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
         segno += 1; // onto next segment SDW
     }
     
-    fprintf(stderr, "zero-initialized segments 0 .. %d\n", segno - 1);
+    printf("zero-initialized segments 0 .. %d\n", segno - 1);
     return SCPE_OK;
 }
 
@@ -190,7 +190,7 @@ t_stat dpsCmd_InitSDWAM ()
 {
     memset(SDWAM, 0, sizeof(SDWAM));
     
-    fprintf(stderr, "zero-initialized SDWAM\n");
+    printf("zero-initialized SDWAM\n");
     return SCPE_OK;
 }
 
@@ -263,16 +263,16 @@ void printSDW0(FILE *f, _sdw0 *SDW)
 
 t_stat dpsCmd_DumpSegmentTable()
 {
-    fprintf(stderr, "*** Descriptor Segment Base Register (DSBR) ***\n");
-    printDSBR(stderr);
-    fprintf(stderr, "*** Descriptor Segment Table ***\n");
+    printf("*** Descriptor Segment Base Register (DSBR) ***\n");
+    printDSBR(stdout);
+    printf("*** Descriptor Segment Table ***\n");
     for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
     {
-        fprintf(stderr, "Seg %d - ", segno);
+        printf("Seg %d - ", segno);
         _sdw0 *s = fetchSDW(segno);
-        printSDW0(stderr, s);
+        printSDW0(stdout, s);
         
-        free(s);
+        //free(s); no longer needed
     }
     return SCPE_OK;
 }
