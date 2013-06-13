@@ -1562,8 +1562,11 @@ char *_btdOld(EISstruct *e)
     // e->p points to just after last char of converted data
 }
 
-void btd(EISstruct *e)
+void btd(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
+    
     //! \brief C(Y-char91) converted to decimal → C(Y-charn2)
     /*!
      * C(Y-char91) contains a twos complement binary integer aligned on 9-bit character boundaries with length 0 < N1 <= 8.
@@ -1611,8 +1614,10 @@ void btd(EISstruct *e)
     
 }
 
-void dtb(EISstruct *e)
+void dtb(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
@@ -1736,8 +1741,10 @@ void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int szDst, in
 /*!
  * Load the entire sending string number (maximum length 63 characters) into the decimal unit input buffer as 4-bit digits (high-order truncating 9-bit data). Strip the sign and exponent characters (if any), put them aside into special holding registers and decrease the input buffer count accordingly.
  */
-void EISloadInputBufferNumeric(EISstruct *e, int k)
+void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 {
+    EISstruct *e = ins->e;
+    
     word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
     memset(e->inBuffer, 0, sizeof(e->inBuffer));   // initialize to all 0's
     
@@ -1789,7 +1796,7 @@ void EISloadInputBufferNumeric(EISstruct *e, int k)
                     c &= 0xf;   // hack off all but lower 4 bits
                     
                     if (c < 012 || c > 017)
-                        doFault(0, 0, "loadInputBufferNumric(1): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0, 0, "loadInputBufferNumric(1): illegal char in input"); // XXX generate ill proc fault
                     
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -1820,7 +1827,7 @@ void EISloadInputBufferNumeric(EISstruct *e, int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(0,0,"loadInputBufferNumric(2): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0,0,"loadInputBufferNumric(2): illegal char in input"); // XXX generate ill proc fault
                     
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -1833,7 +1840,7 @@ void EISloadInputBufferNumeric(EISstruct *e, int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(0,0,"loadInputBufferNumric(3): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0,0,"loadInputBufferNumric(3): illegal char in input"); // XXX generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -1841,7 +1848,7 @@ void EISloadInputBufferNumeric(EISstruct *e, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(0,0,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0,0,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -1860,7 +1867,7 @@ void EISloadInputBufferNumeric(EISstruct *e, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(0,0,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0,0,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -2822,8 +2829,10 @@ void mopExecutor(EISstruct *e, int kMop)
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
 }
 
-void mvne(EISstruct *e)
-{ 
+void mvne(DCDstruct *ins)
+{
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
@@ -2874,7 +2883,7 @@ void mvne(EISstruct *e)
     }
     
     // 1. load sending string into inputBuffer
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     // 2. Test sign and, if required, set the SN flag. (Sign flag; initially set OFF if the sending string has an alphanumeric descriptor or an unsigned numeric descriptor. If the sending string has a signed numeric descriptor, the sign is initially read from the sending string from the digit position defined by the sign and the decimal type field (S); SN is set OFF if positive, ON if negative. If all digits are zero, the data is assumed positive and the SN flag is set OFF, even when the sign is negative.)
 
@@ -2894,8 +2903,10 @@ void mvne(EISstruct *e)
     EISwriteOutputBufferToMemory(&e->ADDR3);
 }
 
-void mve(EISstruct *e)
+void mve(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
@@ -2993,8 +3004,10 @@ bool isOvp(int c, int *on)
  *
  * (Nice, simple instruction if it weren't for the stupid overpunch stuff that ruined it!!!!)
  */
-void mlr(EISstruct *e)
+void mlr(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
@@ -3196,8 +3209,10 @@ void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
  *
  * (Like MLR, nice, simple instruction if it weren't for the stupid overpunch stuff that ruined it!!!!)
  */
-void mrl(EISstruct *e)
+void mrl(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., minimum (N1,N2)
     //   C(Y-charn1)N1-i → C(Y-charn2)N2-i
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
@@ -3388,8 +3403,10 @@ word8 xlate(word36 *xlatTbl, int dstTA, int c)
 /*  
  * MVT - Move Alphanumeric with Translation
  */
-void mvt(EISstruct *e)
+void mvt(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., minimum (N1,N2)
     //    m = C(Y-charn1)i-1
     //    C(Y-char93)m → C(Y-charn2)i-1
@@ -3672,8 +3689,10 @@ word18 getMF2Reg(int n, word18 data)
 /*
  * SCM - Scan with Mask
  */
-void scm(EISstruct *e)
+void scm(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
     //      C(Z)j = ~C(MASK)j & ((C(Y-charn1)i-1 )j ⊕ (C(Y-charn2)0)j)
@@ -3839,8 +3858,10 @@ void scm(EISstruct *e)
 /*
  * SCMR - Scan with Mask Reverse
  */
-void scmr(EISstruct *e)
+void scmr(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
     //      C(Z)j = ~C(MASK)j & ((C(Y-charn1)i-1 )j ⊕ (C(Y-charn2)0)j)
@@ -4017,8 +4038,10 @@ void scmr(EISstruct *e)
 /*
  * TCT - Test Character and Translate
  */
-void tct(EISstruct *e)
+void tct(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)i-1
     //   If C(Y-char92)m ≠ 00...0, then
@@ -4211,8 +4234,10 @@ void tct(EISstruct *e)
 /*
  * TCTR - Test Character and Translate Reverse
  */
-void tctr(EISstruct *e)
+void tctr(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)N1-i
     //   If C(Y-char92)m ≠ 00...0, then
@@ -4409,8 +4434,10 @@ void tctr(EISstruct *e)
 }
 
 
-void cmpc(EISstruct *e)
+void cmpc(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., minimum (N1,N2)
     //    C(Y-charn1)i-1 :: C(Y-charn2)i-1
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
@@ -4527,8 +4554,10 @@ void cmpc(EISstruct *e)
 /*
  * SCD - Scan Characters Double
  */
-void scd(EISstruct *e)
+void scd(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)i-1,i :: C(Y-charn2)0,1
     // On instruction completion, if a match was found:
@@ -4706,8 +4735,10 @@ void scd(EISstruct *e)
 /*
  * SCDR - Scan Characters Double Reverse
  */
-void scdr(EISstruct *e)
+void scdr(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)N1-i-1,N1-i :: C(Y-charn2)0,1
     // On instruction completion, if a match was found:
@@ -5034,8 +5065,10 @@ bool EISgetBitRW(EISaddr *p)
 /*
  * CMPB - Compare Bit Strings
  */
-void cmpb(EISstruct *e)
+void cmpb(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     
     // For i = 1, 2, ..., minimum (N1,N2)
     //   C(Y-bit1)i-1 :: C(Y-bit2)i-1
@@ -5117,8 +5150,10 @@ void cmpb(EISstruct *e)
     }
 }
 
-void csl(EISstruct *e)
+void csl(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
     //   C(BOLR)m → C(Y-bit2)i-1
@@ -5252,7 +5287,7 @@ void csl(EISstruct *e)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(0, 0, "csl truncation fault");
+            doFault(ins, 0, 0, "csl truncation fault");
         }
     }
 }
@@ -5283,8 +5318,10 @@ void getBitOffsets(int length, int initC, int initB, int *nWords, int *newC, int
     *newB = endBit % 9; // last bit number
 }
 
-void csr(EISstruct *e)
+void csr(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)N1-i || C(Y-bit2)N2-i (a 2-bit number)
     //   C(BOLR)m → C( Y-bit2)N2-i
@@ -5427,14 +5464,16 @@ void csr(EISstruct *e)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(0, 0, "csr truncation fault");
+            doFault(ins, 0, 0, "csr truncation fault");
         }
     }
 }
 
 
-void sztl(EISstruct *e)
+void sztl(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //    m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
     //    If C(BOLR)m ≠ 0, then terminate
@@ -5556,14 +5595,16 @@ void sztl(EISstruct *e)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(0, 0, "sztl truncation fault");
+            doFault(ins, 0, 0, "sztl truncation fault");
         }
     }
 }
 
 
-void sztr(EISstruct *e)
+void sztr(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     //
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)N1-i || C(Y-bit2)N2-i (a 2-bit number)
@@ -5695,7 +5736,7 @@ void sztr(EISstruct *e)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(0, 0, "sztr truncation fault");
+            doFault(ins, 0, 0, "sztr truncation fault");
         }
     }
 }

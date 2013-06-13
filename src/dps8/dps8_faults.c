@@ -173,7 +173,7 @@ void doFault(DCDstruct *i, int faultNumber, int faultGroup, char *faultMsg)
     }
     
     if (!f->fault_mnemonic)
-        printf("doFault(): unhandled fault# %d\n", faultNumber);
+        printf("doFault(): unhandled fault# %d (%o)\n", faultNumber, faultNumber);
 
     // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
     // XXX do it properly - later..

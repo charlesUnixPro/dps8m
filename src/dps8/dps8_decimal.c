@@ -30,7 +30,7 @@
 void parseNumericOperandDescriptor(int k, EISstruct *e);
 
 void EISwrite49(EISaddr *p, int *pos, int tn, int c49);
-void EISloadInputBufferNumeric(EISstruct *e, int k);
+void EISloadInputBufferNumeric(DCDstruct *i, int k);
 
 
 //void printBCD(decNumber *a, decContext *set, int width);
@@ -666,8 +666,9 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
 /*
  * ad2d - Add Using Two Decimal Operands
  */
-void ad2d(EISstruct *e)
+void ad2d(DCDstruct *i)
 {
+    EISstruct *e = i->e;
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
@@ -718,7 +719,7 @@ void ad2d(EISstruct *e)
     
     int n1, n2, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(i, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -759,7 +760,7 @@ void ad2d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(i, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -918,8 +919,10 @@ void ad2d(EISstruct *e)
 /*
  * ad3d - Add Using Three Decimal Operands
  */
-void ad3d(EISstruct *e)
+void ad3d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
@@ -975,7 +978,7 @@ void ad3d(EISstruct *e)
     
     int n1, n2, n3, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -1016,7 +1019,7 @@ void ad3d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -1194,8 +1197,10 @@ void ad3d(EISstruct *e)
 /*
  * sb2d - Subtract Using Two Decimal Operands
  */
-void sb2d(EISstruct *e)
+void sb2d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
@@ -1244,7 +1249,7 @@ void sb2d(EISstruct *e)
     
     int n1, n2, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -1285,7 +1290,7 @@ void sb2d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -1441,8 +1446,10 @@ void sb2d(EISstruct *e)
 /*
  * sb3d - Subtract Using Three Decimal Operands
  */
-void sb3d(EISstruct *e)
+void sb3d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
@@ -1498,7 +1505,7 @@ void sb3d(EISstruct *e)
     
     int n1, n2, n3, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -1539,7 +1546,7 @@ void sb3d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -1717,8 +1724,10 @@ void sb3d(EISstruct *e)
 /*
  * mp2d - Multiply Using Two Decimal Operands
  */
-void mp2d(EISstruct *e)
+void mp2d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
@@ -1767,7 +1776,7 @@ void mp2d(EISstruct *e)
     
     int n1, n2, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -1808,7 +1817,7 @@ void mp2d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -1962,8 +1971,10 @@ void mp2d(EISstruct *e)
 /*
  * mp3d - Multiply Using Three Decimal Operands
  */
-void mp3d(EISstruct *e)
+void mp3d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
@@ -2019,7 +2030,7 @@ void mp3d(EISstruct *e)
     
     int n1, n2, n3, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -2060,7 +2071,7 @@ void mp3d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -2228,8 +2239,10 @@ void mp3d(EISstruct *e)
  * dv2d - Divide Using Two Decimal Operands
  */
 // XXX need to put in divide checks, etc ...
-void dv2d(EISstruct *e)
+void dv2d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
@@ -2278,7 +2291,7 @@ void dv2d(EISstruct *e)
     
     int n1, n2, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -2319,7 +2332,7 @@ void dv2d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -2463,8 +2476,10 @@ void dv2d(EISstruct *e)
  */
 // XXX need to put in divide checks, etc ...
 
-void dv3d(EISstruct *e)
+void dv3d(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     setupOperandDescriptor(3, e);
@@ -2520,7 +2535,7 @@ void dv3d(EISstruct *e)
     
     int n1, n2, n3, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -2561,7 +2576,7 @@ void dv3d(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:
@@ -2730,8 +2745,10 @@ void dv3d(EISstruct *e)
 /*
  * cmpn - Compare Numeric
  */
-void cmpn(EISstruct *e)
+void cmpn(DCDstruct *ins)
 {
+    EISstruct *e = ins->e;
+
     // C(Y-charn1) :: C(Y-charn2) as numeric values
     
     // Zero If C(Y-charn1) = C(Y-charn2), then ON; otherwise OFF
@@ -2776,7 +2793,7 @@ void cmpn(EISstruct *e)
     
     int n1, n2, sc1, sc2;
     
-    EISloadInputBufferNumeric(e, 1);   // according to MF1
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
     /*
      * Here we need to distinguish between 4 type of numbers.
@@ -2817,7 +2834,7 @@ void cmpn(EISstruct *e)
         op1->exponent = e->exponent;
     
     
-    EISloadInputBufferNumeric(e, 2);   // according to MF2
+    EISloadInputBufferNumeric(ins, 2);   // according to MF2
     switch(e->S2)
     {
         case CSFL:

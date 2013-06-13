@@ -1323,7 +1323,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// If | dividend | >= | divisor | or if the divisor = 0, division does not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude in absolute, and the negative indicator reflects the dividend sign.
             
             // XXX Untested, needs further testing.
-            dvf();
+            dvf(i);
             
             break;
             
@@ -2125,7 +2125,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0472:  ///< dfstr
             
-            dfstr(Ypair);
+            dfstr(i, Ypair);
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             break;
@@ -2160,7 +2160,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
 //            /// Exp Undr: If exponent is less than -128, then ON
 //            /// XXX: not certain how these can occur here ....
             
-            fstr(&CY);
+            fstr(i, &CY);
             
             break;
             
@@ -2168,29 +2168,29 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// The dfad instruction may be thought of as a dufa instruction followed by a fno instruction.
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufa();
-            fno();
+            dufa(i);
+            fno(i);
             break;
             
         case 0437:  ///< dufa
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufa();
+            dufa(i);
             break;
             
         case 0475:  ///< fad
             /// The fad instruction may be thought of a an ufa instruction followed by a fno instruction.
             /// (Heh, heh. We'll see....)
             
-            ufa();
-            fno();
+            ufa(i);
+            fno(i);
             
             break;
   
         case 0435:  ///< ufa
             /// C(EAQ) + C(Y) → C(EAQ)
             
-            ufa();
+            ufa(i);
             break;
             
         case 0577:  ///< dfsb
@@ -2199,27 +2199,27 @@ t_stat DoBasicInstruction(DCDstruct *i)
             //return STOP_UNIMP;
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufs();
-            fno();
+            dufs(i);
+            fno(i);
             break;
 
         case 0537:  ///< dufs
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufs();
+            dufs(i);
             break;
             
         case 0575:  ///< fsb
             ///< The fsb instruction may be thought of as an ufs instruction followed by a fno instruction.
-            ufs();
-            fno();
+            ufs(i);
+            fno(i);
             
             break;
             
         case 0535:  ///< ufs
             ///< C(EAQ) - C(Y) → C(EAQ)
             
-            ufs();
+            ufs(i);
             break;
             
         case 0463:  ///< dfmp
@@ -2227,58 +2227,58 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// fno instruction.
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufm();
-            fno();
+            dufm(i);
+            fno(i);
             
             break;
             
         case 0423:  ///< dufm
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufm();
+            dufm(i);
             break;
             
         case 0461:  ///< fmp
             /// The fmp instruction may be thought of as a ufm instruction followed by a
             /// fno instruction.
  
-            ufm();
-            fno();
+            ufm(i);
+            fno(i);
             
             break;
             
         case 0421:  ///< ufm
             /// C(EAQ) × C(Y) → C(EAQ)
-            ufm();
+            ufm(i);
             break;
             
         case 0527:  ///< dfdi
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dfdi();
+            dfdi(i);
             break;
             
         case 0567:  ///< dfdv
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dfdv();
+            dfdv(i);
             break;
             
         case 0525:  ///< fdi
             /// C(Y) / C(EAQ) → C(EA)
             
-            fdi();
+            fdi(i);
             break;
             
         case 0565:  ///< fdv
             /// C(EAQ) /C(Y) → C(EA)
             /// 00...0 → C(Q)
-            fdv();
+            fdv(i);
             break;
             
         case 0513:  ///< fneg
             /// -C(EAQ) normalized → C(EAQ)
-            fneg();
+            fneg(i);
             break;
             
         case 0573:  ///< fno
@@ -2287,21 +2287,21 @@ t_stat DoBasicInstruction(DCDstruct *i)
             ///Charles Is the coolest
             ///true story y'all
             //you should get me darksisers 2 for christmas
-            fno();
+            fno(i);
             break;
             
         case 0473:  ///< dfrd
             /// C(EAQ) rounded to 64 bits → C(EAQ)
             /// 0 → C(AQ)64,71 (See notes in dps8_math.c on dfrd())
 
-            dfrd();
+            dfrd(i);
             break;
             
         case 0471:  ///< frd
             /// C(EAQ) rounded to 28 bits → C(EAQ)
             /// 0 → C(AQ)28,71 (See notes in dps8_math.c on frd())
             
-            frd();
+            frd(i);
             break;
             
         case 0427:  ///< dfcmg
@@ -2310,7 +2310,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dfcmg();
+            dfcmg(i);
             break;
             
         case 0517:  ///< dfcmp
@@ -2319,21 +2319,21 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dfcmp();
+            dfcmp(i);
             break;
 
         case 0425:  ///< fcmg
             /// C(E) :: C(Y)0,7
             /// | C(AQ)0,27 | :: | C(Y)8,35 |
             
-            fcmg();
+            fcmg(i);
             break;
             
         case 0515:  ///< fcmp
             /// C(E) :: C(Y)0,7
             /// C(AQ)0,27 :: C(Y)8,35
             
-            fcmp();
+            fcmp(i);
             break;
             
         case 0415:  ///< ade
@@ -3192,18 +3192,43 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0717:  ///< xed
-            
+            {
             /// The xed instruction itself does not affect any indicator. However, the execution of the instruction pair from C(Y-pair) may affect indicators.
             /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
-            /// If the execution of the instruction pair from C(Y-pair) alters C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1. If the even instruction from C(Y- pair) alters C(PPR.IC), then the transfer of control is effective immediately and the odd instruction is not executed.
+            /// If the execution of the instruction pair from C(Y-pair) alters C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1. If the even instruction from C(Y-pair) alters C(PPR.IC), then the transfer of control is effective immediately and the odd instruction is not executed.
     
             /// To execute an instruction pair having an rpd instruction as the odd instruction, the xed instruction must be located at an odd address. The instruction pair repeated is that instruction pair at C PPR.IC)+1, that is, the instruction pair immediately following the xed instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so the the next instruction fetched for execution is from the first word following the repeated instruction pair.
             /// The instruction pair at C(Y-pair) may cause any of the processor defined fault conditions, but only the directed faults (0,1,2,3) and the access violation fault may be restarted successfully by the hardware. Note that the software induced fault tag (1,2,3) faults cannot be properly restarted.
             ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
             ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
             
-            //return DoInstructionPair(TPR.CA);
+            // XXX This is probably way wrong and too simplistic, but it's a start ...
+                
+            DCDstruct _xec;   // our decoded instruction struct
+            EISstruct _eis;
             
+            _xec.IWB = Ypair[0];
+            _xec.e = &_eis;
+            
+            DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
+            
+            t_stat ret = executeInstruction(xec);
+            
+            if (ret)
+                return (ret);
+
+            _xec.IWB = Ypair[1];
+            _xec.e = &_eis;
+                
+            xec = decodeInstruction(Ypair[1], &_xec);               // fetch instruction into current instruction
+                
+            ret = executeInstruction(xec);
+                
+            if (ret)
+                return (ret);
+    
+            }
+            break;
             
         case 001:   ///< mme
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+4. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
@@ -3256,14 +3281,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
                         break;
                     default:
                         // XXX generate fault. Only R & RI allowed
-                        doFault(FAULT_IPR, 0, "ill addr mod from RPT");
+                        doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
                 }
                 
                 int Xn = nxt->tag - 8;          // Get Xn of next instruction
     
                 if (nxt->iwb->flags & NO_RPT)   // repeat allowed for this instruction?
                 {
-                    doFault(FAULT_IPR, 0, "no rpt allowed for instruction");
+                    doFault(i, FAULT_IPR, 0, "no rpt allowed for instruction");
                 }
                 
                 //If C = 1, then C(rpt instruction word)0,17 → C(X0); otherwise, C(X0) unchanged prior to execution.
@@ -3299,7 +3324,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
                             }
                             default:
                                 // XXX generate fault. Only R & RI allowed
-                                doFault(FAULT_IPR, 0, "ill addr mod from RPT");
+                                doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
                         }
                     }
                     
@@ -4341,7 +4366,7 @@ t_stat DoEISInstruction(DCDstruct *i)
                 else
                     AR[ARn].WORDNO += (address + getCrAR(reg));
                 
-                int a = AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
+                AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 AR[ARn].CHAR = 0;
                 AR[ARn].BITNO = 0;
             }
@@ -4512,117 +4537,117 @@ t_stat DoEISInstruction(DCDstruct *i)
             
         /// Multiword EIS ...
         case 0301:  ///< btd
-            btd (i->e);
+            btd (i);
             break;
             
         case 0305:  ///< dtb
-            dtb (i->e);
+            dtb (i);
             break;
             
         case 024:   ///< mvne
-            mvne(i->e);
+            mvne(i);
             break;
          
         case 020:   ///< mve
-            mve(i->e);
+            mve(i);
             break;
 
         case 0100:  ///< mlr
-            mlr(i->e);
+            mlr(i);
             break;
 
         case 0101:  ///< mrl
-            mrl(i->e);
+            mrl(i);
             break;
         
         case 0160:  ///< mvt
-            mvt(i->e);
+            mvt(i);
             break;
             
         case 0124:  ///< scm
-            scm(i->e);
+            scm(i);
             break;
 
         case 0125:  ///< scmr
-            scmr(i->e);
+            scmr(i);
             break;
 
         case 0164:  ///< tct
-            tct(i->e);
+            tct(i);
             break;
 
         case 0165:  ///< tctr
-            tctr(i->e);
+            tctr(i);
             break;
             
         case 0106:  ///< cmpc
-            cmpc(i->e);
+            cmpc(i);
             break;
             
         case 0120:  ///< scd
-            scd(i->e);
+            scd(i);
             break;
       
         case 0121:  ///< scdr
-            scdr(i->e);
+            scdr(i);
             break;
           
         // bit-string operations
         case 066:   ///< cmpb
-            cmpb(i->e);
+            cmpb(i);
             break;
 
         case 060:   ///< csl
-            csl(i->e);
+            csl(i);
             break;
 
         case 061:   ///< csr
-            csr(i->e);
+            csr(i);
             break;
 
         case 064:   ///< sztl
-            sztl(i->e);
+            sztl(i);
             break;
 
         case 065:   ///< sztr
-            sztr(i->e);
+            sztr(i);
             break;
 
         // decimal arithmetic instrutions
         case 0202:  ///< ad2d
-            ad2d(i->e);
+            ad2d(i);
             break;
 
         case 0222:  ///< ad3d
-            ad3d(i->e);
+            ad3d(i);
             break;
             
         case 0203:  ///< sb2d
-            sb2d(i->e);
+            sb2d(i);
             break;
             
         case 0223:  ///< sb3d
-            sb3d(i->e);
+            sb3d(i);
             break;
 
         case 0206:  ///< mp2d
-            mp2d(i->e);
+            mp2d(i);
             break;
 
         case 0226:  ///< mp3d
-            mp3d(i->e);
+            mp3d(i);
             break;
 
         case 0207:  ///< dv2d
-            dv2d(i->e);
+            dv2d(i);
             break;
 
         case 0227:  ///< dv3d
-            dv3d(i->e);
+            dv3d(i);
             break;
 
         case 0303:  ///< cmpn
-            cmpn(i->e);
+            cmpn(i);
             break;
 
 #ifdef EMULATOR_ONLY

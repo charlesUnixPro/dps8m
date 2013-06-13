@@ -353,6 +353,8 @@ extern struct _bar {
     word9 BOUND;    ///< Contains the 9 high-order bits of the unrelocated address limit. The low- order bits are generated as zeros. An attempt to access main memory beyond this limit causes a store fault, out of bounds. A value of 0 is truly 0, indicating a null memory range.
 } BAR;
 
+extern word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
+
 //extern word18	rIC;	/*!< instruction counter */
 #define rIC (PPR.IC)
 extern int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o rIC fetch */
@@ -748,6 +750,40 @@ void freeDCDstruct(DCDstruct *p);
 #define IGN_B29         (1 << 13)  ///< Bit-29 has an instruction specific meaning. Ignore.
 #define NO_TAG          (1 << 14)  ///< tag is interpreted differently and for addressing purposes is effectively 0
 
+// opcode metadata (disallowed) modifications
+// XXX change to an enum as time permits
+#define NO_DU           (1 << 0)    ///< No DU modification allowed (Can these 2 be combined into 1?)
+#define NO_DL           (1 << 1)    ///< No DL modification allowed
+#define NO_DUDL         (NO_DU | NO_DL)    
+
+#define NO_CI           (1 << 2)    ///< No character indirect modification (can these next 3 be combined?_
+#define NO_SC           (1 << 3)    ///< No sequence character modification
+#define NO_SCR          (1 << 4)    ///< No sequence character reverse modification
+#define NO_CSS          (NO_CI | NO_SC | NO_SCR)
+
+#define NO_DDCSS        (NO_DUDL | NO_CISCSCR)
+
+// None except au, qu, al, ql, xn
+
+// None except au, qu, al, ql, xn for MF1 and REG
+// None except du, au, qu, al, ql, xn for MF2
+// None except au, qu, al, ql, xn for MF1, MF2, and MF3
+
+// XXX add these
+
+//#define NO_RPT          (1 << 12)
+#define NO_RPD          (1 << 6)
+#define NO_RPL          (1 << 7)
+#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
+
+// There are three modes of main memory addressing (absolute mode, append mode, and BAR mode),
+// and two modes of instruction execution (normal mode and privileged mode).
+
+#define NO_BAR          (1 << 8)    ///< BAR mode not allowed
+#define NO_NORMAL       (1 << 9)    ///< No NORMAL mode
+#define NO_BARNORM      (NO_BAR | NO_NORMAL)
+
+#define NO_XED          (1 << 10)   ///< No execution via XED instruction
 
 extern	word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 extern	word8	tCF;	/*!< character position field [3b] */
@@ -807,24 +843,24 @@ enum { OP_1	= 00001,
 };
 
 /* this is dependent on the previous enum's ordering */
-#define OPSAQ(i) (((i & 0003000) >> 9) + 4)
-
-#define F_COMP	0000001
-#define F_OFLOW	0000002
-#define F_STORE	0000004
-#define F_CARRY	0000010
-#define F_NOT	0000020
-#define F_AND	0000040
-#define F_EA	0000100
-#define F_CLEAR 0000200
-#define F_LOWER 0000400
-#define F_COND  0001000
-#define F_CONDQ 0002000
-#define F_CHARS 0004000
-#define F_BYTES 0010000
-#define F_ONE	0020000
-#define F_TWO	0040000
-#define F_LOW	0100000
+//#define OPSAQ(i) (((i & 0003000) >> 9) + 4)
+//
+//#define F_COMP	0000001
+//#define F_OFLOW	0000002
+//#define F_STORE	0000004
+//#define F_CARRY	0000010
+//#define F_NOT	0000020
+//#define F_AND	0000040
+//#define F_EA	0000100
+//#define F_CLEAR 0000200
+//#define F_LOWER 0000400
+//#define F_COND  0001000
+//#define F_CONDQ 0002000
+//#define F_CHARS 0004000
+//#define F_BYTES 0010000
+//#define F_ONE	0020000
+//#define F_TWO	0040000
+//#define F_LOW	0100000
 
 // RAW, core stuff ...
 int core_read(word24 addr, word36 *data);
@@ -1192,35 +1228,35 @@ int mopCHT  (EISstruct *);
 
 void setupOperandDescriptor(int k, EISstruct *e);
 
-void btd(EISstruct *e);
-void dtb(EISstruct *e);
-void mvne(EISstruct *e);
-void mve(EISstruct *e);
-void mlr(EISstruct *e);
-void mrl(EISstruct *e);
-void mvt(EISstruct *e);
-void scm(EISstruct *e);
-void scmr(EISstruct *e);
-void tct(EISstruct *e);
-void tctr(EISstruct *e);
-void cmpc(EISstruct *e);
-void scd(EISstruct *e);
-void scdr(EISstruct *e);
-void cmpb(EISstruct *e);
-void csl(EISstruct *e);
-void csr(EISstruct *e);
-void sztl(EISstruct *e);
-void sztr(EISstruct *e);
+void btd(DCDstruct *i);
+void dtb(DCDstruct *i);
+void mvne(DCDstruct *i);
+void mve(DCDstruct *i);
+void mlr(DCDstruct *i);
+void mrl(DCDstruct *i);
+void mvt(DCDstruct *i);
+void scm(DCDstruct *i);
+void scmr(DCDstruct *i);
+void tct(DCDstruct *i);
+void tctr(DCDstruct *i);
+void cmpc(DCDstruct *i);
+void scd(DCDstruct *i);
+void scdr(DCDstruct *i);
+void cmpb(DCDstruct *i);
+void csl(DCDstruct *i);
+void csr(DCDstruct *i);
+void sztl(DCDstruct *i);
+void sztr(DCDstruct *i);
 
-void ad2d(EISstruct *e);
-void ad3d(EISstruct *e);
-void sb2d(EISstruct *e);
-void sb3d(EISstruct *e);
-void mp2d(EISstruct *e);
-void mp3d(EISstruct *e);
-void dv2d(EISstruct *e);
-void dv3d(EISstruct *e);
-void cmpn(EISstruct *e);
+void ad2d(DCDstruct *i);
+void ad3d(DCDstruct *i);
+void sb2d(DCDstruct *i);
+void sb3d(DCDstruct *i);
+void mp2d(DCDstruct *i);
+void mp3d(DCDstruct *i);
+void dv2d(DCDstruct *i);
+void dv3d(DCDstruct *i);
+void cmpn(DCDstruct *i);
 
 
 // fault stuff ...
@@ -1259,7 +1295,7 @@ void cmpn(EISstruct *e);
 
 #define FAULTBASE_MASK  07740       ///< mask off all but top 7 msb
 
-void doFault(int faultNumber, int faultGroup, char *faultMsg); ///< fault handler
+void doFault(DCDstruct *, int faultNumber, int faultGroup, char *faultMsg); ///< fault handler
 
 // group6 faults generated by APU
 
@@ -1348,6 +1384,12 @@ extern enum _processor_addressing_mode {
     BAR_MODE
 } processorAddressingMode;
 
+extern enum _processor_operating_mode {
+    UNKNOWN_OPERATING_MODE = 0,
+    NORMAL_MODE,
+    PRIVILEGED_MODE,
+} processorOperatingMode;
+typedef enum _processor_addressing_mode _processor_addressing_mode;
 
 //! Appending unit stuff .......
 
@@ -1413,32 +1455,32 @@ long double EAQToIEEElongdouble();
 float72 IEEElongdoubleToFloat72(long double f);
 void IEEElongdoubleToEAQ(long double f0);
 
-void ufa();
-void ufs();
-void fno();
+void ufa(DCDstruct *);
+void ufs(DCDstruct *);
+void fno(DCDstruct *);
 void fnoEAQ(word8 *E, word36 *A, word36 *Q);
 
-void fneg();
-void ufm();
-void fdv();
-void fdi();
-void frd();
-void fcmp();
-void fcmg();
+void fneg(DCDstruct *);
+void ufm(DCDstruct *);
+void fdv(DCDstruct *);
+void fdi(DCDstruct *);
+void frd(DCDstruct *);
+void fcmp(DCDstruct *);
+void fcmg(DCDstruct *);
 
-void dufa();
-void dufs();
-void dufm();
-void dfdv();
-void dfdi();
-void dfrd();
-void dfcmp();
-void dfcmg();
+void dufa(DCDstruct *);
+void dufs(DCDstruct *);
+void dufm(DCDstruct *);
+void dfdv(DCDstruct *);
+void dfdi(DCDstruct *);
+void dfrd(DCDstruct *);
+void dfcmp(DCDstruct *);
+void dfcmg(DCDstruct *);
 
-void dvf();
+void dvf(DCDstruct *);
 
-void dfstr(word36 *Ypair);
-void fstr(word36 *CY);
+void dfstr(DCDstruct *, word36 *Ypair);
+void fstr(DCDstruct *, word36 *CY);
 
 
 word36 AddSub36 (char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
@@ -1469,6 +1511,12 @@ extern bool adrTrace;   ///< when true perform address modification tracing
 extern bool apndTrace;  ///< when true do appending unit tracing
 
 extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
+
+extern jmp_buf jmpMain;        ///< This is where we should return to from a fault to retry an instruction
+
+/*
+ * Stuff to do with the local loader/binder/linker
+ */
 
 extern char *strSDW0(_sdw0 *SDW);
 extern char *strSDW(_sdw *SDW);
@@ -1550,18 +1598,6 @@ segment *findSegmentNoCase(char *segname);  // same as above, but case insensiti
 segdef *findSegdef(char *seg, char *sgdef);
 segdef *findSegdefNoCase(char *seg, char *sgdef);
 
-
-
-
-extern t_stat dumpSDWAM();
-
-/* XXX these OUGHT to return fault codes! (and interrupt numbers???) */
-void iom_cioc(word8 conchan);
-void iom_cioc_cow(word18 cowaddr);
-int iom_setup(const char *confname);
-
-extern int console_chan;
-
 // Assembler/simulator stuff ...
 
 // relocation codes
@@ -1582,6 +1618,19 @@ enum relocationCodes
     relExpAbs       = 036,
     relEscape       = 037   // (*)
 };
+
+
+// End loader stuff ...
+
+
+extern t_stat dumpSDWAM();
+
+/* XXX these OUGHT to return fault codes! (and interrupt numbers???) */
+void iom_cioc(word8 conchan);
+void iom_cioc_cow(word18 cowaddr);
+int iom_setup(const char *confname);
+
+extern int console_chan;
 
 
 #endif

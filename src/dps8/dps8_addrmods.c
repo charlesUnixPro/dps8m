@@ -68,7 +68,9 @@ word18 getCr(word4 Tdes)
             directOperandFlag = true;
             
             if (adrTrace)
+            {
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "getCr(TD_DU): rY=%06o directOperand=%012llo\n", rY, directOperand);
+            }
             
             return 0;
         case TD_IC: ///< rY + C(PPR.IC)
@@ -768,7 +770,9 @@ IT_MOD:;
                 Write(i, TPR.CA, CY, DataWrite, TM_IT);
                 
                 if (adrTrace)
+                {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
+                }
             }
             return;
             
@@ -824,7 +828,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
             
             indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | delta);
-            Write(i, tmp18, indword, DataWrite, idwtag);
+            Write(i, tmp18, indword, DataWrite, DataWrite);
             
             if (adrTrace)
             {

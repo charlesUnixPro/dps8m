@@ -12,8 +12,9 @@
 a8 saved_PC = 0;
 int32 flags = 0;
 
-enum _processor_cycle_type processorCycle;  ///< to keep tract of what type of cycle the processor is in
+enum _processor_cycle_type processorCycle;                  ///< to keep tract of what type of cycle the processor is in
 enum _processor_addressing_mode processorAddressingMode;    ///< what addressing mode are we using
+enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
 
 // h6180 stuff
 /* [map] designates mapping into 36-bit word from DPS-8 proc manual */
@@ -276,14 +277,15 @@ t_stat sim_instr (void)
     int val = setjmp(jmpMain);    // here's our main fault/interrupt return. Back to executing instructions....
     if (val)
     {
-        // if we're here, we're returning from a fault etc.....
-        
+        // if we're here, we're returning from a fault etc and we want to retry an instruction
+        goto retry;
     } else {
         reason = 0;
         cpuCycles = 0;  // XXX This probably needs to be moved so our fault handler won't reset cpuCycles back to 0
     }
     
     do {
+retry:;
         /* loop until halted */
         if (sim_interval <= 0) {                                /* check clock queue */
             if ((reason = sim_process_event ()))
@@ -398,8 +400,10 @@ APPEND_MODE:;
                 if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
                 {
                     if (apndTrace)
+                    {
                         sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
-
+                    }
+                    
                     processorAddressingMode = APPEND_MODE;
                     goto APPEND_MODE;   // ???
                 }
@@ -730,18 +734,5 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     //    p->e->ins = p;    // Yes, it's a cycle
     
     return p;
-}
-
-/*
- * fault handler(s). move to seperate file - later after things are working properly
- */
-
-void doFault(int faultNumber, int faultGroup, char *faultMsg)
-{
-    printf("fault: %d %d '%s'\r\n", faultNumber, faultGroup, faultMsg ? faultMsg : "?");
-    
-    // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
-    // XXX do it properly - later..
-    //longjmp(jmpMain, faultNumber);
 }
 
