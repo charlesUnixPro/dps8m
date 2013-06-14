@@ -731,7 +731,7 @@ DCDstruct *newDCDstruct();
 void freeDCDstruct(DCDstruct *p);
 
 
-// opcocde metadata (flag) ...
+// opcode metadata (flag) ...
 // XXX change this to an enum
 #define READ_OPERAND    (1 << 0)   ///< fetches/reads operand (CA) from memory
 #define STORE_OPERAND   (1 << 1)   ///< stores/writes operand to memory (its a STR-OP)
@@ -749,6 +749,7 @@ void freeDCDstruct(DCDstruct *p);
 #define NO_RPT          (1 << 12)  ///< Repeat instructions not allowed
 #define IGN_B29         (1 << 13)  ///< Bit-29 has an instruction specific meaning. Ignore.
 #define NO_TAG          (1 << 14)  ///< tag is interpreted differently and for addressing purposes is effectively 0
+#define PRIV_INS        (1 << 15)  ///< priveleged instruction
 
 // opcode metadata (disallowed) modifications
 // XXX change to an enum as time permits
@@ -1260,38 +1261,38 @@ void cmpn(DCDstruct *i);
 
 
 // fault stuff ...
-#define FAULT_SDF   000 ///< shutdown fault
-#define FAULT_STR   002 ///< store fault
-#define FAULT_MME   004 ///< master mode entry
-#define FAULT_F1    006 ///< fault tag 1
-#define FAULT_TRO   010 ///< timer runout fault
-#define FAULT_CMD   012 ///< command
-#define FAULT_DRL   014 ///< derail
-#define FAULT_LUF   016 ///< lockup
-#define FAULT_COM   020 ///< connect
-#define FAULT_PAR   022 ///< parity
-#define FAULT_IPR   024 ///< illegal proceedure
-#define FAULT_ONC   026 ///< operation not complete
-#define FAULT_SUF   030 ///< startup
-#define FAULT_OFL   032 ///< overflow
-#define FAULT_DIV   034 ///< divide check
-#define FAULT_EXF   036 ///< execute
-#define FAULT_DF0   040 ///< directed fault 1
-#define FAULT_DF1   042 ///< directed fault 1
-#define FAULT_DF2   044 ///< directed fault 1
-#define FAULT_DF3   046 ///< directed fault 1
-#define FAULT_ACV   050 ///< access violation
-#define FAULT_MME2  052 ///< Master mode entry 2
-#define FAULT_MME3  054 ///< Master mode entry 3
-#define FAULT_MME4  056 ///< Master mode entry 4
-#define FAULT_F2    060 ///< fault tag 2
-#define FAULT_F3    062 ///< fault tag 3
-#define FAULT_UN1   064 ///< unassigned
-#define FAULT_UN2   066 ///< unassigned
-#define FAULT_UN3   070 ///< unassigned
-#define FAULT_UN4   072 ///< unassigned
-#define FAULT_UN5   074 ///< unassigned
-#define FAULT_TRB   076 ///< Trouble
+#define FAULT_SDF   0 ///< shutdown fault
+#define FAULT_STR   1 ///< store fault
+#define FAULT_MME   2 ///< master mode entry
+#define FAULT_F1    3 ///< fault tag 1
+#define FAULT_TRO   4 ///< timer runout fault
+#define FAULT_CMD   5 ///< command
+#define FAULT_DRL   6 ///< derail
+#define FAULT_LUF   7 ///< lockup
+#define FAULT_COM   8 ///< connect
+#define FAULT_PAR   9 ///< parity
+#define FAULT_IPR   10 ///< illegal proceedure
+#define FAULT_ONC   11 ///< operation not complete
+#define FAULT_SUF   12 ///< startup
+#define FAULT_OFL   13 ///< overflow
+#define FAULT_DIV   14 ///< divide check
+#define FAULT_EXF   15 ///< execute
+#define FAULT_DF0   16 ///< directed fault 1
+#define FAULT_DF1   17 ///< directed fault 1
+#define FAULT_DF2   18 ///< directed fault 1
+#define FAULT_DF3   19 ///< directed fault 1
+#define FAULT_ACV   20 ///< access violation
+#define FAULT_MME2  21 ///< Master mode entry 2
+#define FAULT_MME3  22 ///< Master mode entry 3
+#define FAULT_MME4  23 ///< Master mode entry 4
+#define FAULT_F2    24 ///< fault tag 2
+#define FAULT_F3    25 ///< fault tag 3
+#define FAULT_UN1   26 ///< unassigned
+#define FAULT_UN2   27 ///< unassigned
+#define FAULT_UN3   28 ///< unassigned
+#define FAULT_UN4   29 ///< unassigned
+#define FAULT_UN5   30 ///< unassigned
+#define FAULT_TRB   31 ///< Trouble
 
 #define FAULTBASE_MASK  07740       ///< mask off all but top 7 msb
 
@@ -1512,7 +1513,10 @@ extern bool apndTrace;  ///< when true do appending unit tracing
 
 extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
 
-extern jmp_buf jmpMain;        ///< This is where we should return to from a fault to retry an instruction
+extern jmp_buf jmpMain;     ///< This is where we should return to from a fault to retry an instruction
+#define JMP_RETRY       1   ///< retry instruction
+#define JMP_NEXT        2   ///< goto next sequential instruction
+#define JMP_TRA         3   ///< treat return as if it were a TRA instruction with rIC already set to where to jump to
 
 /*
  * Stuff to do with the local loader/binder/linker

@@ -275,17 +275,30 @@ t_stat sim_instr (void)
     currentInstruction->e = &E;
     
     int val = setjmp(jmpMain);    // here's our main fault/interrupt return. Back to executing instructions....
-    if (val)
+    switch (val)
     {
-        // if we're here, we're returning from a fault etc and we want to retry an instruction
-        goto retry;
-    } else {
-        reason = 0;
-        cpuCycles = 0;  // XXX This probably needs to be moved so our fault handler won't reset cpuCycles back to 0
+        case 0:
+            reason = 0;
+            cpuCycles = 0;
+            break;
+        case JMP_NEXT:
+            goto jmpNext;
+        case JMP_RETRY:
+            goto jmpRetry;
+        case JMP_TRA:
+            goto jmpTra;
     }
+//    if (val)
+//    {
+//        // if we're here, we're returning from a fault etc and we want to retry an instruction
+//        goto retry;
+//    } else {
+//        reason = 0;
+//        cpuCycles = 0;  // XXX This probably needs to be moved so our fault handler won't reset cpuCycles back to 0
+//    }
     
     do {
-retry:;
+jmpRetry:;
         /* loop until halted */
         if (sim_interval <= 0) {                                /* check clock queue */
             if ((reason = sim_process_event ()))
@@ -322,7 +335,7 @@ retry:;
                 switch (ret)
                 {
                     case CONT_TRA:
-                        continue;   // don't bump rIC, instruction already did it
+jmpTra:                 continue;   // don't bump rIC, instruction already did it
                 }
             }
         }
@@ -331,7 +344,8 @@ retry:;
             reason = STOP_DIS;
             break;
         }
-        
+
+jmpNext:;
         // doesn't seem to work as advertized
         if (sim_poll_kbd())
             reason = STOP_BKPT;

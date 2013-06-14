@@ -5287,7 +5287,7 @@ void csl(DCDstruct *ins)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(ins, 0, 0, "csl truncation fault");
+            doFault(ins, FAULT_OFL, 0, "csl truncation fault");
         }
     }
 }
@@ -5464,7 +5464,7 @@ void csr(DCDstruct *ins)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(ins, 0, 0, "csr truncation fault");
+            doFault(ins, FAULT_OFL, 0, "csr truncation fault");
         }
     }
 }
