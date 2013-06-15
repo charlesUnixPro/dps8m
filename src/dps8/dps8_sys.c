@@ -182,7 +182,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
         segno += 1; // onto next segment SDW
     }
     
-    printf("zero-initialized segments 0 .. %d\n", segno - 1);
+    if (!sim_quiet) printf("zero-initialized segments 0 .. %d\n", segno - 1);
     return SCPE_OK;
 }
 
@@ -190,7 +190,7 @@ t_stat dpsCmd_InitSDWAM ()
 {
     memset(SDWAM, 0, sizeof(SDWAM));
     
-    printf("zero-initialized SDWAM\n");
+    if (!sim_quiet) printf("zero-initialized SDWAM\n");
     return SCPE_OK;
 }
 
