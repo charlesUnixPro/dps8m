@@ -599,3 +599,147 @@ sysinfo_t sys_opts;
 // Debugging and statistics
 int opt_debug;
 
+// from MM
+
+
+//-----------------------------------------------------------------------------
+// *** Other devices
+
+extern t_stat clk_svc(UNIT *up);
+UNIT TR_clk_unit = { UDATA(&clk_svc, UNIT_IDLE, 0) };
+
+extern t_stat mt_svc(UNIT *up);
+UNIT mt_unit = {
+    // NOTE: other SIMH tape sims don't set UNIT_SEQ
+    UDATA (&mt_svc, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)
+};
+
+DEVICE tape_dev = {
+    "TAPE", &mt_unit, NULL, NULL, 1,
+    10, 31, 1, 8, 9,
+    NULL, NULL, NULL,
+    NULL, &sim_tape_attach, &sim_tape_detach,
+    NULL, DEV_DEBUG
+};
+
+/* unfinished; copied from tape_dev */
+#define M3381_SECTORS 6895616
+// records per subdev: 74930 (127 * 590)
+// number of sub-volumes: 3
+// records per dev: 3 * 74930 = 224790
+// cyl/sv: 590
+// cyl: 1770 (3*590)
+// rec/cyl 127
+// tracks/cyl 15
+// sector size: 512
+// sectors: 451858
+// data: 3367 MB, 3447808 KB, 6895616 sectors,
+//  3530555392 bytes, 98070983 records?
+
+// extern t_stat disk_svc(UNIT *up);
+UNIT disk_unit = {
+    UDATA (&channel_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)
+};
+
+// No disks known to multics had more than 2^24 sectors...
+DEVICE disk_dev = {
+    "DISK", &disk_unit, NULL, NULL, 1,
+    10, 24, 1, 8, 36,
+    /* examine */ NULL, /* deposit */ NULL,
+    /* reset */ NULL, /* boot */ NULL,
+    /* attach */ NULL, /* detach */ NULL,
+    /* context */ NULL, DEV_DEBUG
+};
+
+
+MTAB opcon_mod[] = {
+    { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
+        0, NULL, "AUTOINPUT",
+        opcon_autoinput_set, opcon_autoinput_show, NULL },
+    { 0 }
+};
+
+
+DEVICE opcon_dev = {
+    "OPCON", NULL, NULL, opcon_mod,
+    0, 10, 8, 1, 8, 8,
+    NULL, NULL, NULL,
+    NULL, NULL, NULL,
+    NULL, DEV_DEBUG
+};
+
+extern t_stat iom_svc(UNIT* up);
+extern t_stat iom_reset(DEVICE *dptr);
+UNIT iom_unit = { UDATA(&iom_svc, 0, 0) };
+MTAB iom_mod[] = {
+    { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
+        0, "MBX", NULL,
+        NULL, iom_show_mbx, NULL },
+    { 0 }
+};
+DEVICE iom_dev = {
+    "IOM", &iom_unit, NULL, iom_mod,
+    1, 10, 8, 1, 8, 8,
+    NULL, NULL, &iom_reset,
+    NULL, NULL, NULL,
+    NULL, DEV_DEBUG
+};
+
+//=============================================================================
+
+#define reg_TR rTR
+
+int activate_timer()
+{
+    uint32 t;
+    log_msg(DEBUG_MSG, "SYS::clock", "TR is %lld %#llo.\n", reg_TR, reg_TR);
+    if (bit_is_neg(reg_TR, 27)) {
+        if ((t = sim_is_active(&TR_clk_unit)) != 0)
+            log_msg(DEBUG_MSG, "SYS::clock", "TR cancelled with %d time units left.\n", t);
+        else
+            log_msg(DEBUG_MSG, "SYS::clock", "TR loaded with negative value, but it was alread stopped.\n", t);
+        sim_cancel(&TR_clk_unit);
+        return 0;
+    }
+    if ((t = sim_is_active(&TR_clk_unit)) != 0) {
+        log_msg(DEBUG_MSG, "SYS::clock", "TR was still running with %d time units left.\n", t);
+        sim_cancel(&TR_clk_unit);   // BUG: do we need to cancel?
+    }
+    
+    (void) sim_rtcn_init(CLK_TR_HZ, TR_CLK);
+    sim_activate(&TR_clk_unit, reg_TR);
+    if ((t = sim_is_active(&TR_clk_unit)) == 0)
+        log_msg(DEBUG_MSG, "SYS::clock", "TR is not running\n", t);
+    else
+        log_msg(DEBUG_MSG, "SYS::clock", "TR is now running with %d time units left.\n", t);
+    return 0;
+}
+
+//=============================================================================
+
+t_stat clk_svc(UNIT *up)
+{
+    // only valid for TR
+    (void) sim_rtcn_calb (CLK_TR_HZ, TR_CLK);   // calibrate clock
+    uint32 t = sim_is_active(&TR_clk_unit);
+    log_msg(INFO_MSG, "SYS::clock::service", "TR has %d time units left\n", t);
+    return 0;
+}
+
+t_stat XX_clk_svc(UNIT *up)
+{
+    // only valid for TR
+#if 0
+    tmr_poll = sim_rtcn_calb (clk_tps, TMR_CLK);            /* calibrate clock */
+    sim_activate (&clk_unit, tmr_poll);                     /* reactivate unit */
+    tmxr_poll = tmr_poll * TMXR_MULT;                       /* set mux poll */
+    todr_reg = todr_reg + 1;                                /* incr TODR */
+    if ((tmr_iccs & TMR_CSR_RUN) && tmr_use_100hz)          /* timer on, std intvl? */
+        tmr_incr (TMR_INC);                                 /* do timer service */
+    return 0;
+#else
+    return 2;
+#endif
+}
+
+

@@ -709,7 +709,8 @@ int scu_cioc(t_uint64 addr)
     
     t_uint64 word;
     int ret;
-    if ((ret = fetch_word(TPR.CA, &word)) != 0) {
+    //if ((ret = fetch_word(TPR.CA, &word)) != 0) {
+    if ((ret = Read(NULL, TPR.CA, &word, DataRead, 0)) != 0) { // HWR
         cancel_run(STOP_BUG);
         return ret;
     }

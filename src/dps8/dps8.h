@@ -28,6 +28,7 @@
 #endif
 
 #include "sim_defs.h"                                   /* simulator defns */
+#include "sim_tape.h"
 
 // patch supplied by Dave Jordan (jordandave@gmail.com) 29 Nov 2012
 #ifdef __MINGW32__
@@ -1639,6 +1640,22 @@ enum relocationCodes
 
 
 extern t_stat dumpSDWAM();
+/*
+ * MMs stuff ...
+ */
+
+/*
+ * bit#_is_neg()
+ *
+ * Functions to determine if bit-36, bit-18, or bit-n word's MSB is
+ * on.
+ */
+
+#define bit36_is_neg(x) (((x) & (((t_uint64)1)<<35)) != 0)
+
+#define bit18_is_neg(x) (((x) & (((t_uint64)1)<<17)) != 0)
+
+#define bit_is_neg(x,n) (((x) & (((t_uint64)1)<<((n)-1))) != 0)
 
 /*
  * SCU and IOM stuff (originally taken from Michael Mondy's work).....
@@ -1676,6 +1693,8 @@ enum dev_type { DEVT_NONE, DEVT_TAPE, DEVT_CON, DEVT_DISK };
 // may be suppressed by turning off debug.
 enum log_level { DEBUG_MSG, INFO_MSG, NOTIFY_MSG, WARN_MSG, ERR_MSG };
 
+void log_msg(enum log_level level, const char* who, const char* format, ...);
+void out_msg(const char* format, ...);
 
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 typedef unsigned flag_t;    // efficient unsigned flag
@@ -2016,6 +2035,11 @@ extern int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 extern int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
 extern int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
 
+extern int scu_set_interrupt(int inum);
+
+extern t_stat channel_svc(UNIT *up);
+extern int iom_show_mbx(FILE *st, UNIT *uptr, int val, void *desc);
+extern char *bin2text(t_uint64 word, int n);
 
 /*
  Provides a library for reading chunks of an arbitrary number
