@@ -263,6 +263,45 @@ DCDstruct *currentInstruction  = &_currentInstruction;;
 EISstruct E;
 //EISstruct *e = &E;
 
+
+events_t events;
+switches_t switches;
+cpu_ports_t cpu_ports; // Describes connections to SCUs
+// the following two should probably be combined
+cpu_state_t cpu;
+//ctl_unit_data_t cu;
+
+scu_t scu; // only one for now
+iom_t iom; // only one for now
+
+// This is an out-of-band flag for the APU. User commands to
+// display or modify memory can invoke much the APU. Howeveer, we don't
+// want interactive attempts to access non-existant memory locations
+// to register a fault.
+flag_t fault_gen_no_fault;
+
+/*
+ *  cancel_run()
+ *
+ *  Cancel_run can be called by any portion of the code to let
+ *  sim_instr() know that it should stop looping and drop back
+ *  to the SIMH command prompt.
+ */
+
+static int cancel;
+
+void cancel_run(t_stat reason)
+{
+    // Maybe we should generate an OOB fault?
+    
+    (void) sim_cancel_step();
+    if (cancel == 0 || reason < cancel)
+        cancel = reason;
+    //log_msg(DEBUG_MSG, "CU", "Cancel requested: %d\n", reason);
+}
+
+
+
 t_stat sim_instr (void)
 {
     extern int32 sim_interval;

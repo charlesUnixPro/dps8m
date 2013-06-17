@@ -10,6 +10,13 @@
 
 #include "dps8.h"
 
+extern events_t events;
+extern cpu_state_t cpu;
+extern flag_t fault_gen_no_fault;
+
+
+t_uint64 FR;
+
 /*
  FAULT RECOGNITION
  For the discussion following, the term "function" is defined as a major processor functional cycle. Examples are: APPEND CYCLE, CA CYCLE, INSTRUCTION FETCH CYCLE, OPERAND STORE CYCLE, DIVIDE EXECUTION CYCLE. Some of these cycles are discussed in various sections of this manual.
@@ -147,6 +154,128 @@ bool pending_fault = false;     // true when a fault has been signalled, but not
 
 
 bool port_interrupts[8] = {false, false, false, false, false, false, false, false };
+
+//-----------------------------------------------------------------------------
+// ***  Constants, unchanging lookup tables, etc
+
+static int fault2group[32] = {
+    // from AL39, page 7-3
+    7, 4, 5, 5, 7, 4, 5, 4,
+    7, 4, 5, 2, 1, 3, 3, 1,
+    6, 6, 6, 6, 6, 5, 5, 5,
+    5, 5, 0, 0, 0, 0, 0, 2
+};
+static int fault2prio[32] = {
+    // from AL39, page 7-3
+    27, 10, 11, 17, 26,  9, 15,  5,
+    25,  8, 16,  4,  1,  7,  6,  2,
+    20, 21, 22, 23, 24, 12, 13, 14,
+    18, 19,  0,  0,  0,  0,  0,  3
+};
+
+// Fault conditions as stored in the "FR" Fault Register
+// C99 and C++ would allow 64bit enums, but bits past 32 are related to (unimplemented) parity faults.
+typedef enum {
+    // Values are bit masks
+    fr_ill_op = 1, // illegal opcode
+    fr_ill_mod = 1 << 1, // illegal address modifier
+    // fr_ill_slv = 1 << 2, // illegal BAR mode procedure
+    fr_ill_proc = 1 << 3 // illegal procedure other than the above three
+    // fr_ill_dig = 1 << 6 // illegal decimal digit
+} fault_cond_t;
+
+// "MR" Mode Register, L68
+typedef struct {
+    // See member "word" for the raw bits, other member values are derivations
+    flag_t mr_enable; // bit 35 "n"
+    flag_t strobe; // bit 30 "l"
+    flag_t fault_reset; // bit 31 "m"
+    t_uint64 word;
+} mode_reg_t;
+
+mode_reg_t MR;
+
+/*
+ *  fault_gen()
+ *
+ *  Called by instructions or the addressing code to record the
+ *  existance of a fault condition.
+ */
+
+void fault_gen(int f)
+{
+    int group;
+    
+#if 0
+    if (f == oob_fault) {
+        log_msg(ERR_MSG, "CU::fault", "Faulting for internal bug\n");
+        f = trouble_fault;
+        (void) cancel_run(STOP_BUG);
+    }
+#endif
+    
+    if (f < 1 || f > 32) {
+        //log_msg(ERR_MSG, "CU::fault", "Bad fault # %d\n", f);
+        cancel_run(STOP_BUG);
+        return;
+    }
+    group = fault2group[f];
+    if (group < 1 || group > 7) {
+        //log_msg(ERR_MSG, "CU::fault", "Internal error.\n");
+        cancel_run(STOP_BUG);
+        return;
+    }
+    
+    if (fault_gen_no_fault) {
+        //log_msg(DEBUG_MSG, "CU::fault", "Ignoring fault # %d in group %d\n", f, group);
+        return;
+    }
+    
+    if (f == FAULT_IPR)
+        FR |= fr_ill_proc;
+    
+    events.any = 1;
+    //log_msg(DEBUG_MSG, "CU::fault", "Recording fault # %d in group %d\n", f, group);
+    
+    // Note that we never simulate a (hardware) op_not_complete_fault
+    if (MR.mr_enable && (f == FAULT_ONC || MR.fault_reset)) {
+        if (MR.strobe) {
+            log_msg(INFO_MSG, "CU::fault", "Clearing MR.strobe.\n");
+            MR.strobe = 0;
+        } else
+            log_msg(INFO_MSG, "CU::fault", "MR.strobe was already unset.\n");
+    }
+    
+    if (group == 7) {
+        // Recognition of group 7 faults is delayed and we can have
+        // multiple group 7 faults pending.
+        events.group7 |= (1 << f);
+    } else {
+        // Groups 1-6 are handled more immediately and there can only be
+        // one fault pending within each group
+        //if (cpu.cycle == FAULT_cycle)
+        if (cpu.cycle == FAULT_cycle || cpu.cycle == FAULT_EXEC_cycle) {
+            // FIXME: || events.xed AND/OR || cpu.cycle == FAULT_EXEC_cycle
+            f = FAULT_TRB;
+            group = fault2group[f];
+            log_msg(WARN_MSG, "CU::fault", "Double fault:  Recording current fault as a trouble fault (fault # %d in group %d).\n", f, group);
+            cpu.cycle = FAULT_cycle;
+            //cancel_run(STOP_DIS); // BUG: not really
+        } else {
+            if (events.fault[group]) {
+                // todo: error, unhandled fault
+                log_msg(WARN_MSG, "CU::fault", "Found unhandled prior fault #%d in group %d.\n", events.fault[group], group);
+            }
+            if (cpu.cycle == EXEC_cycle) {
+                // don't execute any pending odd half of an instruction pair
+                cpu.cycle = FAULT_cycle;
+            }
+        }
+        events.fault[group] = f;
+    }
+    if (events.low_group == 0 || group < events.low_group)
+        events.low_group = group;   // new highest priority fault group
+}
 
 /*
  * fault handler(s).

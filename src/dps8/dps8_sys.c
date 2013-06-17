@@ -93,6 +93,8 @@ const char *sim_stop_messages[] = {
     "Breakpoint",
     "Invalid Opcode",
     "Stop code - 5",
+    "BUG",
+    "WARNING"
 };
 
 //t_stat spec_disp (FILE *st, UNIT *uptr, int value, void *desc)
@@ -588,4 +590,12 @@ t_stat parse_sym (char *cptr, t_addr addr, UNIT *uptr, t_value *val, int32 sswit
 {
     return SCPE_ARG;
 }
+
+// from MM
+
+int bootimage_loaded = 0;
+sysinfo_t sys_opts;
+
+// Debugging and statistics
+int opt_debug;
 

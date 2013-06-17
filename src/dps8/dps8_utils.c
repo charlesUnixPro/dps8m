@@ -1131,3 +1131,472 @@ int bitfieldReverse(int x)
     return res;
 }
 
+
+// From MM's code ...
+
+
+// Debugging and statistics
+int opt_debug;
+t_uint64 calendar_a; // Used to "normalize" A/Q dumps of the calendar as deltas
+t_uint64 calendar_q;
+//stats_t sys_stats;
+
+
+extern DEVICE cpu_dev;
+extern FILE *sim_deb, *sim_log;
+
+static void msg(enum log_level level, const char *who, const char* format, va_list ap);
+static int _scan_seg(uint segno, int msgs);
+uint ignore_IC = 0;
+uint last_IC;
+uint last_IC_seg;
+
+static int _log_any_io = 0;
+
+
+#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
+
+/*
+ * getbits36()
+ *
+ * Extract a range of bits from a 36-bit word.
+ */
+
+inline t_uint64 getbits36(t_uint64 x, int i, unsigned n) {
+    // bit 35 is right end, bit zero is 36th from the right
+    int shift = 35-i-n+1;
+    if (shift < 0 || shift > 35) {
+//        log_msg(ERR_MSG, "getbits36", "bad args (%012llo,i=%d,n=%d)\n", x, i, n);
+//        cancel_run(STOP_BUG);
+        return 0;
+    } else
+        return (x >> (unsigned) shift) & ~ (~0 << n);
+}
+
+// ============================================================================
+
+/*
+ * setbits36()
+ *
+ * Set a range of bits in a 36-bit word -- Returned value is x with n bits
+ * starting at p set to the n lowest bits of val
+ */
+
+inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
+{
+    int shift = 36 - p - n;
+    if (shift < 0 || shift > 35) {
+//        log_msg(ERR_MSG, "setbits36", "bad args (%012llo,pos=%d,n=%d)\n", x, p, n);
+//        cancel_run(STOP_BUG);
+        return 0;
+    }
+    t_uint64 mask = ~ (~0<<n);  // n low bits on
+    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    t_uint64 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
+    return result;
+}
+
+void log_msg(enum log_level level, const char* who, const char* format, ...)
+{
+    if (level == DEBUG_MSG) {
+        if (opt_debug == 0)
+            return;
+        if (cpu_dev.dctrl == 0 && opt_debug < 1) // todo: should CPU control all debug settings?
+            return;
+    }
+    
+    // Make sure all messages have a prior display of the IC
+//    if (!ignore_IC && (PPR.IC != last_IC || PPR.PSR != last_IC_seg)) {
+//        last_IC = PPR.IC;
+//        last_IC_seg = PPR.PSR;
+//        char *tag = "Debug";
+//        // char *who = "IC";
+//        // out_msg("\n%s: %*s %s %*sIC: %o\n", tag, 7-strlen(tag), "", who, 18-strlen(who), "", PPR.IC);
+//        char icbuf[80];
+//        addr_modes_t addr_mode = get_addr_mode();
+//        ic2text(icbuf, addr_mode, PPR.PSR, PPR.IC);
+//        // out_msg("\n");
+//        // out_msg("%s: %*s IC: %s\n", tag, 7-strlen(tag), "", icbuf);
+//        msg(DEBUG_MSG, NULL, "\n", NULL);
+//        char buf[80];
+//        sprintf(buf, "%s: %*s IC: %s\n", tag, 7 - (int) strlen(tag), "", icbuf);
+//        msg(DEBUG_MSG, NULL, buf, NULL);
+//    }
+    
+    va_list ap;
+    va_start(ap, format);
+#if 0
+    char *tag = (level == DEBUG_MSG) ? "Debug" :
+    (level == INFO_MSG) ? "Info" :
+    (level == NOTIFY_MSG) ? "Note" :
+    (level == WARN_MSG) ? "WARNING" :
+    (level == ERR_MSG) ? "ERROR" :
+    "???MESSAGE";
+    msg(tag, who, format, ap);
+#else
+    msg(level, who, format, ap);
+#endif
+    va_end(ap);
+}
+
+#if 0
+void debug_msg(const char* who, const char* format, ...)
+{
+    if (opt_debug == 0)
+        return;
+    if (cpu_dev.dctrl == 0 && opt_debug < 1) // todo: should CPU control all debug settings?
+        return;
+    va_list ap;
+    va_start(ap, format);
+    msg("Debug", who, format, ap);
+    va_end(ap);
+}
+
+void warn_msg(const char* who, const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    msg("WARNING", who, format, ap);
+    va_end(ap);
+}
+
+void complain_msg(const char* who, const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    msg("ERROR", who, format, ap);
+    va_end(ap);
+}
+#endif
+
+
+static void crnl_out(FILE *stream, const char *format, va_list ap)
+{
+    // SIMH does something odd with the terminal, so output CRNL
+    int len =strlen(format);
+    int nl = *(format + len - 1) == '\n';
+    if (nl) {
+        char *f = malloc(len + 2);
+        if (f) {
+            strcpy(f, format);
+            *(f + len - 1) = '\r';
+            *(f + len) = '\n';
+            *(f + len + 1) = 0;
+            if (ap == NULL)
+                fprintf(stream, "%s", f);
+            else
+                vfprintf(stream, f, ap);
+            free(f);
+        } else {
+            if (ap == NULL)
+                printf("%s", format);
+            else
+                vprintf(format, ap);
+            if (*(format + strlen(format) - 1) == '\n')
+                fprintf(stream, "\r");
+        }
+    } else {
+        if (ap == NULL)
+            fprintf(stream, "%s", format);
+        else
+            vfprintf(stream, format, ap);
+        if (*(format + strlen(format) - 1) == '\n')
+            fprintf(stream, "\r");
+    }
+    _log_any_io = 1;
+}
+
+
+void out_msg(const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    
+    FILE *stream = (sim_log != NULL) ? sim_log : stdout;
+    crnl_out(stream, format, ap);
+    va_end(ap);
+    if (sim_deb != NULL) {
+        va_start(ap, format);
+        crnl_out(sim_deb, format, ap);
+        va_end(ap);
+    }
+}
+
+#if 0
+static void sim_hmsg(const char* tag, const char *who, const char* format, va_list ap)
+{
+    // This version uses SIMH facilities -- not tested
+    char buf[2000];
+    snprintf(buf, sizeof(buf), "%s: %*s %s: %*s", tag, 7-strlen(tag), "", who, 18-strlen(who), "");
+    int l = strlen(buf);
+    vsnprintf(buf + l, sizeof(buf) - l, format, ap);
+    // TODO: setup every device with sim_debtab entries to reflect different debug levels
+    sim_debug(~0, &cpu_dev, "%s", buf);
+}
+#endif
+
+static void msg(enum log_level level, const char *who, const char* format, va_list ap)
+{
+    // This version does not use SIMH facilities -- except for the sim_deb and sim_log streams
+    
+    enum { con, dbg };
+    FILE *streams[2];
+    
+    streams[con] = (sim_log != NULL) ? sim_log : stdout;
+    streams[dbg] = sim_deb;
+    if (level == DEBUG_MSG || level == INFO_MSG) {
+        // Debug and info messages go to a debug log if one exists, otherwise to
+        // the console
+        if (streams[dbg] != NULL)
+            streams[con] = NULL;
+    } else {
+        // Non debug msgs always go to the console. If a seperate debug
+        // log exists, it also gets non-debug msgs.
+        streams[dbg] = (sim_log == sim_deb) ? NULL : sim_deb;
+    }
+    
+    char *tag = (level == DEBUG_MSG) ? "Debug" :
+    (level == INFO_MSG) ? "Info" :
+    (level == NOTIFY_MSG) ? "Note" :
+    (level == WARN_MSG) ? "WARNING" :
+    (level == WARN_MSG) ? "WARNING" :
+    (level == ERR_MSG) ? "ERROR" :
+    "???MESSAGE";
+    
+    for (int s = 0; s <= dbg; ++s) {
+        FILE *stream = streams[s];
+        if (stream == NULL)
+            continue;
+        if (who != NULL)
+            fprintf(stream, "%s: %*s %s: %*s", tag, 7 - (int) strlen(tag), "", who, 18 - (int) strlen(who), "");
+        
+        if (ap == NULL)
+            crnl_out(stream, format, NULL);
+        else {
+            va_list aq;
+            va_copy(aq, ap);
+            crnl_out(stream, format, aq);
+            va_end(aq);
+        }
+        if (level != DEBUG_MSG) // BUG: ?
+            fflush(stream);
+    }
+}
+
+/*
+ Provides a library for reading chunks of an arbitrary number
+ of bits from a stream.
+ 
+ NOTE: It was later discovered that the emulator doesn't need
+ this generality.   All known "tape" files are multiples of
+ 72 bits, so the emulator could simply read nine 8-bit bytes at
+ a time which would yield two 36-bit "words".
+ 
+ WARNING: uses mmap() and mumap() which may not be available on
+ non POSIX systems.  We only read the input data one byte at a time,
+ so switching to ordinary file I/O would be trivial.
+ 
+ */
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ 
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at http://example.org/project/LICENSE.
+ */
+
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <string.h>
+
+#include "sim_defs.h"
+
+//=============================================================================
+
+/*
+ bitstm_create() -- allocate and initialize an empty bitstream_t object.
+ */
+
+static bitstream_t* bitstm_create()
+{
+    
+    bitstream_t* bp;
+    if ((bp = malloc(sizeof(*bp))) == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+    memset(bp, 0, sizeof(*bp));
+    
+    bp->fd = -1;
+    bp->used = 8;   // e.g., none left
+    return bp;
+}
+
+//=============================================================================
+
+/*
+ bitstm_new() -- Create a bitstream_t object tied to the given source buffer.
+ */
+
+bitstream_t* bitstm_new(const unsigned char* addr, uint32 len)
+{
+    
+    bitstream_t* bp;
+    if ((bp = bitstm_create()) == NULL)
+        return NULL;
+    
+    bp->len = len;
+    bp->p = addr;
+    bp->head = addr;
+    return bp;
+}
+
+
+//=============================================================================
+
+
+/*
+ bitstm_open() -- Create a bitstream_t object and tie a file to it.
+ */
+
+bitstream_t* bitstm_open(const char* fname)
+{
+    bitstream_t *bp;
+    
+    if ((bp = bitstm_create()) == NULL)
+        return NULL;
+    if ((bp->fname = strdup(fname)) == NULL) {
+        perror("strdup");
+        return NULL;
+    }
+    if ((bp->fd = open(fname, O_RDONLY)) == -1) {
+        perror(fname);
+        return NULL;
+    }
+    struct stat sbuf;
+    if (stat(fname, &sbuf) != 0) {
+        perror(fname);
+        return NULL;
+    }
+    bp->len = sbuf.st_size;
+    
+    void* addr = mmap(0, bp->len, PROT_READ, MAP_SHARED|MAP_NORESERVE, bp->fd, 0);
+    if (addr == NULL) {
+        perror("mmap");
+        return NULL;
+    }
+    bp->p = addr;
+    bp->head = addr;
+    return bp;
+}
+
+//=============================================================================
+
+/*
+ bitstm_get() -- Extract len bits from a stream
+ 
+ Returns non-zero if unable to provide all of the
+ requested bits.  Note that this model doesn't
+ allow the caller to distinguish EOF from partial
+ reads or other error conditions.
+ */
+
+int bitstm_get(bitstream_t *bp, size_t len, t_uint64 *word)
+{
+    
+    *word = 0;
+    size_t orig_len = len;
+    int used = bp->used;
+    int left = 8 - used;
+    if (left != 0 && len < left) {
+        // We have enough bits left in the currently buffered byte.
+        unsigned val = bp->byte >> (8-len); // Consume bits from left of byte
+        *word = val;
+        //printf("b-debug: used %d leading bits of %d-bit curr byte to fufill small request.\n", len, left);
+        bp->byte = bp->byte << len;
+        bp->used += len;
+        goto b_end;
+    }
+    
+    t_uint64 wtmp;
+    
+    // Consume remainder of curr byte (but it's not enough)
+    if (left != 0) {
+        wtmp = bp->byte >> (8-left);
+        len -= left;
+        //printf("b-debug: using remaing %d bits of curr byte\n", left);
+        bp->used = 8;
+        bp->byte = 0;
+    } else
+        wtmp = 0;
+    
+    // Consume zero or more full bytes
+    int i;
+    for (i = 0; i < len / 8; ++ i) {
+        //printf("b-debug: consuming next byte %03o\n", *bp->p);
+        if (bp->p == bp->head + bp->len) {
+            //fflush(stdout); fflush(stderr);
+            // fprintf(stderr, "bits.c: bit stream exhausted\n");   // FIXME: remove text msg
+            return 1;
+        }
+        // left shift in next byte
+        wtmp = (wtmp << 8) | (*bp->p);
+        ++ bp->p;
+    }
+    
+    // Consume one partial byte if needed (buffer the leftover bits)
+    int extra = len % 8;
+    if (extra != 0) {
+        //printf("b-debug: consuming %d bits of next byte %03o\n", *bp->p);
+        if (bp->p == bp->head + bp->len) {
+            //fflush(stdout); fflush(stderr);
+            //fprintf(stderr, "bits.c: bit stream exhausted\n");    // FIXME: remove text msg
+            return 1;
+        }
+        bp->byte = *bp->p;
+        ++ bp->p;
+        unsigned val = bp->byte >> (8-extra);
+        wtmp = (wtmp << extra) | val;
+        //printf("b-debug: used %d leading bits of curr byte to finish request.\n", extra);
+        bp->byte = bp->byte << extra;
+        bp->used = extra;
+    }
+    *word = wtmp;
+    
+b_end:
+    //printf("b-debug: after %u req: offset=%u, %d curr bits used, return = %lu\n",
+    //  orig_len, bp->p - bp->head, bp->used, (unsigned long) *word);
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ Free all memory associated with given bitstream.
+ Returns non-zero on error.
+ */
+
+int bitstm_destroy(bitstream_t *bp)
+{
+    if (bp == NULL)
+        return -1;
+    
+    int err = 0;
+    if (bp->fd >= 0) {
+        if (bp->p != NULL) {
+            err |= munmap((void*)bp->p, bp->len);   // WARNING: casting away const
+        }
+        err |= close(bp->fd);
+    }
+    free((void*) bp->fname);
+    free(bp);
+    return err;
+}
+
+
