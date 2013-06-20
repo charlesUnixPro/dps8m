@@ -1,4 +1,4 @@
-/**
+ /**
  * \file dps8_cpu.c
  * \project dps8
  * \date 9/17/12
@@ -13,7 +13,7 @@ a8 saved_PC = 0;
 int32 flags = 0;
 
 enum _processor_cycle_type processorCycle;                  ///< to keep tract of what type of cycle the processor is in
-enum _processor_addressing_mode processorAddressingMode;    ///< what addressing mode are we using
+//enum _processor_addressing_mode processorAddressingMode;    ///< what addressing mode are we using
 enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
 
 // h6180 stuff
@@ -27,6 +27,8 @@ word8	rE;	/*!< exponent [map: rE, 28 0's] */
 
 word18	rX[8];	/*!< index */
 
+
+
 //word18	rBAR;	/*!< base address [map: BAR, 18 0's] */
 /* format: 9b base, 9b bound */
 
@@ -38,6 +40,9 @@ word36 XECD2; /*!< XED instr#2 */
 //word18	rIC;	/*!< instruction counter */
 // same as PPR.IC
 word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
+IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
+
+
 word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
 word24	rY;     /*!< address operand */
@@ -83,7 +88,7 @@ word8	rRALR;	/*!< ring alarm [3b] [map: 33 0's, RALR] */
 //word36	hAO[16];/*!< history: appending unit, odd word */
 //word36	rSW[5];	/*!< switches */
 
-word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
+//word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
 
 // end h6180 stuff
 
@@ -253,7 +258,8 @@ t_stat executeInstruction(DCDstruct *ci);
 
 t_stat reason;
 
-t_uint64 cpuCycles = 0; ///< # of instructions executed in this run...
+//t_uint64 cpuCycles = 0; ///< # of instructions executed in this run...
+#define cpuCycles sys_stats.total_cycles
 
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
@@ -263,13 +269,15 @@ DCDstruct *currentInstruction  = &_currentInstruction;;
 EISstruct E;
 //EISstruct *e = &E;
 
+void check_events();
 
 events_t events;
 switches_t switches;
 cpu_ports_t cpu_ports; // Describes connections to SCUs
 // the following two should probably be combined
 cpu_state_t cpu;
-//ctl_unit_data_t cu;
+ctl_unit_data_t cu;
+stats_t sys_stats;
 
 scu_t scu; // only one for now
 iom_t iom; // only one for now
@@ -302,7 +310,7 @@ void cancel_run(t_stat reason)
 
 
 
-t_stat sim_instr (void)
+t_stat sim_instr_HWR (void)
 {
     extern int32 sim_interval;
     
@@ -435,7 +443,8 @@ t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acct
         rY = addr;
         TPR.CA = addr;  //XXX for APU
         
-        switch (processorAddressingMode)
+        //switch (processorAddressingMode)
+        switch (get_addr_mode())
         {
             case APPEND_MODE:
 APPEND_MODE:;
@@ -457,7 +466,8 @@ APPEND_MODE:;
                         sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
                     }
                     
-                    processorAddressingMode = APPEND_MODE;
+                    //processorAddressingMode = APPEND_MODE;
+                    set_addr_mode(APPEND_mode);
                     goto APPEND_MODE;   // ???
                 }
                 break;
@@ -472,6 +482,8 @@ APPEND_MODE:;
         }
         
     }
+    cpu.read_addr = addr;
+    
     return SCPE_OK;
 }
 
@@ -484,7 +496,8 @@ t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acct
         rY = addr;
         TPR.CA = addr;  //XXX for APU
         
-        switch (processorAddressingMode)
+        //switch (processorAddressingMode)
+        switch (get_addr_mode())
         {
             case APPEND_MODE:
 APPEND_MODE:;
@@ -726,6 +739,690 @@ int core_writeN(a8 addr, d8 *data, int n)
     return 0;
 }
 
+//#define MM
+#if 1   //def MM
+//=============================================================================
+
+/*
+ * fetch_word()
+ *
+ * Fetches a word at the specified address according to the current
+ * addressing mode.
+ *
+ * Returns non-zero if a fault in groups 1-6 is detected
+ */
+
+int fetch_appended(uint offset, t_uint64 *wordp);
+int fetch_abs_word(uint addr, t_uint64 *wordp);
+
+int fetch_word_MM(uint addr, t_uint64 *wordp)
+{
+    addr_modes_t mode = get_addr_mode();
+    
+    if (mode == APPEND_mode) {
+        return fetch_appended(addr, wordp);
+    } else if (mode == ABSOLUTE_mode) {
+        return fetch_abs_word(addr, wordp);
+    } else if (mode == BAR_mode) {
+        if (addr >= (BAR.BOUND << 9)) {
+            log_msg(NOTIFY_MSG, "CU::fetch", "Address %#o is out of BAR bounds of %#o.\n", addr, BAR.BOUND << 9);
+            fault_gen(store_fault);
+            // fault_reg.oob = 1;           // ERROR: fault_reg does not exist
+            // cancel_run(STOP_WARN);
+            return 1;
+        }
+        log_msg(DEBUG_MSG, "CU::fetch", "Translating offset %#o to %#o.\n", addr, addr + (BAR.BASE << 9));
+        addr += BAR.BOUND << 9;
+        return fetch_abs_word(addr, wordp);
+#if 0
+        log_msg(ERR_MSG, "CU::fetch", "Addr=%#o:  BAR mode unimplemented.\n", addr);
+        cancel_run(STOP_BUG);
+        return fetch_abs_word(addr, wordp);
+#endif
+    } else {
+        log_msg(ERR_MSG, "CU::fetch", "Addr=%#o:  Unknown addr mode %d.\n", addr, mode);
+        cancel_run(STOP_BUG);
+        return fetch_abs_word(addr, wordp);
+    }
+}
+
+int fetch_word(DCDstruct *i, uint addr, t_uint64 *wordp)
+{
+    addr_modes_t mode = get_addr_mode();
+    
+    if (mode == APPEND_mode) {
+        return Read(i, addr, wordp, DataRead, 0);
+    } else if (mode == ABSOLUTE_mode) {
+        return Read(i, addr, wordp, DataRead, 0);
+    } else if (mode == BAR_mode) {
+        if (addr >= (BAR.BOUND << 9)) {
+            log_msg(NOTIFY_MSG, "CU::fetch", "Address %#o is out of BAR bounds of %#o.\n", addr, BAR.BOUND << 9);
+            fault_gen(store_fault);
+            // fault_reg.oob = 1;           // ERROR: fault_reg does not exist
+            // cancel_run(STOP_WARN);
+            return 1;
+        }
+        log_msg(DEBUG_MSG, "CU::fetch", "Translating offset %#o to %#o.\n", addr, addr + (BAR.BASE << 9));
+        addr += BAR.BOUND << 9;
+        return Read(i, addr, wordp, DataRead, 0);
+#if 0
+        log_msg(ERR_MSG, "CU::fetch", "Addr=%#o:  BAR mode unimplemented.\n", addr);
+        cancel_run(STOP_BUG);
+        return Read(i, addr, wordp, DataRead, 0);
+#endif
+    } else {
+        log_msg(ERR_MSG, "CU::fetch", "Addr=%#o:  Unknown addr mode %d.\n", addr, mode);
+        cancel_run(STOP_BUG);
+        return Read(i, addr, wordp, DataRead, 0);
+    }
+}
+
+/*
+ * decode_instr()
+ *
+ * Convert a 36-bit word into a instr_t struct.
+ *
+ */
+extern int is_eis[];
+
+void decode_instr(instr_t *ip, t_uint64 word)
+{
+    ip->addr = getbits36(word, 0, 18);
+    ip->opcode = getbits36(word, 18, 10);
+    ip->inhibit = getbits36(word, 28, 1);
+    if (! (ip->is_eis_multiword = is_eis[ip->opcode])) {
+        ip->mods.single.pr_bit = getbits36(word, 29, 1);
+        ip->mods.single.tag = getbits36(word, 30, 6);
+    } else {
+        ip->mods.mf1.ar = getbits36(word, 29, 1);
+        ip->mods.mf1.rl = getbits36(word, 30, 1);
+        ip->mods.mf1.id = getbits36(word, 31, 1);
+        ip->mods.mf1.reg = getbits36(word, 32, 4);
+    }
+}
+
+//=============================================================================
+
+/*
+ * encode_instr()
+ *
+ * Convert an instr_t struct into a  36-bit word.
+ *
+ */
+
+extern int is_eis[1024];    // hack
+
+void encode_instr(const instr_t *ip, t_uint64 *wordp)
+{
+    *wordp = setbits36(0, 0, 18, ip->addr);
+#if 1
+    *wordp = setbits36(*wordp, 18, 10, ip->opcode);
+#else
+    *wordp = setbits36(*wordp, 18, 9, ip->opcode & 0777);
+    *wordp = setbits36(*wordp, 27, 1, ip->opcode >> 9);
+#endif
+    *wordp = setbits36(*wordp, 28, 1, ip->inhibit);
+    if (! is_eis[ip->opcode&MASKBITS(10)]) {
+        *wordp = setbits36(*wordp, 29, 1, ip->mods.single.pr_bit);
+        *wordp = setbits36(*wordp, 30, 6, ip->mods.single.tag);
+    } else {
+        *wordp = setbits36(*wordp, 29, 1, ip->mods.mf1.ar);
+        *wordp = setbits36(*wordp, 30, 1, ip->mods.mf1.rl);
+        *wordp = setbits36(*wordp, 31, 1, ip->mods.mf1.id);
+        *wordp = setbits36(*wordp, 32, 4, ip->mods.mf1.reg);
+    }
+}
+
+//=============================================================================
+
+/*
+ * fetch_instr()
+ *
+ * Fetch intstruction
+ *
+ * Note that we allow fetch from an arbitrary address.
+ * Returns non-zero if a fault in groups 1-6 is detected
+ *
+ * TODO: limit this to only the CPU by re-working the "xec" instruction.
+ */
+
+#if OLD
+int fetch_instr_MM(uint IC, instr_t *ip)
+{
+    
+    t_uint64 word;
+    int ret = fetch_word(IC, &word);
+    if (ip)
+        decode_instr(ip, word);
+    
+    ip->wordEven = word;
+    return ret;
+}
+#endif
+
+int fetch_instr(uint IC, DCDstruct **i)
+{
+    *i = fetchInstruction(IC, *i);
+    
+    return 0;
+    // ToDo: cause to return non 0 if a fault occurs
+}
+
+//=============================================================================
+
+/*
+ * fetch_abs_word(uint addr, t_uint64 *wordp)
+ *
+ * Fetch word at given 24-bit absolute address.
+ * Returns non-zero if a fault in groups 1-6 is detected
+ *
+ */
+
+int fetch_abs_word(uint addr, t_uint64 *wordp)
+{
+    
+#define CONFIG_DECK_LOW 012000
+#define CONFIG_DECK_LEN 010000
+    
+    // TODO: Efficiency: If the compiler doesn't do it for us, the tests
+    // below should be combined under a single min/max umbrella.
+    if (addr >= IOM_MBX_LOW && addr < IOM_MBX_LOW + IOM_MBX_LEN) {
+        log_msg(DEBUG_MSG, "CU::fetch", "Fetch from IOM mailbox area for addr %#o\n", addr);
+    }
+    if (addr >= DN355_MBX_LOW && addr < DN355_MBX_LOW + DN355_MBX_LEN) {
+        log_msg(DEBUG_MSG, "CU::fetch", "Fetch from DN355 mailbox area for addr %#o\n", addr);
+    }
+    if (addr >= CONFIG_DECK_LOW && addr < CONFIG_DECK_LOW + CONFIG_DECK_LEN) {
+        log_msg(DEBUG_MSG, "CU::fetch", "Fetch from CONFIG DECK area for addr %#o\n", addr);
+    }
+    if (addr <= 030) {
+        log_msg(DEBUG_MSG, "CU::fetch", "Fetch from 0..030 for addr %#o\n", addr);
+    }
+    
+    if (addr >= MAXMEMSIZE) {
+        log_msg(ERR_MSG, "CU::fetch", "Addr %#o (%d decimal) is too large\n", addr, addr);
+        (void) cancel_run(STOP_BUG);
+        return 1;
+    }
+    
+//  HWR   if (sim_brk_summ) {
+//        // Check for absolute mode breakpoints.  Note that fetch_appended()
+//        // has its own test for appending mode breakpoints.
+//        t_uint64 simh_addr = addr_emul_to_simh(ABSOLUTE_mode, 0, addr);
+//        if (sim_brk_test (simh_addr, SWMASK ('M'))) {
+//            log_msg(WARN_MSG, "CU::fetch", "Memory Breakpoint, address %#o.  Fetched value %012llo\n", addr, M[addr]);
+//            (void) cancel_run(STOP_BKPT);
+//        }
+//    }
+    
+    cpu.read_addr = addr;   // Should probably be in scu
+#if MEM_CHECK_UNINIT
+    {
+        t_uint64 word = Mem[addr];  // absolute memory reference
+        if (word == ~ 0) {
+            word = 0;
+            if (sys_opts.warn_uninit)
+                log_msg(WARN_MSG, "CU::fetch", "Fetch from uninitialized absolute location %#o.\n", addr);
+        }
+        *wordp = word;
+    }
+#else
+    *wordp = M[addr]; // absolute memory reference
+#endif
+    if (get_addr_mode() == BAR_mode)
+        log_msg(DEBUG_MSG, "CU::fetch-abs", "fetched word at %#o\n", addr);
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ * store_word()
+ *
+ * Store a word to the specified address according to the current
+ * addressing mode.
+ *
+ * Returns non-zero if a fault in groups 1-6 is detected
+ */
+
+int store_word(uint addr, t_uint64 word)
+{
+    
+    addr_modes_t mode = get_addr_mode();
+    
+    if (mode == APPEND_mode) {
+        return store_appended(addr, word);
+    } else if (mode == ABSOLUTE_mode) {
+        return store_abs_word(addr, word);
+    } else if (mode == BAR_mode) {
+#if 0
+        log_msg(ERR_MSG, "CU::store", "Addr=%#o:  BAR mode unimplemented.\n", addr);
+        cancel_run(STOP_BUG);
+        return store_abs_word(addr, word);
+#else
+        if (addr >= (BAR.BOUND << 9)) {
+            log_msg(NOTIFY_MSG, "CU::store", "Address %#o is out of BAR bounds of %#o.\n", addr, BAR.BOUND << 9);
+            fault_gen(store_fault);
+            // fault_reg.oob = 1;           // ERROR: fault_reg does not exist
+            // cancel_run(STOP_WARN);
+            return 1;
+        }
+        log_msg(DEBUG_MSG, "CU::store", "Translating offset %#o to %#o.\n", addr, addr + (BAR.BASE << 9));
+        addr += BAR.BASE << 9;
+        return store_abs_word(addr, word);
+        //return store_appended(addr, word);
+#endif
+    } else {
+        // impossible
+        log_msg(ERR_MSG, "CU::store", "Addr=%#o:  Unknown addr mode %d.\n", addr, mode);
+        cancel_run(STOP_BUG);
+        return 1;
+    }
+}
+
+//=============================================================================
+
+/*
+ * store-abs_word()
+ *
+ * Store word to the given 24-bit absolute address.
+ */
+
+int store_abs_word(uint addr, t_uint64 word)
+{
+    
+    // TODO: Efficiency: If the compiler doesn't do it for us, the tests
+    // below should be combined under a single min/max umbrella.
+    if (addr >= IOM_MBX_LOW && addr < IOM_MBX_LOW + IOM_MBX_LEN) {
+        log_msg(DEBUG_MSG, "CU::store", "Store to IOM mailbox area for addr %#o\n", addr);
+    }
+    if (addr >= DN355_MBX_LOW && addr < DN355_MBX_LOW + DN355_MBX_LEN) {
+        log_msg(DEBUG_MSG, "CU::store", "Store to DN355 mailbox area for addr %#o\n", addr);
+    }
+    if (addr >= CONFIG_DECK_LOW && addr < CONFIG_DECK_LOW + CONFIG_DECK_LEN) {
+        log_msg(DEBUG_MSG, "CU::store", "Store to CONFIG DECK area for addr %#o\n", addr);
+    }
+    if (addr <= 030) {
+        //log_msg(DEBUG_MSG, "CU::store", "Fetch from 0..030 for addr %#o\n", addr);
+    }
+    
+    if (addr >= MAXMEMSIZE) {
+        log_msg(ERR_MSG, "CU::store", "Addr %#o (%d decimal) is too large\n");
+        (void) cancel_run(STOP_BUG);
+        return 1;
+    }
+// HWR   if (sim_brk_summ) {
+//        // Check for absolute mode breakpoints.  Note that store_appended()
+//        // has its own test for appending mode breakpoints.
+//        t_uint64 simh_addr = addr_emul_to_simh(ABSOLUTE_mode, 0, addr);
+//        uint mask;
+//        if ((mask = sim_brk_test(simh_addr, SWMASK('W') | SWMASK('M') | SWMASK('E'))) != 0) {
+//            if ((mask & SWMASK ('W')) != 0) {
+//                log_msg(NOTIFY_MSG, "CU::store", "Memory Write Breakpoint, address %#o\n", addr);
+//                (void) cancel_run(STOP_BKPT);
+//            } else if ((mask & SWMASK ('M')) != 0) {
+//                log_msg(NOTIFY_MSG, "CU::store", "Memory Breakpoint, address %#o\n", addr);
+//                (void) cancel_run(STOP_BKPT);
+//            } else if ((mask & SWMASK ('E')) != 0) {
+//                log_msg(NOTIFY_MSG, "CU::store", "Write to a location that has an execution breakpoint, address %#o\n", addr);
+//            } else {
+//                log_msg(NOTIFY_MSG, "CU::store", "Write to a location that has an unknown type of breakpoint, address %#o\n", addr);
+//                (void) cancel_run(STOP_BKPT);
+//            }
+//            log_msg(INFO_MSG, "CU::store", "Address %08o: value was %012llo, storing %012llo\n", addr, M[addr], word);
+//        }
+//    }
+    
+    M[addr] = word;   // absolute memory reference
+    if (addr == cpu.IC_abs) {
+        log_msg(NOTIFY_MSG, "CU::store", "Flagging cached odd instruction from %o as invalidated.\n", addr);
+        cpu.irodd_invalid = 1;
+    }
+    if (get_addr_mode() == BAR_mode)
+        log_msg(DEBUG_MSG, "CU::store-abs", "stored word to %#o\n", addr);
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ * store_abs_pair()
+ *
+ * Store to even and odd words at Y-pair given by 24-bit absolute address
+ * addr.  Y-pair addresses are always constrained such that the first
+ * address used will be even.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ */
+
+int store_abs_pair(uint addr, t_uint64 word0, t_uint64 word1)
+{
+    
+    int ret;
+    uint Y = (addr % 2 == 0) ? addr : addr - 1;
+    
+    if ((ret = store_abs_word(Y, word0)) != 0) {
+        return ret;
+    }
+    if ((ret = store_abs_word(Y+1, word1)) != 0) {
+        return ret;
+    }
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ * store_pair()
+ *
+ * Store to even and odd words at given Y-pair address according to the
+ * current addressing mode.
+ * Y-pair addresses are always constrained such that the first address used
+ * will be even.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ *
+ * BUG: Is it that the given y-pair offset must be even or is it that the
+ * final computed addr must be even?   Note that the question may be moot --
+ * it might be that segements always start on an even address and contain
+ * an even number of words.
+ */
+
+int store_pair(uint addr, t_uint64 word0, t_uint64 word1)
+{
+    
+    int ret;
+    uint Y = (addr % 2 == 0) ? addr : addr - 1;
+    
+    if ((ret = store_word(Y, word0)) != 0) {
+        return ret;
+    }
+    if ((ret = store_word(Y+1, word1)) != 0) {
+        return ret;
+    }
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ * fetch_abs_pair()
+ *
+ * Fetch even and odd words at Y-pair given by the specified 24-bit absolute
+ * address.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ */
+
+int fetch_abs_pair(uint addr, t_uint64* word0p, t_uint64* word1p)
+{
+    
+    int ret;
+    uint Y = (addr % 2 == 0) ? addr : addr - 1;
+    
+    if ((ret = fetch_abs_word(Y, word0p)) != 0) {
+        return ret;
+    }
+    if ((ret = fetch_abs_word(Y+1, word1p)) != 0) {
+        return ret;
+    }
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ * fetch_pair()
+ *
+ * Fetch from the even and odd words at given Y-pair address according to the
+ * current addressing mode.
+ * Y-pair addresses are always constrained such that the first address used
+ * will be even.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ *
+ * BUG: see comments at store_pair() re what does "even" mean?
+ */
+
+#if OLD
+int fetch_pair(uint addr, t_uint64* word0p, t_uint64* word1p)
+{
+    int ret;
+    uint Y = (addr % 2 == 0) ? addr : addr - 1;
+    
+    if ((ret = fetch_word(Y, word0p)) != 0) {
+        return ret;
+    }
+    if ((ret = fetch_word(Y+1, word1p)) != 0) {
+        return ret;
+    }
+    return 0;
+}
+#endif
+
+//=============================================================================
+
+/*
+ * fetch_yblock()
+ *
+ * Aligned or un-aligned fetch from the given Y-block address according to
+ * the current addressing mode.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ *
+ * BUG: What does "aligned" mean for appending mode?  See comments at
+ * store_pair().
+ */
+
+int fetch_yblock(uint addr, int aligned, uint n, t_uint64 *wordsp)
+{
+    int ret;
+    uint Y = (aligned) ? (addr / n) * n : addr;
+    
+    for (int i = 0; i < n; ++i)
+        if ((ret = fetch_word_MM(Y++, wordsp++)) != 0)
+            return ret;
+    return 0;
+}
+
+//=============================================================================
+
+/*
+ * fetch_yblock8()
+ *
+ * Aligned fetch from the given Y-block-8 address according to
+ * the current addressing mode.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ *
+ * BUG: What does "aligned" mean for appending mode?  See comments at
+ * fetch_yblock() and store_pair().
+ */
+
+int fetch_yblock8(uint addr, t_uint64 *wordsp)
+{
+    return fetch_yblock(addr, 1, 8, wordsp);
+}
+
+
+//=============================================================================
+
+/*
+ * store_yblock()
+ *
+ * Aligned or un-aligned store to the given Y-block address according to
+ * the current addressing mode.
+ *
+ * Returns non-zero if fault in groups 1-6 detected
+ *
+ * BUG: What does "aligned" mean for appending mode?  See comments at
+ * store_pair().
+ */
+
+static int store_yblock(uint addr, int aligned, int n, const t_uint64 *wordsp)
+{
+    int ret;
+    uint Y = (aligned) ? (addr / n) * n : addr;
+    
+    for (int i = 0; i < n; ++i)
+        if ((ret = store_word(Y++, *wordsp++)) != 0)
+            return ret;
+    return 0;
+}
+
+//=============================================================================
+
+int store_yblock8(uint addr, const t_uint64 *wordsp)
+{
+    return store_yblock(addr, 1, 8, wordsp);
+}
+
+//=============================================================================
+
+int store_yblock16(uint addr, const t_uint64 *wordsp)
+{
+    return store_yblock(addr, 1, 16, wordsp);
+}
+
+//=============================================================================
+
+int store_appended(uint offset, t_uint64 word)
+{
+    // Store a word at the given offset in the current segment (if possible).
+    addr_modes_t addr_mode = get_addr_mode();
+    if (addr_mode != APPEND_mode && addr_mode != BAR_mode) {
+        // impossible
+        log_msg(ERR_MSG, "APU::store-append", "Not APPEND mode\n");
+        cancel_run(STOP_BUG);
+    }
+    
+// HWR   t_uint64 simh_addr = addr_emul_to_simh(addr_mode, TPR.TSR, offset);
+//    if (sim_brk_summ && sim_brk_test(simh_addr, SWMASK('W') | SWMASK('M'))) {
+//        log_msg(WARN_MSG, "APU", "Memory Breakpoint on write.\n");
+//        cancel_run(STOP_BKPT);
+//    }
+    
+    // FixMe: fix this HWR
+    /*
+    uint addr;
+    uint minaddr, maxaddr;  // results unneeded
+    int ret = page_in(offset, 0, &addr, &minaddr, &maxaddr);
+    if (ret == 0) {
+        if(opt_debug>0) log_msg(DEBUG_MSG, "APU::store-append", "Using addr 0%o\n", addr);
+        ret = store_abs_word(addr, word);
+    } else
+        if(opt_debug>0) log_msg(DEBUG_MSG, "APU::store-append", "page-in faulted\n");
+    return ret;
+     */
+    return 0;
+}
+
+//=============================================================================
+
+static int addr_append(t_uint64 *wordp)
+{
+    // Implements AL39, figure 5-4
+    // NOTE: ri mode is expecting a fetch
+    return fetch_appended(TPR.CA, wordp);
+}
+
+//=============================================================================
+
+/*
+ * fetch_appended()
+ *
+ * Fetch a word at the given offset in the current segment (if possible).
+ *
+ * Implements AL39, figure 5-4
+ *
+ * Note that we allow an arbitrary offset not just TPR.CA.   This is to support
+ * instruction fetches.
+ *
+ * FIXME: Need to handle y-pairs -- fixed?
+ *
+ * In BAR mode, caller is expected to have already added the BAR.base and
+ * checked the BAR.bounds
+ *
+ * Returns non-zero if a fault in groups 1-6 detected
+ */
+
+int fetch_appended(uint offset, t_uint64 *wordp)
+{
+    addr_modes_t addr_mode = get_addr_mode();
+    if (addr_mode == ABSOLUTE_mode)
+        return fetch_abs_word(offset, wordp);
+#if 0
+    if (addr_mode == BAR_mode) {
+        log_msg(WARN_MSG, "APU::fetch_append", "APU not intended for BAR mode\n");
+        offset += BAR.base << 9;
+        cancel_run(STOP_WARN);
+        return fetch_abs_word(offset, wordp);
+    }
+    if (addr_mode != APPEND_mode) {
+#else
+        if (addr_mode != APPEND_mode && addr_mode != BAR_mode) {
+#endif
+            // impossible
+            log_msg(ERR_MSG, "APU::append", "Unknown mode\n");
+            cancel_run(STOP_BUG);
+            return fetch_abs_word(offset, wordp);
+        }
+        
+// HWR       t_uint64 simh_addr = addr_emul_to_simh(addr_mode, TPR.TSR, offset);
+//        if (sim_brk_summ && sim_brk_test(simh_addr, SWMASK('M'))) {
+//            log_msg(WARN_MSG, "APU", "Memory Breakpoint on read.\n");
+//            cancel_run(STOP_BKPT);
+//        }
+        
+        // FixMe: fix this HWR
+        /*
+        uint addr;
+        uint minaddr, maxaddr;  // results unneeded
+        int ret = page_in(offset, 0, &addr, &minaddr, &maxaddr);
+        if (ret == 0) {
+            if(opt_debug>0) log_msg(DEBUG_MSG, "APU::fetch_append", "Using addr 0%o\n", addr);
+            ret = fetch_abs_word(addr, wordp);
+        } else {
+            if(opt_debug>0) log_msg(DEBUG_MSG, "APU::fetch_append", "page-in faulted\n");
+        }
+        return ret;
+         */
+        return 0;
+    }
+    
+    //=============================================================================
+    
+//    int store_appended(uint offset, t_uint64 word)
+//    {
+//        // Store a word at the given offset in the current segment (if possible).
+//        addr_modes_t addr_mode = get_addr_mode();
+//        if (addr_mode != APPEND_mode && addr_mode != BAR_mode) {
+//            // impossible
+//            log_msg(ERR_MSG, "APU::store-append", "Not APPEND mode\n");
+//            cancel_run(STOP_BUG);
+//        }
+//        
+//        t_uint64 simh_addr = addr_emul_to_simh(addr_mode, TPR.TSR, offset);
+//        if (sim_brk_summ && sim_brk_test(simh_addr, SWMASK('W') | SWMASK('M'))) {
+//            log_msg(WARN_MSG, "APU", "Memory Breakpoint on write.\n");
+//            cancel_run(STOP_IBKPT);
+//        }
+//        
+//        uint addr;
+//        uint minaddr, maxaddr;  // results unneeded
+//        int ret = page_in(offset, 0, &addr, &minaddr, &maxaddr);
+//        if (ret == 0) {
+//            if(opt_debug>0) log_msg(DEBUG_MSG, "APU::store-append", "Using addr 0%o\n", addr);
+//            ret = store_abs_word(addr, word);
+//        } else
+//            if(opt_debug>0) log_msg(DEBUG_MSG, "APU::store-append", "page-in faulted\n");
+//        return ret;
+//    }
+    
+    //=============================================================================
+
+#endif // MM
+    
 DCDstruct *newDCDstruct()
 {
     DCDstruct *p = malloc(sizeof(DCDstruct));
@@ -751,6 +1448,8 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
 
     Read(p, addr, &p->IWB, InstructionFetch, 0);
     
+    cpu.read_addr = addr;
+    
     return decodeInstruction(p->IWB, p);
 }
 
@@ -772,6 +1471,9 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     
     p->iwb = getIWBInfo(p);     // get info for IWB instruction
     
+    // HWR 18 June 2013 
+    p->iwb->opcode = p->opcode;
+    p->IWB = inst;
     
     // is this a multiword EIS?
     if (p->iwb->ndes > 1)
@@ -787,5 +1489,1467 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     //    p->e->ins = p;    // Yes, it's a cycle
     
     return p;
+}
+
+// MM stuff ...
+
+
+
+/*
+ * addr_modes_t get_addr_mode()
+ *
+ * Report what mode the CPU is in.
+ * This is determined by examining a couple of IR flags.
+ *
+ * TODO: get_addr_mode() probably belongs in the CPU source file.
+ *
+ */
+
+addr_modes_t get_addr_mode()
+{
+    //if (IR.abs_mode)
+    if (TSTF(rIR, I_ABS))
+        return ABSOLUTE_mode;
+    
+    //if (IR.not_bar_mode == 0)
+    if (! TSTF(rIR, I_NBAR))
+        return BAR_mode;
+    
+    return APPEND_mode;
+}
+
+
+/*
+ * set_addr_mode()
+ *
+ * Put the CPU into the specified addressing mode.   This involves
+ * setting a couple of IR flags and the PPR priv flag.
+ *
+ */
+
+void set_addr_mode(addr_modes_t mode)
+{
+    if (mode == ABSOLUTE_mode) {
+        IR.abs_mode = 1;
+        SETF(rIR, I_ABS);
+        
+        // FIXME: T&D tape section 3 wants not-bar-mode true in absolute mode,
+        // but section 9 wants false?
+        IR.not_bar_mode = 1;
+        SETF(rIR, I_NBAR);
+        
+        PPR.P = 1;
+        if (opt_debug) log_msg(DEBUG_MSG, "APU", "Setting absolute mode.\n");
+    } else if (mode == APPEND_mode) {
+        if (opt_debug) {
+            if (! IR.abs_mode && IR.not_bar_mode)
+                log_msg(DEBUG_MSG, "APU", "Keeping append mode.\n");
+            else
+                log_msg(DEBUG_MSG, "APU", "Setting append mode.\n");
+        }
+        IR.abs_mode = 0;
+        CLRF(rIR, I_ABS);
+        
+        IR.not_bar_mode = 1;
+        SETF(rIR, I_NBAR);
+        
+    } else if (mode == BAR_mode) {
+        IR.abs_mode = 0;
+        CLRF(rIR, I_ABS);
+        IR.not_bar_mode = 0;
+        CLRF(rIR, I_NBAR);
+        
+        log_msg(WARN_MSG, "APU", "Setting bar mode.\n");
+    } else {
+        log_msg(ERR_MSG, "APU", "Unable to determine address mode.\n");
+        cancel_run(STOP_BUG);
+    }
+    
+    //processorAddressingMode = mode;
+}
+
+
+//=============================================================================
+
+/*
+ ic_hist - Circular queue of instruction history
+ Used for display via cpu_show_history()
+ */
+
+static int ic_hist_max = 0;
+static int ic_hist_ptr;
+static int ic_hist_wrapped;
+enum hist_enum { h_instruction, h_fault, h_intr } htype;
+struct ic_hist_t {
+    addr_modes_t addr_mode;
+    uint seg;
+    uint ic;
+    //enum hist_enum { instruction, fault, intr } htype;
+    enum hist_enum htype;
+    union {
+        int intr;
+        int fault;
+        instr_t instr;
+    } detail;
+};
+
+typedef struct ic_hist_t ic_hist_t;
+
+static ic_hist_t *ic_hist;
+
+void ic_history_init()
+{
+    ic_hist_wrapped = 0;
+    ic_hist_ptr = 0;
+    if (ic_hist != NULL)
+        free(ic_hist);
+    if (ic_hist_max < 60)
+        ic_hist_max = 60;
+    ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
+}
+
+//=============================================================================
+
+static ic_hist_t* ic_history_append()
+{
+    
+    ic_hist_t* ret =  &ic_hist[ic_hist_ptr];
+    
+    if (++ic_hist_ptr == ic_hist_max) {
+        ic_hist_wrapped = 1;
+        ic_hist_ptr = 0;
+    }
+    return ret;
+}
+
+//=============================================================================
+
+// Maintain a queue of recently executed instructions for later display via cmd_dump_history()
+// Caller should make sure IR and PPR are set to the recently executed instruction.
+
+void ic_history_add()
+{
+    if (ic_hist_max == 0)
+        return;
+    ic_hist_t* hist = ic_history_append();
+    hist->htype = h_instruction;
+    hist->addr_mode = get_addr_mode();
+    hist->seg = PPR.PSR;
+    hist->ic = PPR.IC;
+    memcpy(&hist->detail.instr, &cu.IR, sizeof(hist->detail.instr));
+}
+
+//=============================================================================
+
+void ic_history_add_fault(int fault)
+{
+    if (ic_hist_max == 0)
+        return;
+    ic_hist_t* hist = ic_history_append();
+    hist->htype = h_fault;
+    hist->detail.fault = fault;
+}
+
+//=============================================================================
+
+void ic_history_add_intr(int intr)
+{
+    if (ic_hist_max == 0)
+        return;
+    ic_hist_t* hist = ic_history_append();
+    hist->htype = h_intr;
+    hist->detail.intr = intr;
+}
+
+//=============================================================================
+
+int cmd_dump_history(int32 arg, char *buf, int nshow)
+// Dumps the queue of instruction history
+{
+    if (ic_hist_max == 0) {
+        out_msg("History is disabled.\n");
+        return SCPE_NOFNC;
+    }
+    // The queue is implemented via an array and is circular,
+    // so we make up to two passes through the array.
+    int n = (ic_hist_wrapped) ? ic_hist_max : ic_hist_ptr;
+    int n_ignore = (nshow < n) ? n - nshow : 0;
+    for (int wrapped = ic_hist_wrapped; wrapped >= 0; --wrapped) {
+        int start, end;
+        if (wrapped) {
+            start = ic_hist_ptr;
+            end = ic_hist_max;
+        } else {
+            start = 0;
+            end = ic_hist_ptr;
+        }
+        for (int i = start; i < end; ++i) {
+            if (n_ignore-- > 0)
+                continue;
+            switch(ic_hist[i].htype) {
+                case h_instruction: {
+                    int segno = (ic_hist[i].addr_mode == APPEND_mode) ? (int) ic_hist[i].seg: -1;
+        // HWR            print_src_loc("", ic_hist[i].addr_mode, segno, ic_hist[i].ic, &ic_hist[i].detail.instr);
+                    break;
+                }
+                case h_fault:
+                    out_msg("    Fault %#o (%d)\n", ic_hist[i].detail.fault, ic_hist[i].detail.fault);
+                    break;
+                case h_intr:
+                    out_msg("    Interrupt %#o (%d)\n", ic_hist[i].detail.intr, ic_hist[i].detail.intr);
+                    break;
+            }
+        }
+    }
+    return 0;
+}
+
+//=============================================================================
+
+int cpu_show_history(FILE *st, UNIT *uptr, int val, void *desc)
+{
+    // FIXME: use FILE *st
+    
+    if (ic_hist_max == 0) {
+        out_msg("History is disabled.\n");
+        return SCPE_NOFNC;
+    }
+    
+    char* cptr = (char *) desc;
+    int n;
+    if (cptr == NULL)
+        n = ic_hist_max;
+    else {
+        char c;
+        if (sscanf(cptr, "%d %c", &n, &c) != 1) {
+            out_msg("Error, expecting a number.\n");
+            return SCPE_ARG;
+        }
+    }
+    
+    return cmd_dump_history(0, NULL, n);
+}
+
+//=============================================================================
+
+int cpu_set_history (UNIT *uptr, int32 val, char *cptr, void *desc)
+{
+    if (cptr == NULL) {
+        out_msg("Error, usage is set cpu history=<n>\n");
+        return SCPE_ARG;
+    }
+    char c;
+    int n;
+    if (sscanf(cptr, "%d %c", &n, &c) != 1) {
+        out_msg("Error, expecting a number.\n");
+        return SCPE_ARG;
+    }
+    
+    if (n <= 0) {
+        if (ic_hist != NULL)
+            free(ic_hist);
+        ic_hist = NULL;
+        ic_hist_wrapped = 0;
+        ic_hist_ptr = 0;
+        ic_hist_max = 0;
+        out_msg("History disabled\n");
+        return 0;
+    }
+    
+    ic_hist_t* new_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * n);
+    
+    int old_n;
+    int old_head_loc;
+    int old_nhead;  // amount at ptr..end
+    int old_ntail;  // amount at 0..ptr (or all if never wrapped)
+    int old_tail_loc = 0;
+    if (ic_hist_wrapped)  {
+        // data order is ptr..(max-1), 0..ptr-1
+        old_n = ic_hist_max;
+        old_head_loc = ic_hist_ptr;
+        old_nhead = ic_hist_max - ic_hist_ptr;
+        old_ntail = ic_hist_ptr;
+    } else {
+        // data is 0..(ptr-1)
+        old_n = ic_hist_ptr;
+        // old_head_loc = "N/A";
+        old_head_loc = -123;
+        old_nhead = 0;
+        old_ntail = ic_hist_ptr;
+    }
+    int nhead = old_nhead;
+    int ntail = old_ntail;
+    if (old_n > n) {
+        nhead -= old_n - n; // lose some of the earlier stuff
+        if (nhead < 0) {
+            // under flow, use none of ptr..end and lose some of 0..ptr
+            ntail += nhead;
+            old_tail_loc -= nhead;
+            nhead = 0;
+        } else
+            old_head_loc += old_n - n;
+    }
+    if (nhead != 0)
+        memcpy(new_hist, ic_hist + old_head_loc, sizeof(*new_hist) * nhead);
+    if (ntail != 0)
+        memcpy(new_hist + nhead, ic_hist, sizeof(*new_hist) * ntail);
+    if (ic_hist != 0)
+        free(ic_hist);
+    ic_hist = new_hist;
+    
+    if (n <= old_n)  {
+        ic_hist_ptr = 0;
+        ic_hist_wrapped = 1;
+    } else {
+        ic_hist_ptr = old_n;
+        ic_hist_wrapped = 0;
+    }
+    
+    if (n >= ic_hist_max)
+        if (ic_hist_max == 0)
+            out_msg("History enabled.\n");
+        else
+            out_msg("History increased from %d entries to %d.\n", ic_hist_max, n);
+        else
+            out_msg("History reduced from %d entries to %d.\n", ic_hist_max, n);
+    
+    ic_hist_max = n;
+    
+    return 0;
+}
+
+// ============================================================================
+ 
+DCDstruct *copy2DCDstruct(instr_t *ip)
+{
+    DCDstruct *i = currentInstruction;
+    
+    return decodeInstruction(ip->wordEven, i);
+}
+    
+static uint saved_tro;
+
+static int do_an_op(instr_t *ip)
+{
+    // Returns non-zero on error or non-group-7  fault
+    // BUG: check for illegal modifiers
+    
+    DCDstruct *id = copy2DCDstruct(ip);
+    
+    cpu.opcode = ip->opcode;
+        
+    uint op = ip->opcode;
+    char *opname = opcodes2text[op];
+        
+    cu.rpts = 0;    // current instruction isn't a repeat type instruction (as far as we know so far)
+    saved_tro = IR.tally_runout;
+        
+    int bit27 = op % 2;
+    op >>= 1;
+    if (opname == NULL) {
+        if (op == 0172 && bit27 == 1) {
+            log_msg(WARN_MSG, "OPU", "Unavailable instruction 0172(1).  The ldo  instruction is only available on ADP aka ORION aka DPS88.  Ignoring instruction.\n");
+            cancel_run(STOP_BUG);
+            return 0;
+        }
+        log_msg(WARN_MSG, "OPU", "Illegal opcode %03o(%d)\n", op, bit27);
+        fault_gen(illproc_fault);
+        return 1;
+    } else {
+        if (opt_debug) log_msg(DEBUG_MSG, "OPU", "Opcode %#o(%d) -- %s\n", op, bit27, disAssemble(id->IWB));    //instr2text(ip));
+    }
+        
+    // Check instr type for format before addr_mod
+    // Todo: check efficiency of lookup table versus switch table
+    // Also consider placing calls to addr_mod() in next switch table
+    flag_t initial_tally = IR.tally_runout;
+    cpu.poa = 1;        // prepare operand address flag
+    
+    word36 word;
+    if (id->iwb->flags & (READ_OPERAND | PREPARE_CA))
+    {
+        int ret = fetch_word_MM(ip, &word);
+        if (!ret)
+        {
+            if (id->iwb->flags & READ_OPERAND)
+                CY = word;
+            TPR.CA = ip->addr;
+        }
+    }
+    t_stat r = doInstruction(id);
+    if (r == CONT_TRA)
+        cpu.trgo = 1;
+    
+    return 0;
+}
+
+static int do_op(instr_t *ip)
+{
+    // Wrapper for do_an_op() with detection of change in address mode (for debugging).
+        
+    ++ sys_stats.n_instr;
+#if FEAT_INSTR_STATS
+    ++ sys_stats.instr[ip->opcode].nexec;
+#if FEAT_INSTR_STATS_TIMING
+    uint32 start = sim_os_msec();
+#endif
+#endif
+        
+//HWR   do_18bit_math = 0;
+    // do_18bit_math = (switches.FLT_BASE != 2);    // diag tape seems to want this, probably inappropriately
+        
+    addr_modes_t orig_mode = get_addr_mode();
+    int orig_ic = PPR.IC;
+        
+#if 0
+    if (ip->is_eis_multiword) {
+        extern DEVICE cpu_dev;
+        ++opt_debug; ++ cpu_dev.dctrl;  // BUG
+    }
+#endif
+    int ret = do_an_op(ip);
+#if 0
+    if (ip->is_eis_multiword) {
+        extern DEVICE cpu_dev;
+        --opt_debug; --cpu_dev.dctrl;   // BUG
+    }
+#endif
+    
+    addr_modes_t mode = get_addr_mode();
+    if (orig_mode != mode) {
+        if (orig_ic == PPR.IC) {
+            if (cpu.trgo)
+                log_msg(WARN_MSG, "OPU", "Transfer to current location detected; Resetting addr mode as if it were sequential\n");
+                set_addr_mode(orig_mode);
+                log_msg(DEBUG_MSG, "OPU", "Resetting addr mode for sequential instr\n");
+            } else {
+                log_msg(NOTIFY_MSG, "OPU", "Address mode has been changed with an IC change.  Was %#o, now %#o\n", orig_ic, PPR.IC);
+                if (switches.FLT_BASE == 2) {
+                    cancel_run(STOP_BKPT);
+                    log_msg(NOTIFY_MSG, "OPU", "Auto breakpoint.\n");
+            }
+        }
+    }
+        
+#if FEAT_INSTR_STATS
+#if FEAT_INSTR_STATS_TIMING
+    sys_stats.instr[ip->opcode].nmsec += sim_os_msec() - start;
+#endif
+#endif
+    
+    return ret;
+    }
+
+void execute_instr(void)
+{
+    // execute whatever instruction is in the IR (not whatever the IC points at)
+    // BUG: handle interrupt inhibit
+        
+    do_op(&cu.IR);
+}
+
+    
+/*
+ *  execute_ir()
+ *
+ *  execute whatever instruction is in the IR instruction register (and
+ *  not whatever the IC points at)
+ */
+    
+static void execute_ir_MM(void)
+{
+    cpu.trgo = 0;       // will be set true by instructions that alter flow
+    execute_instr();    // located in opu.c
+}
+
+t_stat execute_ir(DCDstruct *i)
+{
+    cpu.trgo = 0;       // will be set true by instructions that alter flow
+    
+    cpu.opcode = i->opcode << 1 | i->opcodeX;
+    
+    uint op = cpu.opcode;
+    char *opname = opcodes2text[op];
+    
+    cu.rpts = 0;    // current instruction isn't a repeat type instruction (as far as we know so far)
+    saved_tro = IR.tally_runout;
+    
+    int bit27 = op % 2;
+    op >>= 1;
+    if (opname == NULL) {
+        if (op == 0172 && bit27 == 1) {
+            log_msg(WARN_MSG, "OPU", "Unavailable instruction 0172(1).  The ldo  instruction is only available on ADP aka ORION aka DPS88.  Ignoring instruction.\n");
+            cancel_run(STOP_BUG);
+            return 0;
+        }
+        log_msg(WARN_MSG, "OPU", "Illegal opcode %03o(%d)\n", op, bit27);
+        fault_gen(illproc_fault);
+        return 1;
+    } else {
+        if (opt_debug) log_msg(DEBUG_MSG, "OPU", "Opcode %#o(%d) -- %s\n", op, bit27, disAssemble(i->IWB)); 
+    }
+    
+    // Check instr type for format before addr_mod
+    // Todo: check efficiency of lookup table versus switch table
+    // Also consider placing calls to addr_mod() in next switch table
+    flag_t initial_tally = IR.tally_runout;
+    cpu.poa = 1;        // prepare operand address flag
+
+    
+    
+    
+    t_stat ret = executeInstruction(i);
+    if (ret == CONT_TRA)
+    {
+        cpu.trgo = 1;
+        cpu.irodd_invalid = 1;
+    }
+    return ret;
+}
+
+//=============================================================================
+    
+
+/*
+ *  control_unit()
+ *
+ *  Emulation of the control unit -- fetch cycle, execute cycle,
+ *  interrupt handling, fault handling, etc.
+ *
+ *  We allow SIMH to regain control between any of the cycles of
+ *  the control unit.   This includes returning to SIMH on fault
+ *  detection and between the even and odd words of a fetched
+ *  two word instruction pair.   See cancel_run().
+ */
+
+void cu_safe_store();
+
+static t_stat control_unit(void)
+{
+    // ------------------------------------------------------------------------
+    
+    // See the following portions of AL39:
+    //    Various registers in Section 3: "CONTROL UNIT DATA", IR, Fault, etc
+    //    Note word 5 etc in control unit data
+    //    All of Section 7
+    
+    // SEE ALSO
+    //  AN87 -- CPU history registers (interrupt is present, etc)
+    //  AN87 -- Mode register's overlap inhibit settings
+    
+    // ------------------------------------------------------------------------
+    
+    // BUG: Check non group 7 faults?  No, expect cycle to have been reset
+    // to FAULT_cycle
+    
+    int reason = 0;
+    int break_on_fault = switches.FLT_BASE == 2;    // on for multics, off for t&d tape
+    
+    switch(cpu.cycle) {
+        case DIS_cycle: {
+            // TODO: Use SIMH's idle facility
+            // Until then, just freewheel
+            //
+            // We should probably use the inhibit flag to determine
+            // whether or not to examine faults.  However, it appears
+            // that we should accept external interrupts regardless of
+            // the inhibit flag.   See AL-39 discussion of the timer
+            // register for hints.
+            if (events.int_pending) {
+                cpu.cycle = INTERRUPT_cycle;
+                if (cpu.ic_odd && ! cpu.irodd_invalid) {
+                    log_msg(NOTIFY_MSG, "CU", "DIS sees an interrupt.\n");
+                    log_msg(WARN_MSG, "CU", "Previously fetched odd instruction will be ignored.\n");
+                    cancel_run(STOP_WARN);
+                } else {
+                    log_msg(NOTIFY_MSG, "CU", "DIS sees an interrupt; Auto breakpoint.\n");
+                    cancel_run(STOP_BKPT);
+                }
+                break;
+            }
+            // No interrupt pending; will we ever see one?
+            uint32 n = sim_qcount();
+            if (n == 0) {
+                log_msg(ERR_MSG, "CU", "DIS instruction running, but no activities are pending.\n");
+                reason = STOP_BUG;
+            } else
+                log_msg(DEBUG_MSG, "CU", "Delaying until an interrupt is set.\n");
+            break;
+        }
+            
+        case FETCH_cycle:
+            if (opt_debug) log_msg(DEBUG_MSG, "CU", "Cycle = FETCH; IC = %0o (%dd)\n", PPR.IC, PPR.IC);
+            // If execution of the current pair is complete, the processor
+            // checks two? internal flags for group 7 faults and/or interrupts.
+            if (events.any) {
+                if (cu.IR.inhibit)
+                    log_msg(DEBUG_MSG, "CU", "Interrupt or Fault inhibited.\n");
+                else {
+                    if (break_on_fault) {
+                        log_msg(WARN_MSG, "CU", "Fault: auto breakpoint\n");
+                        (void) cancel_run(STOP_BKPT);
+                    }
+                    if (events.low_group != 0) {
+                        // BUG: don't need test below now that we detect 1-6 here
+                        if (opt_debug>0) log_msg(DEBUG_MSG, "CU", "Fault detected prior to FETCH\n");
+                        cpu.cycle = FAULT_cycle;
+                        break;
+                    }
+                    if (events.group7 != 0) {
+                        // Group 7 -- See tally runout in IR, connect fields of the
+                        // fault register.  DC power off must come via an interrupt?
+                        if (opt_debug>0) log_msg(DEBUG_MSG, "CU", "Fault detected prior to FETCH\n");
+                        cpu.cycle = FAULT_cycle;
+                        break;
+                    }
+                    if (events.int_pending) {
+                        if (opt_debug>0) log_msg(DEBUG_MSG, "CU", "Interrupt detected prior to FETCH\n");
+                        cpu.cycle = INTERRUPT_cycle;
+                        break;
+                    }
+                }
+            }
+            // Fetch a pair of words
+            // AL39, 1-13: for fetches, procedure pointer reg (PPR) is
+            // ignored. [PPR IC is a dup of IC]
+            cpu.ic_odd = PPR.IC % 2;    // don't exec even if fetch from odd
+            cpu.cycle = EXEC_cycle;
+            TPR.TSR = PPR.PSR;
+            TPR.TRR = PPR.PRR;
+            cu.instr_fetch = 1;
+            
+            //if (fetch_instr_MM(PPR.IC - PPR.IC % 2, &cu.IR) != 0) {
+            if (fetch_instr(PPR.IC - PPR.IC % 2, &currentInstruction) != 0) {
+                cpu.cycle = FAULT_cycle;
+                cpu.irodd_invalid = 1;
+            } else {
+#if 0
+                t_uint64 simh_addr = addr_emul_to_simh(get_addr_mode(), PPR.PSR, PPR.IC - PPR.IC % 2);
+
+                if (sim_brk_summ && sim_brk_test (simh_addr, SWMASK ('E'))) {
+                    log_msg(WARN_MSG, "CU", "Execution Breakpoint (fetch even)\n");
+                    reason = STOP_IBKPT;    /* stop simulation */
+                }
+#endif
+                if (fetch_word(currentInstruction, PPR.IC - PPR.IC % 2 + 1, &cu.IRODD) != 0) {
+                    cpu.cycle = FAULT_cycle;
+                    cpu.irodd_invalid = 1;
+                } else {
+#if 0
+// HWR                   t_uint64 simh_addr = addr_emul_to_simh(get_addr_mode(), PPR.PSR, PPR.IC - PPR.IC % 2 + 1);
+//                    if (sim_brk_summ && sim_brk_test (simh_addr, SWMASK ('E'))) {
+//                        log_msg(WARN_MSG, "CU", "Execution Breakpoint (fetch odd)\n");
+//                        reason = STOP_IBKPT;    /* stop simulation */
+//                    }
+#endif
+                    cpu.irodd_invalid = 0;
+                    if (opt_debug && get_addr_mode() != ABSOLUTE_mode)
+                        log_msg(DEBUG_MSG, "CU", "Fetched odd half of instruction pair from %06o %012llo\n", PPR.IC - PPR.IC % 2 + 1, cu.IRODD);
+                }
+            }
+            cpu.IC_abs = cpu.read_addr;
+            cu.instr_fetch = 0;
+            break;
+            
+#if 0
+            // we don't use an ABORT cycle
+        case ABORT_cycle:
+            log_msg(DEBUG_MSG, "CU", "Cycle = ABORT\n");
+            // Invoked when control unit decides to handle fault
+            // Bring all overlapped functions to an orderly halt -- however,
+            // the simulator has no overlapped functions?
+            // Also bring asynchronous functions within the processor
+            // to an orderly halt -- TODO -- do we have any?
+            cpu.cycle = FAULT_cycle;
+            break;
+#endif
+            
+        case FAULT_cycle:
+        {
+            log_msg(INFO_MSG, "CU", "Cycle = FAULT\n");
+            
+            // First, find the highest fault.   Group 7 type faults are handled
+            // as a special case.  Group 7 faults have different detection
+            // rules and there can be multiple pending  faults for group 7.
+            
+            int fault = 0;
+            int group = 0;
+            if (events.low_group != 0 && events.low_group <= 6) {
+                group = events.low_group;
+                fault = events.fault[group];
+                if (fault == 0) {
+                    log_msg(ERR_MSG, "CU", "Lost fault\n");
+                    cancel_run(STOP_BUG);
+                }
+            }
+            if (fault == 0) {
+                if (events.group7 == 0) {
+                    // bogus fault
+                    log_msg(ERR_MSG, "CU", "Fault cycle with no faults set\n");
+                    reason = STOP_BUG;
+                    events.any = events.int_pending;    // recover
+                    cpu.cycle = FETCH_cycle;
+                    break;
+                } else {
+                    // find highest priority group 7 fault
+                    int hi = -1;
+                    int i;
+                    for (i = 0; i < 31; ++i) {
+                        if (fault2group[i] == 7 && (events.group7 & (1<<fault)))
+                            if (hi == -1 || fault2prio[i] < fault2prio[hi])
+                                hi = i;
+                    }
+                    if (hi == -1) {
+                        // no group 7 fault
+                        log_msg(ERR_MSG, "CU", "Fault cycle with missing group-7 fault\n");
+                        reason = STOP_BUG;
+                        events.any = events.int_pending;    // recover
+                        cpu.cycle = FETCH_cycle;
+                        break;
+                    } else {
+                        fault = hi;
+                        group = 7;
+                    }
+                }
+            }
+            ic_history_add_fault(fault);
+            log_msg(DEBUG_MSG, "CU", "fault = %d (group %d)\n", fault, group);
+            if (fault != trouble_fault)
+                cu_safe_store();
+            
+            // Faults cause the CPU to go into absolute mode.  The CPU will
+            // remain in absolute mode until execution of a transfer instr
+            // whose operand is obtained via explicit use of the appending
+            // HW mechanism -- AL39, 1-3
+            set_addr_mode(ABSOLUTE_mode);
+            
+            // We found a fault.
+            // BUG: should we clear the fault?  Or does scr instr do that? Or
+            // maybe the OS's fault handling routines do it?   At the
+            // moment, we clear it and find the next pending fault.
+            // Above was written before we had FR and scpr; perhaps
+            // we need to revist the transitions to/from FAULT cycles.
+            // AL-39, section 1 says that faults and interrupts are
+            // cleared when their trap occurs (that is when the CPU decides
+            // to recognize a perhaps delayed signal).
+            // Morever, AN71-1 says that the SCU clears the interrupt cell after
+            // reporting to the CPU the value of the highest priority interrupt.
+            
+            int next_fault = 0;
+            if (group == 7) {
+                // BUG: clear group 7 fault
+                log_msg(ERR_MSG, "CU", "BUG: Fault group-7\n");
+            } else {
+                events.fault[group] = 0;
+                // Find next remaining fault (and its group)
+                events.low_group = 0;
+                for (group = 0; group <= 6; ++ group) {
+                    if ((next_fault = events.fault[group]) != 0) {
+                        events.low_group = group;
+                        break;
+                    }
+                }
+                if (! events.low_group)
+                    if (events.group7 != 0)
+                        events.low_group = 7;
+            }
+            events.any = events.int_pending || events.low_group != 0;
+            
+            // Force computed addr and xed opcode into the instruction
+            // register and execute (during FAULT CYCLE not EXECUTE CYCLE).
+            // The code below is much the same for interrupts and faults...
+            
+            PPR.PRR = 0;    // set ring zero
+            uint addr = (switches.FLT_BASE << 5) + 2 * fault; // ABSOLUTE mode
+            cu.IR.addr = addr;
+            cu.IR.opcode = (opcode0_xed << 1);
+            cu.IR.inhibit = 1;
+            cu.IR.mods.single.pr_bit = 0;
+            cu.IR.mods.single.tag = 0;
+            
+            // Maybe instead of calling execute_ir(), we should just set a
+            // flag and run the EXEC case?  // Maybe the following increments
+            // and tests could be handled by EXEC and/or the XED opcode?
+            
+            // Update history (show xed at current location; next two will be addr and addr+1
+            //uint IC_temp = PPR.IC;
+            //PPR.IC = addr;
+            ic_history_add();       // record the xed
+            //PPR.IC = IC_temp;
+            
+            // TODO: Check for SIMH breakpoint on execution for the addr of
+            // the XED instruction.  Or, maybe check in the code for the
+            // xed opcode.
+            log_msg(DEBUG_MSG, "CU::fault", "calling execute_ir() for xed\n");
+            
+            word36 xr= cu.IR.addr << 18;
+            xr |= cu.IR.opcode << 8;
+            xr |= cu.IR.inhibit << 7;
+            
+            DCDstruct i;
+            decodeInstruction(xr, &i);
+            
+            execute_ir(& i);   // executing in FAULT CYCLE, not EXECUTE CYCLE
+            if (break_on_fault) {
+                log_msg(WARN_MSG, "CU", "Fault: auto breakpoint\n");
+                (void) cancel_run(STOP_BKPT);
+            }
+            
+            if (events.any && events.fault[fault2group[trouble_fault]] == trouble_fault) {
+                // Fault occured during execution, so fault_gen() flagged
+                // a trouble fault
+                // Stay in FAULT CYCLE
+                log_msg(WARN_MSG, "CU", "re-faulted, remaining in fault cycle\n");
+            } else {
+                // cycle = FAULT_EXEC_cycle;
+                //cpu.cycle = EXEC_cycle;       // NOTE: scu will be in EXEC not FAULT cycle
+                cpu.cycle = FAULT_EXEC_cycle;
+                events.xed = 1;     // BUG: is this a hack?
+            }
+        } // end case FAULT_cycle
+            break;
+            
+        case INTERRUPT_cycle: {
+            // This code is just a quick-n-dirty sketch to test booting via
+            // an interrupt instead of via a fault
+            
+            // TODO: Merge the INTERRUPT_cycle and FAULT_cycle code
+            
+            // The CPU will
+            // remain in absolute mode until execution of a transfer instr
+            // whose operand is obtained via explicit use of the appending
+            // HW mechanism -- AL39, 1-3
+            set_addr_mode(ABSOLUTE_mode);
+            
+            log_msg(WARN_MSG, "CU", "Interrupts only partially implemented\n");
+            int intr;
+            for (intr = 0; intr < 32; ++intr)
+                if (events.interrupts[intr])
+                    break;
+            if (intr == 32) {
+                log_msg(ERR_MSG, "CU", "Interrupt cycle with no pending interrupt.\n");
+                // BUG: Need error handling
+            }
+            ic_history_add_intr(intr);
+            log_msg(WARN_MSG, "CU", "Interrupt %#o (%d) found.\n", intr, intr);
+            events.interrupts[intr] = 0;
+            
+            // Force computed addr and xed opcode into the instruction
+            // register and execute (during INTERRUPT CYCLE not EXECUTE CYCLE).
+            // The code below is much the same for interrupts and faults...
+            
+            PPR.PRR = 0;    // set ring zero
+            const int interrupt_base = 0;
+            uint addr = interrupt_base + 2 * intr; // ABSOLUTE mode
+            cu.IR.addr = addr;
+            cu.IR.opcode = (opcode0_xed << 1);
+            cu.IR.inhibit = 1;
+            cu.IR.mods.single.pr_bit = 0;
+            cu.IR.mods.single.tag = 0;
+            
+            // Maybe instead of calling execute_ir(), we should just set a
+            // flag and run the EXEC case?  // Maybe the following increments
+            // and tests could be handled by EXEC and/or the XED opcode?
+            
+            // Update history
+            uint IC_temp = PPR.IC;
+            // PPR.IC = 0;
+            ic_history_add();       // record the xed
+            PPR.IC = IC_temp;
+            
+            // TODO: Check for SIMH breakpoint on execution for the addr of
+            // the XED instruction.  Or, maybe check in the code for the
+            // xed opcode.
+            log_msg(DEBUG_MSG, "CU::interrupt", "calling execute_ir() for xed\n");
+            
+            word36 xr= cu.IR.addr << 18;
+            xr |= cu.IR.opcode << 8;
+            xr |= cu.IR.inhibit << 7;
+            
+            DCDstruct i;
+            decodeInstruction(xr, &i);
+            execute_ir(&i);   // executing in INTERRUPT CYCLE, not EXECUTE CYCLE
+            log_msg(WARN_MSG, "CU", "Interrupt -- lightly tested\n");
+            (void) cancel_run(STOP_BKPT);
+            
+            // We executed an XED just above.  XED set various CPU flags.
+            // So, now, set the CPU into the EXEC cycle so that the
+            // instructions referenced by the XED will be executed.
+            // cpu.cycle = FAULT_EXEC_cycle;
+            // cpu.cycle = EXEC_cycle;
+            cpu.cycle = FAULT_EXEC_cycle;
+            events.xed = 1;     // BUG: is this a hack?
+            events.int_pending = 0;     // FIXME: make this a counter
+            for (intr = 0; intr < 32; ++intr)
+                if (events.interrupts[intr]) {
+                    events.int_pending = 1;
+                    break;
+                }
+            if (!events.int_pending && ! events.low_group && ! events.group7)
+                events.any = 0;
+            break;
+        }   // end case INTERRUPT_cycle
+            
+        case EXEC_cycle:
+            // Assumption: IC will be at curr instr, even
+            // when we're ready to execute the odd half of the pair.
+            // Note that the fetch cycle sets the cpu.ic_odd flag.
+            TPR.TSR = PPR.PSR;
+            TPR.TRR = PPR.PRR;
+            
+            // Fall through -- FAULT_EXEC_cycle is a subset of EXEC_cycle
+            
+        case FAULT_EXEC_cycle:
+        {
+            // FAULT-EXEC is a pseudo cycle not present in the actual
+            // hardware.  The hardware does execute intructions (e.g. a
+            // fault's xed) in a FAULT cycle.   We should be able to use the
+            // FAULT-EXEC cycle for this to gain code re-use.
+            
+            flag_t do_odd = 0;
+            
+            // We need to know if we should execute an instruction from the
+            // normal fetch process or an extruction loaded by XDE.  The
+            // answer controls whether we execute a buffered even instruction
+            // or a buffered odd instruction.
+            int doing_xde = cu.xde;
+            int doing_xdo = cu.xdo;
+            if (doing_xde) {
+                if (cu.xdo)     // xec too common
+                    log_msg(INFO_MSG, "CU", "XDE-EXEC even\n");
+                else
+                    log_msg(DEBUG_MSG, "CU", "XDE-EXEC even\n");
+            } else if (doing_xdo) {
+                log_msg(INFO_MSG, "CU", "XDE-EXEC odd\n");
+                do_odd = 1;
+            } else if (! cpu.ic_odd) {
+                if (opt_debug)
+                    log_msg(DEBUG_MSG, "CU", "Cycle = EXEC, even instr\n");
+            } else {
+                if (opt_debug)
+                    log_msg(DEBUG_MSG, "CU", "Cycle = EXEC, odd instr\n");
+                do_odd = 1;
+            }
+            if (do_odd) {
+                // Our previously buffered odd location instruction may have
+                // later been invalidated by a write to that location.
+                if (cpu.irodd_invalid) {
+                    cpu.irodd_invalid = 0;
+                    if (cpu.cycle != FETCH_cycle) {
+                        // Auto-breakpoint for multics, but not the T&D tape.
+                        // The two tapes use different fault vectors.
+                        if (switches.FLT_BASE == 2) {
+                            // Multics boot tape
+                            reason = STOP_BKPT;    /* stop simulation */
+                            log_msg(NOTIFY_MSG, "CU", "Invalidating cached odd instruction; auto breakpoint\n");
+                        } else
+                            log_msg(NOTIFY_MSG, "CU", "Invalidating cached odd instruction.\n");
+                        cpu.cycle = FETCH_cycle;
+                    }
+                    break;
+                }
+                decode_instr(&cu.IR, cu.IRODD);
+            }
+            
+            // Do we have a breakpoint here?
+// HWR           if (sim_brk_summ) {
+//                t_uint64 simh_addr = addr_emul_to_simh(get_addr_mode(), PPR.PSR, PPR.IC);
+//                if (sim_brk_test (simh_addr, SWMASK ('E'))) {
+//                    // BUG: misses breakpoints on target of xed, rpt, and
+//                    // similar instructions because those instructions don't
+//                    // update the IC.  Some of those instructions
+//                    // do however provide their own breakpoint checks.
+//                    log_msg(WARN_MSG, "CU", "Execution Breakpoint\n");
+//                    reason = STOP_BKPT;    /* stop simulation */
+//                    break;
+//                }
+//            }
+            
+            // We assume IC always points to the correct instr -- should
+            // be advanced after even instr
+            uint IC_temp = PPR.IC;
+            // Munge PPR.IC for history debug
+            if (cu.xde)
+                PPR.IC = TPR.CA;
+            else
+                if (cu.xdo) {
+                    // BUG: This lie may be wrong if prior instr updated TPR.CA, so
+                    // we should probably remember the prior xde addr
+                    PPR.IC = TPR.CA + 1;
+                }
+            ic_history_add();
+            PPR.IC = IC_temp;
+            
+            //execute_ir();
+            execute_ir(currentInstruction);  // HWR
+            
+            // Check for fault from instr
+            // todo: simplify --- cycle won't be EXEC anymore
+            // Note: events.any zeroed by fault handler prior to xed even
+            // if other events are pending, so if it's on now, we have a
+            // new fault
+            
+            // Only fault groups 1-6 are recognized here, not interrupts or
+            // group 7 faults
+            flag_t is_fault = events.any && events.low_group && events.low_group < 7;
+            if (is_fault) {
+                log_msg(WARN_MSG, "CU", "Probable fault detected after instruction execution\n");
+                if (PPR.IC != IC_temp) {
+                    // Our OPU always advances the IC, but should not do so
+                    // on faults, so we restore it
+                    log_msg(INFO_MSG, "CU", "Restoring IC to %06o (from %06o)\n",
+                            IC_temp, PPR.IC);
+                    // Note: Presumably, none of the instructions that change the PPR.PSR
+                    // are capable of generating a fault after doing so...
+                    PPR.IC = IC_temp;
+                }
+                if (doing_xde || doing_xdo) {
+                    char *which = doing_xde ? "even" : "odd";
+                    log_msg(WARN_MSG, "CU", "XED %s instruction terminated by fault.\n", which);
+                    // Note that we don't clear xde and xdo because they might
+                    // be about to be stored by scu. Since we'll be in a FAULT
+                    // cycle next, both flags will be set as part of the fault
+                    // handler's xed
+                }
+                if (cu.rpt) {
+                    log_msg(WARN_MSG, "CU", "Repeat instruction terminated by fault.\n");
+                    cu.rpt = 0;
+                }
+            }
+            if (! is_fault) {
+                // Special handling for RPT and other "repeat" instructions
+                if (cu.rpt) {
+                    if (cu.rpts) {
+                        // Just executed the RPT instr.
+                        cu.rpts = 0;    // finished "starting"
+                        ++ PPR.IC;
+                        if (! cpu.ic_odd)
+                            cpu.ic_odd = 1;
+                        else
+                            cpu.cycle = FETCH_cycle;
+                    } else {
+                        // Executed a repeated instruction
+                        // log_msg(WARN_MSG, "CU", "Address handing for repeated instr was probably wrong.\n");
+                        // Check for tally runout or termination conditions
+                        uint t = reg_X[0] >> 10; // bits 0..7 of 18bit register
+                        if (cu.repeat_first && t == 0)
+                            t = 256;
+                        cu.repeat_first = 0;
+                        --t;
+                        reg_X[0] = ((t&0377) << 10) | (reg_X[0] & 01777);
+                        // Note that we increment X[n] here, not in the APU.
+                        // So, for instructions like cmpaq, the index register
+                        // points to the entry after the one found.
+                        int n = cu.tag & 07;
+                        reg_X[n] += cu.delta;
+                        if (opt_debug) log_msg(DEBUG_MSG, "CU", "Incrementing X[%d] by %#o to %#o.\n", n, cu.delta, reg_X[n]);
+                        // Note that the code in bootload_tape.alm expects that
+                        // the tally runout *not* be set when both the
+                        // termination condition is met and bits 0..7 of
+                        // reg X[0] hits zero.
+                        if (t == 0) {
+                            IR.tally_runout = 1;
+                            cu.rpt = 0;
+                            if (opt_debug) log_msg(DEBUG_MSG, "CU", "Repeated instruction hits tally runout; halting rpt.\n");
+                        }
+                        // Check for termination conditions -- even if we hit
+                        // the tally runout
+                        // Note that register X[0] is 18 bits
+                        int terminate = 0;
+                        if (getbit18(reg_X[0], 11))
+                            terminate |= IR.zero;
+                        if (getbit18(reg_X[0], 12))
+                            terminate |= ! IR.zero;
+                        if (getbit18(reg_X[0], 13))
+                            terminate |= IR.neg;
+                        if (getbit18(reg_X[0], 14))
+                            terminate |= ! IR.neg;
+                        if (getbit18(reg_X[0], 15))
+                            terminate |= IR.carry;
+                        if (getbit18(reg_X[0], 16))
+                            terminate |= ! IR.carry;
+                        if (getbit18(reg_X[0], 17)) {
+                            log_msg(DEBUG_MSG, "CU", "Checking termination conditions for overflows.\n");
+                            // Process overflows -- BUG: what are all the
+                            // types of overflows?
+                            if (IR.overflow || IR.exp_overflow) {
+                                if (IR.overflow_mask)
+                                    IR.overflow = 1;
+                                else
+                                    fault_gen(overflow_fault);
+                                terminate = 1;
+                            }
+                        }
+                        if (terminate) {
+                            cu.rpt = 0;
+                            log_msg(DEBUG_MSG, "CU", "Repeated instruction meets termination condition.\n");
+                            IR.tally_runout = 0;
+                            // BUG: need IC incr, etc
+                        } else {
+                            if (! IR.tally_runout)
+                                if (opt_debug>0) log_msg(DEBUG_MSG, "CU", "Repeated instruction will continue.\n");
+                        }
+                    }
+                    // TODO: if rpt double incr PPR.IC with wrap
+                }
+                // Retest cu.rpt -- we might have just finished repeating
+                if (cu.rpt) {
+                    // Don't do anything
+                } else if (doing_xde) {
+                    cu.xde = 0;
+                    if (cpu.trgo) {
+                        log_msg(NOTIFY_MSG, "CU", "XED even instruction was a transfer\n");
+                        check_events();
+                        cu.xdo = 0;
+                        events.xed = 0;
+                        cpu.cycle = FETCH_cycle;
+                    } else {
+                        if (cu.IR.is_eis_multiword) {
+                            log_msg(WARN_MSG, "CU", "XEC/XED may mishandle EIS MW instructions; IC changed from %#o to %#o\n", IC_temp, PPR.IC);
+                            (void) cancel_run(STOP_BUG);
+                            -- PPR.IC;
+                        }
+                        if (cu.xdo)
+                            log_msg(INFO_MSG, "CU", "Resetting XED even flag\n");
+                        else {
+                            // xec is very common, so use level debug
+                            log_msg(DEBUG_MSG, "CU", "Resetting XED even flag\n");
+                            ++ PPR.IC;
+                        }
+                        // BUG? -- do we need to reset events.xed if cu.xdo
+                        // isn't set?  -- but xdo must be set unless xed
+                        // doesn't really mean double...
+                    }
+                } else if (doing_xdo) {
+                    log_msg(INFO_MSG, "CU", "Resetting XED odd flag\n");
+                    cu.xdo = 0;
+                    if (events.xed) {
+                        events.xed = 0;
+                        if (events.any)
+                            log_msg(NOTIFY_MSG, "CU", "XED was from fault or interrupt; other faults and/or interrupts occured during XED\n");
+                        else {
+                            log_msg(NOTIFY_MSG, "CU", "XED was from fault or interrupt; checking if lower priority faults exist\n");
+                            check_events();
+                        }
+                    }
+                    cpu.cycle = FETCH_cycle;
+                    if (!cpu.trgo) {
+                        if (PPR.IC == IC_temp)
+                            ++ PPR.IC;
+                        else
+                            if (cu.IR.is_eis_multiword)
+                                log_msg(INFO_MSG, "CU", "Not updating IC after XED because EIS MW instruction updated the IC from %#o to %#o\n", IC_temp, PPR.IC);
+                            else
+                                log_msg(WARN_MSG, "CU", "No transfer instruction in XED, but IC changed from %#o to %#o\n", IC_temp, PPR.IC);
+                    }
+                } else if (! cpu.ic_odd) {
+                    // Performed non-repeat instr at even loc (or finished the
+                    // last repetition)
+                    if (cpu.cycle == EXEC_cycle) {
+                        // After an xde, we'll increment PPR.IC.   Setting
+                        // cpu.ic_odd will be ignored.
+                        if (cpu.trgo) {
+                            // IC changed; previously fetched instr for odd location isn't any good now
+                            cpu.cycle = FETCH_cycle;
+                        } else {
+                            if (PPR.IC == IC_temp) {
+                                // cpu.ic_odd ignored if cu.xde or cu.xdo
+                                cpu.ic_odd = 1; // execute odd instr of current pair
+                                if (! cu.xde && ! cu.xdo)
+                                    ++ PPR.IC;
+                                else
+                                    log_msg(DEBUG_MSG, "CU", "Not advancing IC after even instr because of xde/xdo\n");
+                            } else {
+                                if (cpu.irodd_invalid) {
+                                    // possibly an EIS multi-word instr
+                                } else
+                                    log_msg(NOTIFY_MSG, "CU", "No transfer instruction and IRODD not invalidated, but IC changed from %#o to %#o; changing to fetch cycle\n", IC_temp, PPR.IC);
+                                cpu.cycle = FETCH_cycle;
+                            }
+                        }
+                    } else {
+                        log_msg(WARN_MSG, "CU", "Changed from EXEC cycle to %d, not updating IC\n", cpu.cycle);
+                    }
+                } else {
+                    // Performed non-repeat instr at odd loc (or finished last
+                    // repetition)
+                    if (cpu.cycle == EXEC_cycle) {
+                        if (cpu.trgo) {
+                            cpu.cycle = FETCH_cycle;
+                        } else {
+                            if (PPR.IC == IC_temp) {
+                                if (cu.xde || cu.xdo)
+                                    log_msg(INFO_MSG, "CU", "Not advancing IC or fetching because of cu.xde or cu.xdo.\n");
+                                else {
+                                    cpu.ic_odd = 0; // finished with odd half; BUG: restart issues?
+                                    ++ PPR.IC;
+                                    cpu.cycle = FETCH_cycle;
+                                }
+                            } else {
+                                if (!cpu.irodd_invalid)
+                                    log_msg(NOTIFY_MSG, "CU", "No transfer instruction and IRODD not invalidated, but IC changed from %#o to %#o\n", IC_temp, PPR.IC);  // DEBUGGING; BUG: this shouldn't happen?
+                                cpu.cycle = FETCH_cycle;
+                            }
+                        }
+                    } else {
+                        log_msg(NOTIFY_MSG, "CU", "Cycle is %d after EXEC_cycle\n", cpu.cycle);
+                        //cpu.cycle = FETCH_cycle;
+                    }
+                }
+            }   // if (! is_fault)
+        }   // case FAULT_EXEC_cycle
+            break;
+        default:
+            log_msg(ERR_MSG, "CU", "Unknown cycle # %d\n", cpu.cycle);
+            reason = STOP_BUG;
+    }   // switch(cpu.cycle)
+    
+    return reason;
+} 
+
+//=============================================================================
+
+/*
+ *  sim_instr()
+ *
+ *  This function is called by SIMH to execute one or more instructions (or
+ *  at least perform one or more processor cycles).
+ *
+ *  The principal elements of the 6180 processor are:
+ *      The appending unit (addressing)
+ *      The associative memory assembly (vitual memory registers)
+ *      The control unit (responsible for addr mod, instr_mode, interrupt
+ *      recognition, decode instr & indir words, timer registers
+ *      The operation unit (binary arithmetic, boolean)
+ *      The decimal unit (decimal arithmetic instructions, char string, bit
+ *      string)
+ *
+ *  This code is essentially a wrapper for the "control unit" plus
+ *  housekeeping such as debug controls, displays, and dropping in
+ *  and out of the SIMH command processor.
+ */
+
+#define FEATURE_TIME_EXCL_EVENTS 1  // Don't count time spent in sim_process_event()
+/*
+ *  save_to_simh
+ *
+ *  Some of the data we give to SIMH is in simple encodings instead of
+ *  the more complex structures used internal to the emulator.
+ *
+ */
+
+static void save_to_simh(void)
+{
+    // Note that we record the *current* IC and addressing mode.  These may
+    // have changed during instruction execution.
+    
+//    saved_IC = PPR.IC;
+//    addr_modes_t mode = get_addr_mode();
+//    saved_PPR = save_PPR(&PPR);
+//    saved_PPR_addr = addr_emul_to_simh(mode, PPR.PSR, PPR.IC);
+//    t_uint64 sIR;
+//    save_IR(&sIR);
+//    saved_IR = sIR & MASKBITS(18);
+//    save_PR_registers();
+//    
+//    saved_BAR[0] = BAR.base;
+//    saved_BAR[1] = BAR.bound;
+//    saved_DSBR =
+//    cpup->DSBR.stack | // 12 bits
+//    (cpup->DSBR.u << 12) | // 1 bit
+//    ((t_uint64) cpup->DSBR.bound << 13) | // 14 bits
+//    ((t_uint64) cpup->DSBR.addr << 27); // 24 bits
+}
+
+//=============================================================================
+
+/*
+ *  restore_from_simh(void)
+ *
+ *  Some of the data we give to SIMH is in simple encodings instead of
+ *  the more complex structures used internal to the emulator.
+ *
+ */
+
+void restore_from_simh(void)
+{
+    
+//    PPR.IC = saved_IC;
+//    load_IR(&IR, saved_IR);
+//    
+//    restore_PR_registers();
+//    BAR.base = saved_BAR[0];
+//    BAR.bound = saved_BAR[1];
+//    load_PPR(saved_PPR, &PPR);
+//    PPR.IC = saved_IC;  // allow user to update "IC"
+//    cpup->DSBR.stack = saved_DSBR & MASKBITS(12);
+//    cpup->DSBR.u = (saved_DSBR >> 12) & 1;
+//    cpup->DSBR.bound = (saved_DSBR >> 13) & MASKBITS(14);
+//    cpup->DSBR.addr = (saved_DSBR >> 27) & MASKBITS(24);
+//    
+//    // Set default debug and check for a per-segment debug override
+//    check_seg_debug();
+}
+
+void flush_logs()
+{
+    if (sim_log != NULL)
+        fflush(sim_log);
+    if (sim_deb != NULL)
+        fflush(sim_deb);
+}
+
+t_stat sim_instr (void)
+{
+    restore_from_simh();
+    // setup_streams(); // Route the C++ clog and cdebug streams to match SIMH settings
+    
+    int reason = 0;
+    
+//    if (! bootimage_loaded) {
+//        // We probably should not do this
+//        // See AL70, section 8
+//        log_msg(WARN_MSG, "MAIN", "Memory is empty, no bootimage loaded yet\n");
+//        reason = STOP_MEMCLEAR;
+//    }
+    
+    //// opt_debug = (cpu_dev.dctrl != 0);    // todo: should CPU control all debug settings?
+    
+    //state_invalidate_cache();   // todo: only need to do when changing debug settings
+    
+    // Setup clocks
+    (void) sim_rtcn_init(CLK_TR_HZ, TR_CLK);
+    
+    cancel = 0;
+    
+    uint32 start_cycles = sys_stats.total_cycles;
+    sys_stats.n_instr = 0;
+    uint32 start = sim_os_msec();
+    uint32 delta = 0;
+    
+    // TODO: use sim_activate for the kbd poll
+    // if (opt_debug && sim_interval > 32)
+    if (opt_debug && sim_interval == NOQUEUE_WAIT) {
+        // debug mode is slow, so be more responsive to keyboard interrupt
+        sim_interval = 32;
+    }
+    
+    int prev_seg = PPR.PSR;
+    int prev_debug = opt_debug;
+    // Loop until it's time to bounce back to SIMH
+    //log_msg(DEBUG_MSG, "MAIN::CU", "Starting cycle loop; total cycles %lld; sim time is %f, %d events pending, first event at %d\n", sys_stats.total_cycles, sim_gtime(), sim_qcount(), sim_interval);
+    while (reason == 0) {
+        // HWR  
+        if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
+            reason = STOP_BKPT;                        /* stop simulation */
+            break;
+        }
+        
+        //log_msg(DEBUG_MSG, "MAIN::CU", "Starting cycle %lld; sim time is %f, %d events pending, first event at %d\n", sys_stats.total_cycles, sim_gtime(), sim_qcount(), sim_interval);
+        if (PPR.PSR != prev_seg) {
+        //    check_seg_debug();
+            prev_seg = PPR.PSR;
+        }
+        if (sim_interval<= 0) { /* check clock queue */
+            // Process any SIMH timed events including keyboard halt
+#if FEATURE_TIME_EXCL_EVENTS
+            delta += sim_os_msec() - start;
+#endif
+            reason = sim_process_event();
+#if FEATURE_TIME_EXCL_EVENTS
+            start = sim_os_msec();
+#endif
+            if (reason != 0)
+                break;
+        }
+#if 0
+        uint32 t;
+        {
+            if ((t = sim_is_active(&TR_clk_unit)) == 0)
+                ; // log_msg(DEBUG_MSG, "MAIN::clock", "TR is not running\n", t);
+            else
+                log_msg(DEBUG_MSG, "MAIN::clock", "TR is running with %d time units left.\n", t);
+        }
+#endif
+        
+//        if (prev_debug != opt_debug) {
+//            // stack tracking depends on being called after every instr
+//            state_invalidate_cache();
+//            prev_debug = opt_debug;
+//        }
+        
+        //
+        // Log a message about where we're at -- if debugging, or if we want
+        // procedure call tracing, or if we're displaying source code
+        //
+        
+//        const int show_source_lines = 1;
+//        int known_loc = 0;
+//        uint saved_seg;
+//        int saved_IC;
+//        int saved_cycle;
+//        if (opt_debug || show_source_lines) {
+//            known_loc = show_location(show_source_lines) == 0;
+//            saved_seg = PPR.PSR;
+//            saved_IC = PPR.IC;
+//            saved_cycle = cpu.cycle;
+//        }
+        
+        //
+        // Execute instructions (or fault or whatever)
+        //
+        
+        reason = control_unit();
+        
+//        if (saved_cycle != FETCH_cycle) {
+//            if (!known_loc)
+//                known_loc = cpu.trgo;
+//            if (/*known_loc && */ (opt_debug || show_source_lines)) {
+//                // log_ignore_ic_change();
+//                show_variables(saved_seg, saved_IC);
+//                // log_notice_ic_change();
+//            }
+//        }
+        
+        //
+        // And record history, etc
+        //
+        
+        ++ sys_stats.total_cycles;
+        sim_interval--; // todo: maybe only per instr or by brkpoint type?
+//        if (opt_debug) {
+//            log_ignore_ic_change();
+//            state_dump_changes();
+//            log_notice_ic_change();
+//            // Save all registers etc so that we can detect/display changes
+//            state_save();
+//        }
+        if (cancel) {
+            if (reason == 0)
+                reason = cancel;
+#if 0
+            if (reason == STOP_DIS) {
+                // Until we implement something fancier, DIS will just freewheel...
+                cpu.cycle = DIS_cycle;
+                reason = 0;
+                cancel = 0;
+            }
+#endif
+        }
+    }   // while (reason == 0)
+    log_msg(DEBUG_MSG, "MAIN::CU", "Finished cycle loop; total cycles %lld; sim time is %f, %d events pending, first event at %d\n", sys_stats.total_cycles, sim_gtime(), sim_qcount(), sim_interval);
+    
+    delta += sim_os_msec() - start;
+    uint32 ncycles = sys_stats.total_cycles - start_cycles;
+    sys_stats.total_msec += delta;
+    sys_stats.total_instr += sys_stats.n_instr;
+    if (delta > 500)
+        log_msg(INFO_MSG, "CU", "Step: %.1f seconds: %d cycles at %d cycles/sec, %d instructions at %d instr/sec\n",
+                (float) delta / 1000, ncycles, ncycles*1000/delta, sys_stats.n_instr, sys_stats.n_instr*1000/delta);
+    
+    save_to_simh();     // pack private variables into SIMH's world
+    flush_logs();
+    
+    return reason;
 }
 

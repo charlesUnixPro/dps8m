@@ -56,7 +56,8 @@ void doAddrModPtrReg(DCDstruct *i)
 
 void doPtrReg(DCDstruct *i)
 {
-    processorAddressingMode = APPEND_MODE;
+    //processorAddressingMode = APPEND_MODE;
+    set_addr_mode(APPEND_mode);
 
     word3 n = GET_PRN(i->IWB);  // get PRn
     word15 offset = GET_OFFSET(i->IWB);
@@ -1280,7 +1281,8 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
      If these conditions are satisfied, the processor examines the indirect word TAG field for the special address modifiers.
      XXX If either condition is violated, the indirect word TAG field is interpreted as a normal address modifier and the presence of a special address modifier will cause an illegal procedure, illegal modifier, fault.
      */
-    if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
+    //if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
+    if (get_addr_mode() != APPEND_MODE || TPR.CA & 1)
         // XXX illegal procedure, illegal modifier, fault
         ;
     
@@ -1306,7 +1308,9 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
         doITP(Tag);
     
     didITSITP = true;
-    processorAddressingMode = APPEND_MODE;
+    //processorAddressingMode = APPEND_MODE;
+    set_addr_mode(APPEND_mode);
+    
     return true;
     
 }

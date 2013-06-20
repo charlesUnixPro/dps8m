@@ -205,6 +205,102 @@ static int activate_chan(int chan, pcw_t* pcw);
 static channel_t* get_chan(int chan);
 static int run_channel(int chan);
 
+/*
+ * init_memory_iom()
+ *
+ * Load a few words into memory.   Simulates pressing the BOOTLOAD button
+ * on an IOM or equivalent.
+ *
+ * All values are from bootload_tape_label.alm.  See the comments at the
+ * top of that file.  See also doc #43A239854.
+ *
+ * NOTE: The values used here are for an IOM, not an IOX.
+ * See init_memory_iox() below.
+ *
+ */
+
+#define Mem M
+
+void init_memory_iom()
+{
+    // On the physical hardware, settings of various switchs are reflected
+    // into memory.  We provide no support for simulation of of the physical
+    // switches because there is only one useful value for almost all of the
+    // switches.  So, we hard code the memory values that represent usable
+    // switch settings.
+    
+    // The presence of a 0 in the top six bits of word 0 denote an IOM boot
+    // from an IOX boot
+    
+    // " The channel number ("Chan#") is set by the switches on the IOM to be
+    // " the channel for the tape subsystem holding the bootload tape. The
+    // " drive number for the bootload tape is set by switches on the tape
+    // " MPC itself.
+    
+    log_msg(INFO_MSG, "CPU::IOM", "Performing load of eleven words from IOM bootchanel to memory.\n");
+    
+    int base = 014;         // 12 bits; IOM base
+    // bootload_io.alm insists that pi_base match
+    // template_slt_$iom_mailbox_absloc
+    int pi_base = 01200;    // 15 bits; interrupt cells
+    int iom = 0;            // 3 bits; only IOM 0 would use vector 030
+    
+    t_uint64 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
+    int dev = 0;            // 6 bits: drive number
+    
+    // Maybe an is-IMU flag; IMU is later version of IOM
+    t_uint64 imu = 0;       // 1 bit
+    
+    /* Description of the bootload channel from 43A239854
+     Legend
+     BB - Bootload channel #
+     C - Cmd (1 or 5)
+     N - IOM #
+     P - Port #
+     XXXX00 - Base Addr -- 01400
+     XXYYYY0 Program Interrupt Base
+     */
+    
+    t_uint64 dis0 = 0616200;
+    /* 1*/ Mem[010 + 2 * iom] = (imu << 34) | dis0;         // system fault vector; DIS 0 instruction (imu bit not mentioned by 43A239854)
+    // Zero other 1/2 of y-pair to avoid msgs re reading uninitialized
+    // memory (if we have that turned on)
+    Mem[010 + 2 * iom + 1] = 0;
+    
+    /* 2*/ Mem[030 + 2 * iom] = dis0;                       // terminate interrupt vector (overwritten by bootload)
+    int base_addr = base << 6; // 01400
+    
+    /* 3*/ Mem[base_addr + 7] = ((t_uint64) base_addr << 18) | 02000002;    // tally word for sys fault status
+    // ??? Fault channel DCW
+    
+    // bootload_tape_label.alm says 04000, 43A239854 says 040000.  Since 43A239854 says
+    // "no change", 40000 is correct; 4000 would be a large tally
+    /* 4*/ Mem[base_addr + 010] = 040000;       // Connect channel LPW; points to PCW at 000000
+    int mbx = base_addr + 4 * sys_opts.tape_chan;
+    /* 5*/ Mem[mbx] = 03020003;             // Boot device LPW; points to IDCW at 000003
+    /* 6*/ Mem[4] = 030 << 18;              // Second IDCW: IOTD to loc 30 (startup fault vector)
+    
+    // Default SCW points at unused first mailbox.
+    // T&D tape overwrites this before the first status is savec, though.
+    /* 7*/ Mem[mbx + 2] = ((t_uint64)base_addr << 18);      // SCW
+    
+    /* 8*/ Mem[0] = 0720201;                    // 1st word of bootload channel PCW
+    
+    // "SCU port" # (deduced as meaning "to which bootload IOM is attached")
+    // int port = iom.scu_port; // 3 bits;
+    
+    // Why does bootload_tape_label.am claim that a port number belongs in the low bits
+    // of the 2nd word of the PCW?  The lower 27 bits of the odd word of a PCW should
+    // be all zero.
+    /* 9*/ Mem[1] = ((t_uint64) sys_opts.tape_chan << 27) /*| port*/;       // 2nd word of PCW pair
+    
+    // following verified correct; instr 362 will not yield 1572 with a different shift
+    /*10*/ Mem[2] = ((t_uint64) base_addr << 18) | pi_base | iom;   // word after PCW (used by program)
+    
+    /*11*/ Mem[3] = (cmd << 30) | (dev << 24) | 0700000;        // IDCW for read binary
+    
+}
+
 // ============================================================================
 
 /*

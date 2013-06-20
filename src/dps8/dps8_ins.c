@@ -108,6 +108,62 @@ word18 getCrAR(word4 reg)
     return 0;
 }
 
+static t_uint64 scu_data[8];    // For SCU instruction
+
+static void scu2words(t_uint64 *words)
+{
+    // BUG:  We don't track much of the data that should be tracked
+    
+    memset(words, 0, 8 * sizeof(*words));
+    
+    words[0] = setbits36(0, 0, 3, PPR.PRR);
+    words[0] = setbits36(words[0], 3, 15, PPR.PSR);
+    words[0] = setbits36(words[0], 18, 1, PPR.P);
+    // 19 "b" XSF
+    // 20 "c" SDWAMN
+    words[0] = setbits36(words[0], 21, 1, cu.SD_ON);
+    // 22 "e" PTWAM
+    words[0] = setbits36(words[0], 23, 1, cu.PT_ON);
+    // 24..32 various
+    // 33-35 FCT
+    
+    // words[1]
+    
+    words[2] = setbits36(0, 0, 3, TPR.TRR);
+    words[2] = setbits36(words[2], 3, 15, TPR.TSR);
+    words[2] = setbits36(words[2], 27, 3, switches.cpu_num);
+    words[2] = setbits36(words[2], 30, 6, cu.delta);
+    
+    words[3] = 0;
+    words[3] = setbits36(words[3], 30, 6, TPR.TBR);
+    
+    //save_IR(&words[4]);
+    words[4] = rIR; // HWR
+    
+    words[4] = setbits36(words[4], 0, 18, PPR.IC);
+    
+    words[5] = setbits36(0, 0, 18, TPR.CA);
+    words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
+    words[5] = setbits36(words[5], 19, 1, cu.rpt);
+    // BUG: Not all of CU data exists and/or is saved
+    words[5] = setbits36(words[5], 24, 1, cu.xde);
+    words[5] = setbits36(words[5], 24, 1, cu.xdo);
+    words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
+    
+    encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
+    //words[6] = ins;  // I think HWR
+    
+    words[7] = cu.IRODD;
+}
+
+void cu_safe_store()
+{
+    // Save current Control Unit Data in hidden temporary so a later SCU instruction running
+    // in FAULT mode can save the state as it existed at the time of the fault rather than
+    // as it exists at the time the scu instruction is executed.
+    scu2words(scu_data);
+}
+
 PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
 
 t_stat executeInstruction(DCDstruct *ci)
@@ -128,11 +184,13 @@ t_stat executeInstruction(DCDstruct *ci)
     
     if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
     {
-        if (processorAddressingMode == ABSOLUTE_MODE)
+        //if (processorAddressingMode == ABSOLUTE_MODE)
+        if (get_addr_mode() == ABSOLUTE_MODE)
         {
             sim_debug(DBG_TRACE, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
-        if (processorAddressingMode == APPEND_MODE)
+        //if (processorAddressingMode == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
@@ -145,7 +203,8 @@ t_stat executeInstruction(DCDstruct *ci)
             doAddrModPtrReg(ci);
             
             // invoking bit-29 puts us into append mode ... usually
-            processorAddressingMode = APPEND_MODE;
+            //processorAddressingMode = APPEND_MODE;
+            set_addr_mode(APPEND_mode);
         }
         
         // if instructions need an operand (CY) to operate, read it now. Else defer AM calcs until instruction execution
@@ -161,7 +220,7 @@ t_stat executeInstruction(DCDstruct *ci)
 
         // XXX this may be too simplistic ....
 
-        // ToDo: Read72 is also used to read in 72-bits, bit not into Ypair! Fix this
+        // ToDo: Read72 is also used to read in 72-bits, but not into Ypair! Fix this
         if (iwb->flags & READ_YPAIR)
             Read2(ci, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
 
@@ -263,7 +322,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
         //    FIXED-POINT ARITHMETIC INSTRUCTIONS
         
         /// ￼Fixed-Point Data Movement Load
-        case 0635:  ///< eaa
+        case opcode0_eaa:   // 0635:  ///< eaa
             rA = 0;
             SETHI(rA, TPR.CA);
             
@@ -272,7 +331,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             break;
             
-        case 0636:  ///< eaq
+        case opcode0_eaq:   // 0636:  ///< eaq
             rQ = 0;
             SETHI(rQ, TPR.CA);
 
@@ -280,14 +339,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
             SCF(TPR.CA & SIGN18, rIR, I_NEG);
             break;
 
-        case 0620:  ///< eax0
-        case 0621:  ///< eax1
-        case 0622:  ///< eax2
-        case 0623:  ///< eax3
-        case 0624:  ///< eax4
-        case 0625:  ///< eax5
-        case 0626:  ///< eax6
-        case 0627:  ///< eax7
+        case opcode0_eax0:  // 0620:  ///< eax0
+        case opcode0_eax1:  // 0621:  ///< eax1
+        case opcode0_eax2:  // 0622:  ///< eax2
+        case opcode0_eax3:  // 0623:  ///< eax3
+        case opcode0_eax4:  // 0624:  ///< eax4
+        case opcode0_eax5:  // 0625:  ///< eax5
+        case opcode0_eax6:  // 0626:  ///< eax6
+        case opcode0_eax7:  // 0627:  ///< eax7
             n = opcode & 07;  ///< get n
             rX[n] = TPR.CA;
 
@@ -295,11 +354,11 @@ t_stat DoBasicInstruction(DCDstruct *i)
             SCF(TPR.CA & SIGN18, rIR, I_NEG);
             break;
             
-        case 0335:  ///< lca
+        case opcode0_lca:   // 0335:  ///< lca
             rA = compl36(CY, &rIR);
             break;
             
-        case 0336:  ///< lcq
+        case opcode0_lcq:   // 0336:  ///< lcq
             rQ = compl36(CY, &rIR);
             break;
             
@@ -3474,7 +3533,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0257:  ///< lsdp
         case 0613:  ///< rcu
         case 0452:  ///< scpr
+            return STOP_UNIMP;
+
         case 0657:  ///< scu
+            
+            // ToDo: need to decode i into cu.IR
+            cu_safe_store();
+            break;
+            
         case 0154:  ///< sdbr
         case 0557:  ///< sdp
         case 0532:  ///< cams
@@ -4536,7 +4602,7 @@ t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         /// Multiword EIS ...
-        case 0301:  ///< btd
+        case opcode1_btd:   // 0301:  ///< btd
             btd (i);
             break;
             

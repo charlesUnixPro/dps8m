@@ -197,9 +197,6 @@ control board in the
 #include "dps8.h"
 #include <sys/time.h>
 
-#define reg_A   rA
-#define reg_Q   rQ
-
 extern int bootimage_loaded;
 extern sysinfo_t sys_opts;
 

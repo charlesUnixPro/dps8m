@@ -66,7 +66,7 @@ t_uint64 FR;
         27     ;        66     ;           ;   Unassigned           ;          ;
  
 */
-struct faults
+struct dps8faults
 {
     int         fault_number;
     int         fault_address;
@@ -77,9 +77,9 @@ struct faults
     bool        fault_pending;        // when true fault is pending and waiting to be processed
 };
 
-typedef struct faults faults;
+typedef struct dps8faults dps8faults;
 
-faults _faultsP[] = { // sorted by priority
+dps8faults _faultsP[] = { // sorted by priority
 //  number  address  mnemonic   name                 Priority    Group
     {   12,     030,    "suf",  "Startup",                  1,	     1,     false },
     {   15,     036,    "exf",  "Execute",                  2,	     1,     false },
@@ -112,7 +112,7 @@ faults _faultsP[] = { // sorted by priority
     {   27,     066,    "???",  "Unassigned",               -1,     -1,     false },
     {   -1,     -1,     NULL,   NULL,                       -1,     -1,     false }
 };
-faults _faults[] = {    // sorted by number
+dps8faults _faults[] = {    // sorted by number
     //  number  address  mnemonic   name                 Priority    Group
     {   0,       0 ,    "sdf",  "Shutdown",             	27,	     7,     false },
     {   1,       2 ,    "str",  "Store",                	10,	     4,     false },
@@ -158,14 +158,14 @@ bool port_interrupts[8] = {false, false, false, false, false, false, false, fals
 //-----------------------------------------------------------------------------
 // ***  Constants, unchanging lookup tables, etc
 
-static int fault2group[32] = {
+int fault2group[32] = {
     // from AL39, page 7-3
     7, 4, 5, 5, 7, 4, 5, 4,
     7, 4, 5, 2, 1, 3, 3, 1,
     6, 6, 6, 6, 6, 5, 5, 5,
     5, 5, 0, 0, 0, 0, 0, 2
 };
-static int fault2prio[32] = {
+int fault2prio[32] = {
     // from AL39, page 7-3
     27, 10, 11, 17, 26,  9, 15,  5,
     25,  8, 16,  4,  1,  7,  6,  2,
@@ -194,6 +194,23 @@ typedef struct {
 } mode_reg_t;
 
 mode_reg_t MR;
+
+/*
+ *  check_events()
+ *
+ *  Called after executing an instruction pair for xed.   The instruction pair
+ *  may have included a rpt, rpd, or transfer.   The instruction pair may even
+ *  have faulted, but if so, it was saved and restarted.
+ */
+
+void check_events()
+{
+    events.any = events.int_pending || events.low_group || events.group7;
+    if (events.any)
+        log_msg(NOTIFY_MSG, "CU", "check_events: event(s) found (%d,%d,%d).\n", events.int_pending, events.low_group, events.group7);
+    
+    return;
+}
 
 /*
  *  fault_gen()
@@ -278,6 +295,28 @@ void fault_gen(int f)
 }
 
 /*
+ * fault_check_group
+ *
+ * Returns true if faults exist for the specifed group or for a higher
+ * priority group.
+ *
+ */
+
+int fault_check_group(int group)
+{
+    
+    if (group < 1 || group > 7) {
+        log_msg(ERR_MSG, "CU::fault-check-group", "Bad group # %d\n", group);
+        cancel_run(STOP_BUG);
+        return 1;
+    }
+    
+    if (! events.any)
+        return 0;
+    return events.low_group <= group;
+}
+
+/*
  * fault handler(s).
  */
 DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst);     // decode instruction into structure
@@ -328,44 +367,44 @@ void doFault(DCDstruct *i, int faultNumber, int subfault, char *faultMsg)
 
     //return;
     
-    faults *f = &_faults[faultNumber];
+    dps8faults *f = &_faults[faultNumber];
 
     printf("fault(): %d %d %s (%s) '%s'\r\n", f->fault_number, f->fault_group,  f->fault_name, f->fault_mnemonic, faultMsg ? faultMsg : "?");
-
-    if (f->fault_group == 7 && i && i->a)
-        return;
-
-    return;
-    longjmp(jmpMain, JMP_NEXT); // causes cpuCycles to not count the current instruction
-
-    pending_fault = true;
-    bool retry = false;
-    
-    int fltAddress = rFAULTBASE & 07740; // (12-bits of which the top-most 7-bits are used)
-    fltAddress += 2 * f->fault_number;
-    
-    f->fault_pending = true;        // this particular fault is pending, waiting for processing
-    
-    _processor_addressing_mode modeTemp = processorAddressingMode;
-    
-    processorAddressingMode = ABSOLUTE_MODE;
-    word24 rIC_temp = rIC;
-    
-    t_stat ret = doFaultInstructionPair(i, fltAddress);
-    
-    f->fault_pending = false;        
-    pending_fault = false;
-    
-    processorAddressingMode = modeTemp;
-    
-    // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
-    // XXX do it properly - later..
-    
-    if (retry)
-        longjmp(jmpMain, JMP_RETRY);    // this will retry the faulted instruction
-    
-    if (ret == CONT_TRA)
-        longjmp(jmpMain, JMP_TRA);
+//
+//    if (f->fault_group == 7 && i && i->a)
+//        return;
+//
+//    return;
+//    longjmp(jmpMain, JMP_NEXT); // causes cpuCycles to not count the current instruction
+//
+//    pending_fault = true;
+//    bool retry = false;
+//    
+//    int fltAddress = rFAULTBASE & 07740; // (12-bits of which the top-most 7-bits are used)
+//    fltAddress += 2 * f->fault_number;
+//    
+//    f->fault_pending = true;        // this particular fault is pending, waiting for processing
+//    
+//    _processor_addressing_mode modeTemp = processorAddressingMode;
+//    
+//    processorAddressingMode = ABSOLUTE_MODE;
+//    word24 rIC_temp = rIC;
+//    
+//    t_stat ret = doFaultInstructionPair(i, fltAddress);
+//    
+//    f->fault_pending = false;        
+//    pending_fault = false;
+//    
+//    processorAddressingMode = modeTemp;
+//    
+//    // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
+//    // XXX do it properly - later..
+//    
+//    if (retry)
+//        longjmp(jmpMain, JMP_RETRY);    // this will retry the faulted instruction
+//    
+//    if (ret == CONT_TRA)
+//        longjmp(jmpMain, JMP_TRA);
 }
 
 

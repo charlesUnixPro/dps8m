@@ -350,6 +350,10 @@ extern word8	rE;	/*!< exponent [map: rE, 28 0's] */
 
 extern word18	rX[8];	/*!< index */
 
+#define reg_A   rA
+#define reg_Q   rQ
+#define reg_X   rX
+
 //extern word18	rBAR;	/*!< base address [map: BAR, 18 0's] */
 ///< format: 9b base, 9b bound
 extern struct _bar {
@@ -357,7 +361,8 @@ extern struct _bar {
     word9 BOUND;    ///< Contains the 9 high-order bits of the unrelocated address limit. The low- order bits are generated as zeros. An attempt to access main memory beyond this limit causes a store fault, out of bounds. A value of 0 is truly 0, indicating a null memory range.
 } BAR;
 
-extern word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
+//extern word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
+#define rFAULTBASE switches.FLT_BASE
 
 //extern word18	rIC;	/*!< instruction counter */
 #define rIC (PPR.IC)
@@ -728,7 +733,7 @@ struct DCDstruct
     
     word18 stiTally;    ///< for sti instruction
     
-    EISstruct *e;       ///< info if instruction is a MW EIS instruction
+    EISstruct *e;       ///< info: if instruction is a MW EIS instruction
 };
 typedef struct DCDstruct DCDstruct; // decoded instruction info ......
 
@@ -1276,7 +1281,7 @@ void cmpn(DCDstruct *i);
 #define FAULT_CMD   5 ///< command
 #define FAULT_DRL   6 ///< derail
 #define FAULT_LUF   7 ///< lockup
-#define FAULT_COM   8 ///< connect
+#define FAULT_CON   8 ///< connect
 #define FAULT_PAR   9 ///< parity
 #define FAULT_IPR   10 ///< illegal proceedure
 #define FAULT_ONC   11 ///< operation not complete
@@ -1391,7 +1396,7 @@ extern enum _processor_addressing_mode {
     ABSOLUTE_MODE,
     APPEND_MODE,
     BAR_MODE
-} processorAddressingMode;
+};// processorAddressingMode;
 
 extern enum _processor_operating_mode {
     UNKNOWN_OPERATING_MODE = 0,
@@ -1455,6 +1460,8 @@ word36 bitfieldInsert36(word36 a, word36 b, int c, int d);
 word72 bitfieldInsert72(word72 a, word72 b, int c, int d);
 word36 bitfieldExtract36(word36 a, int b, int c);
 word72 bitfieldExtract72(word72 a, int b, int c);
+
+#define getbit18(x,n)  ((((x) >> (17-n)) & 1) != 0) // return nth bit of an 18bit half word
 
 t_uint64 getbits36(t_uint64 x, int i, unsigned n);
 t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val);
@@ -1523,7 +1530,8 @@ extern t_stat loadSpecial(char *buff);
 extern bool adrTrace;   ///< when true perform address modification tracing
 extern bool apndTrace;  ///< when true do appending unit tracing
 
-extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
+//extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
+#define cpuCycles sys_stats.total_cycles
 
 extern jmp_buf jmpMain;     ///< This is where we should return to from a fault to retry an instruction
 #define JMP_RETRY       1   ///< retry instruction
@@ -1699,12 +1707,25 @@ void out_msg(const char* format, ...);
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 typedef unsigned flag_t;    // efficient unsigned flag
 
+// The CPU supports 3 addressing modes
+
+typedef enum { ABSOLUTE_mode = ABSOLUTE_MODE, APPEND_mode = APPEND_MODE, BAR_mode = BAR_MODE } addr_modes_t;
+
+addr_modes_t get_addr_mode();
+void set_addr_mode(addr_modes_t mode);
+
+
+// The CPU supports a privileged/non-privileged flag (dependent upon
+// addressing mode, ring of operation, and settings of the active
+// segment when in the appending (segmented) address mode.)
+typedef enum { NORMAL_mode, PRIV_mode } instr_modes_t;
+
 // The control unit of the CPU is always in one of several states. We
 // don't currently use all of the states used in the physical CPU.
 // The FAULT_EXEC cycle did not exist in the physical hardware.
 typedef enum {
-    ABORT_cycle, FAULT_cycle, EXEC_cycle, FAULT_EXEC_cycle, INTERRUPT_cycle,
-    FETCH_cycle,
+    ABORT_cycle = ABORT_CYCLE, FAULT_cycle = FAULT_CYCLE, EXEC_cycle, FAULT_EXEC_cycle, INTERRUPT_cycle,
+    FETCH_cycle = INSTRUCTION_FETCH,
     DIS_cycle // A pseudo cycle for handling the DIS instruction
     // CA FETCH OPSTORE, DIVIDE_EXEC
 } cycles_t;
@@ -1727,6 +1748,159 @@ typedef struct {
         flag_t fhld; // An access violation or directed fault is waiting. AL39 mentions that the APU has this flag, but not where scpr stores it
     } apu_state;
 } cpu_state_t;
+
+/* Indicator register (14 bits [only positions 18..32 have meaning]) */
+typedef struct {
+    uint zero;              // bit 18
+    uint neg;               // bit 19
+    uint carry;             // bit 20; see AL39, 3-6
+    uint overflow;          // bit 21
+    uint exp_overflow;      // bit 22   (used only by ldi/stct1)
+    uint exp_underflow;     // bit 23   (used only by ldi/stct1)
+    uint overflow_mask;     // bit 24
+    uint tally_runout;      // bit 25
+    uint parity_error;      // bit 26   (used only by ldi/stct1)
+    uint parity_mask;       // bit 27
+    uint not_bar_mode;      // bit 28
+    uint truncation;        // bit 29
+    uint mid_instr_intr_fault;  // bit 30
+    uint abs_mode;          // bit 31
+    uint hex_mode;          // bit 32
+} IR_t;
+
+
+/* MF fields of EIS multi-word instructions -- 7 bits */
+typedef struct {
+    flag_t ar;
+    flag_t rl;
+    flag_t id;
+    uint reg;  // 4 bits
+} eis_mf_t;
+
+/* Format of a 36 bit instruction word */
+typedef struct {
+    uint addr;    // 18 bits at  0..17; 18 bit offset or seg/offset pair
+    uint opcode;  // 10 bits at 18..27
+    uint inhibit; //  1 bit  at 28
+    union {
+        struct {
+            uint pr_bit;  // 1 bit at 29; use offset[0..2] as pointer reg
+            uint tag;     // 6 bits at 30..35 */
+        } single;
+        eis_mf_t mf1;     // from bits 29..35 of EIS instructions
+    } mods;
+    flag_t is_eis_multiword;  // set true for relevent opcodes
+    
+    t_uint64 *wordEven; // HWR
+    
+} instr_t;
+
+extern IR_t IR;                // Indicator register
+
+/* Control unit data (288 bits) */
+typedef struct {
+    /*
+     NB: Some of the data normally stored here is represented
+     elsewhere -- e.g.,the PPR is a variable outside of this
+     struct.   Other data is live and only stored here.
+     */
+    /*      This is a collection of flags and registers from the
+     appending unit and the control unit.  The scu and rcu
+     instructions store and load these values to an 8 word
+     memory block.
+     The CU data may only be valid for use with the scu and
+     rcu instructions.
+     Comments indicate format as stored in 8 words by the scu
+     instruction.
+     */
+    
+    /* NOTE: PPR (procedure pointer register) is a combination of registers:
+     From the Appending Unit
+     PRR bits [0..2] of word 0
+     PSR bits [3..17] of word 0
+     P   bit 18 of word 0
+     From the Control Unit
+     IC  bits [0..17] of word 4
+     */
+    
+#if 0
+    
+    /* First we list some registers we either don't use or that we have represented elsewhere */
+    
+    /* word 0 */
+    // PPR portions copied from Appending Unit
+    uint PPR_PRR;       /* Procedure ring register; 3 bits @ 0[0..2] */
+    uint PPR_PSR;       /* Procedure segment register; 15 bits @ 0[3..17] */
+    uint PPR_P;         /* Privileged bit; 1 bit @ 0[18] */
+    // uint64 word0bits; /* Word 0, bits 18..32 (all for the APU) */
+    uint FCT;           /* Fault counter; 3 bits at 0[33..35]; */
+    
+    /* word 1 */
+    //uint64 word1bits; /* Word1, bits [0..19] and [35] */
+    
+    uint IA;        /* 4 bits @ 1[20..23] */
+    uint IACHN;     /* 3 bits @ 1[24..26] */
+    uint CNCHN;     /* 3 bits @ 1[27..29] */
+    uint FIADDR     /* 5 bits @ 1[30..34] */
+    
+    /* word 2 */
+    uint TPR_TRR;   // 3 bits @ 2[0..2];  temporary ring register
+    uint TPR_TSR;   // 15 bits @ 2[3..17]; temporary segment register
+    // unused: 10 bits at 2[18..27]
+    // uint cpu_no; // 2 bits at 2[28..29]; from maint panel switches
+    
+    /* word 3 */
+    
+    /* word 4 */
+    // IC belongs to CU
+    int IC;         // 18 bits at 4[0..17]; instruction counter aka ilc
+    // copy of IR bits 14 bits at 4[18..31]
+    // unused: 4 bits at 4[32..36];
+    
+    /* word 5 */
+    uint CA;        // 18 bits at 5[0..17]; computed address value (offset) used in the last address preparation cycle
+    // cu bits for repeats, execute double, restarts, etc
+#endif
+    
+    /* Above was documentation on all physical control unit data.
+     * Below are the members we actually implement here.  Missing
+     * members are either not (yet) emulated or are handled outside
+     * of this control unit data struct.
+     */
+    
+    /* word 0, continued */
+    flag_t SD_ON;   // SDWAM enabled
+    flag_t PT_ON;   // PTWAM enabled
+    
+    /* word 1, continued  */
+    struct {
+        unsigned oosb:1;    // out of segment bounds
+        unsigned ocall:1;   // outward call
+        // unsigned boc:1;      // bad outward call
+        // unsigned ocb:1;      // out of call brackets
+    } word1flags;
+    flag_t instr_fetch;     // our usage of this may match PI-AP
+    
+    /* word 2, continued */
+    uint delta;     // 6 bits at 2[30..35]; addr increment for repeats
+    
+    /* word 5, continued */
+    flag_t rpts;        // just executed a repeat instr;  bit 12 in word one of the CU history register
+    flag_t repeat_first;        // "RF" flag -- first cycle of a repeat instruction; We also use with xed
+    flag_t rpt;     // execute an rpt instruction
+    uint CT_HOLD;   // 6 bits at 5[30..35]; contents of the "remember modifier" register
+    flag_t xde;     // execute even instr from xed pair
+    flag_t xdo;     // execute even instr from xed pair
+    
+    /* word 6 */
+    instr_t IR;     /* Working instr register; addr & tag are modified */
+    uint tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it)
+    
+    /* word 7 */
+    // instr_t IRODD;   // Instr holding register; odd word of last pair fetched
+    t_uint64 IRODD; /* Instr holding register; odd word of last pair fetched */
+    
+} ctl_unit_data_t;
 
 
 // Emulator-only interrupt and fault info
@@ -1891,10 +2065,50 @@ typedef struct {
 } stats_t;
 
 
+// 32 fault codes exist.  Fault handling and interrupt handling are
+// similar.
+enum faults {
+    // Note that these numbers are decimal, not octal.
+    // Faults not listed are not generated by the emulator.
+    shutdown_fault = FAULT_SDF,
+    store_fault = FAULT_STR,
+    mme1_fault = FAULT_MME,
+    f1_fault = FAULT_F1,
+    timer_fault = FAULT_TRO,
+    cmd_fault = FAULT_CMD,
+    connect_fault = FAULT_CON,
+    illproc_fault = FAULT_IPR,
+    op_not_complete_fault = FAULT_ONC,
+    startup_fault = FAULT_SUF,
+    overflow_fault = FAULT_OFL,
+    div_fault = FAULT_DIV,
+    dir_flt0_fault = FAULT_DF0,
+    acc_viol_fault = FAULT_ACV,
+    mme2_fault = FAULT_MME2,
+    mme3_fault = FAULT_MME3,
+    mme4_fault = FAULT_MME4,
+    fault_tag_2_fault = FAULT_F2,
+    trouble_fault = FAULT_TRB
+    //
+    // oob_fault=32 // out-of-band, simulator only
+};
 
 extern int bootimage_loaded;
 extern sysinfo_t sys_opts;
 
+extern events_t events;
+extern switches_t switches;
+extern cpu_ports_t cpu_ports; // Describes connections to SCUs
+// the following two should probably be combined
+extern cpu_state_t cpu;
+extern ctl_unit_data_t cu;
+extern stats_t sys_stats;
+
+extern scu_t scu; // only one for now
+extern iom_t iom; // only one for now
+
+extern int fault2group[32];
+extern int fault2prio[32];
 
 /* XXX these OUGHT to return fault codes! (and interrupt numbers???) */
 void iom_cioc(word8 conchan);
@@ -2068,5 +2282,567 @@ extern bitstream_t* bitstm_open(const char* fname);
 extern bitstream_t* bitstm_new(const unsigned char* addr, uint32 len);
 extern int bitstm_get(bitstream_t *bp, size_t len, t_uint64 *word);
 extern int bitstm_destroy(bitstream_t *bp);
+
+
+// MM's opcode stuff ...
+
+extern char *op0text[512];
+extern char *op1text[512];
+extern char *opcodes2text[1024];
+
+// Opcodes with low bit (bit 27) == 0.  Enum value is value of upper 9 bits.
+typedef enum {
+	opcode0_mme    = 0001, // (1 decimal)
+	opcode0_drl    = 0002, // (2 decimal)
+	opcode0_mme2   = 0004, // (4 decimal)
+	opcode0_mme3   = 0005, // (5 decimal)
+	opcode0_mme4   = 0007, // (7 decimal)
+	opcode0_nop    = 0011, // (9 decimal)
+	opcode0_puls1  = 0012, // (10 decimal)
+	opcode0_puls2  = 0013, // (11 decimal)
+	opcode0_cioc   = 0015, // (13 decimal)
+	opcode0_adlx0  = 0020, // (16 decimal)
+	opcode0_adlx1  = 0021, // (17 decimal)
+	opcode0_adlx2  = 0022, // (18 decimal)
+	opcode0_adlx3  = 0023, // (19 decimal)
+	opcode0_adlx4  = 0024, // (20 decimal)
+	opcode0_adlx5  = 0025, // (21 decimal)
+	opcode0_adlx6  = 0026, // (22 decimal)
+	opcode0_adlx7  = 0027, // (23 decimal)
+	opcode0_ldqc   = 0032, // (26 decimal)
+	opcode0_adl    = 0033, // (27 decimal)
+	opcode0_ldac   = 0034, // (28 decimal)
+	opcode0_adla   = 0035, // (29 decimal)
+	opcode0_adlq   = 0036, // (30 decimal)
+	opcode0_adlaq  = 0037, // (31 decimal)
+	opcode0_asx0   = 0040, // (32 decimal)
+	opcode0_asx1   = 0041, // (33 decimal)
+	opcode0_asx2   = 0042, // (34 decimal)
+	opcode0_asx3   = 0043, // (35 decimal)
+	opcode0_asx4   = 0044, // (36 decimal)
+	opcode0_asx5   = 0045, // (37 decimal)
+	opcode0_asx6   = 0046, // (38 decimal)
+	opcode0_asx7   = 0047, // (39 decimal)
+	opcode0_adwp0  = 0050, // (40 decimal)
+	opcode0_adwp1  = 0051, // (41 decimal)
+	opcode0_adwp2  = 0052, // (42 decimal)
+	opcode0_adwp3  = 0053, // (43 decimal)
+	opcode0_aos    = 0054, // (44 decimal)
+	opcode0_asa    = 0055, // (45 decimal)
+	opcode0_asq    = 0056, // (46 decimal)
+	opcode0_sscr   = 0057, // (47 decimal)
+	opcode0_adx0   = 0060, // (48 decimal)
+	opcode0_adx1   = 0061, // (49 decimal)
+	opcode0_adx2   = 0062, // (50 decimal)
+	opcode0_adx3   = 0063, // (51 decimal)
+	opcode0_adx4   = 0064, // (52 decimal)
+	opcode0_adx5   = 0065, // (53 decimal)
+	opcode0_adx6   = 0066, // (54 decimal)
+	opcode0_adx7   = 0067, // (55 decimal)
+	opcode0_awca   = 0071, // (57 decimal)
+	opcode0_awcq   = 0072, // (58 decimal)
+	opcode0_lreg   = 0073, // (59 decimal)
+	opcode0_ada    = 0075, // (61 decimal)
+	opcode0_adq    = 0076, // (62 decimal)
+	opcode0_adaq   = 0077, // (63 decimal)
+	opcode0_cmpx0  = 0100, // (64 decimal)
+	opcode0_cmpx1  = 0101, // (65 decimal)
+	opcode0_cmpx2  = 0102, // (66 decimal)
+	opcode0_cmpx3  = 0103, // (67 decimal)
+	opcode0_cmpx4  = 0104, // (68 decimal)
+	opcode0_cmpx5  = 0105, // (69 decimal)
+	opcode0_cmpx6  = 0106, // (70 decimal)
+	opcode0_cmpx7  = 0107, // (71 decimal)
+	opcode0_cwl    = 0111, // (73 decimal)
+	opcode0_cmpa   = 0115, // (77 decimal)
+	opcode0_cmpq   = 0116, // (78 decimal)
+	opcode0_cmpaq  = 0117, // (79 decimal)
+	opcode0_sblx0  = 0120, // (80 decimal)
+	opcode0_sblx1  = 0121, // (81 decimal)
+	opcode0_sblx2  = 0122, // (82 decimal)
+	opcode0_sblx3  = 0123, // (83 decimal)
+	opcode0_sblx4  = 0124, // (84 decimal)
+	opcode0_sblx5  = 0125, // (85 decimal)
+	opcode0_sblx6  = 0126, // (86 decimal)
+	opcode0_sblx7  = 0127, // (87 decimal)
+	opcode0_sbla   = 0135, // (93 decimal)
+	opcode0_sblq   = 0136, // (94 decimal)
+	opcode0_sblaq  = 0137, // (95 decimal)
+	opcode0_ssx0   = 0140, // (96 decimal)
+	opcode0_ssx1   = 0141, // (97 decimal)
+	opcode0_ssx2   = 0142, // (98 decimal)
+	opcode0_ssx3   = 0143, // (99 decimal)
+	opcode0_ssx4   = 0144, // (100 decimal)
+	opcode0_ssx5   = 0145, // (101 decimal)
+	opcode0_ssx6   = 0146, // (102 decimal)
+	opcode0_ssx7   = 0147, // (103 decimal)
+	opcode0_adwp4  = 0150, // (104 decimal)
+	opcode0_adwp5  = 0151, // (105 decimal)
+	opcode0_adwp6  = 0152, // (106 decimal)
+	opcode0_adwp7  = 0153, // (107 decimal)
+	opcode0_sdbr   = 0154, // (108 decimal)
+	opcode0_ssa    = 0155, // (109 decimal)
+	opcode0_ssq    = 0156, // (110 decimal)
+	opcode0_sbx0   = 0160, // (112 decimal)
+	opcode0_sbx1   = 0161, // (113 decimal)
+	opcode0_sbx2   = 0162, // (114 decimal)
+	opcode0_sbx3   = 0163, // (115 decimal)
+	opcode0_sbx4   = 0164, // (116 decimal)
+	opcode0_sbx5   = 0165, // (117 decimal)
+	opcode0_sbx6   = 0166, // (118 decimal)
+	opcode0_sbx7   = 0167, // (119 decimal)
+	opcode0_swca   = 0171, // (121 decimal)
+	opcode0_swcq   = 0172, // (122 decimal)
+	opcode0_lpri   = 0173, // (123 decimal)
+	opcode0_sba    = 0175, // (125 decimal)
+	opcode0_sbq    = 0176, // (126 decimal)
+	opcode0_sbaq   = 0177, // (127 decimal)
+	opcode0_cnax0  = 0200, // (128 decimal)
+	opcode0_cnax1  = 0201, // (129 decimal)
+	opcode0_cnax2  = 0202, // (130 decimal)
+	opcode0_cnax3  = 0203, // (131 decimal)
+	opcode0_cnax4  = 0204, // (132 decimal)
+	opcode0_cnax5  = 0205, // (133 decimal)
+	opcode0_cnax6  = 0206, // (134 decimal)
+	opcode0_cnax7  = 0207, // (135 decimal)
+	opcode0_cmk    = 0211, // (137 decimal)
+	opcode0_absa   = 0212, // (138 decimal)
+	opcode0_epaq   = 0213, // (139 decimal)
+	opcode0_sznc   = 0214, // (140 decimal)
+	opcode0_cnaa   = 0215, // (141 decimal)
+	opcode0_cnaq   = 0216, // (142 decimal)
+	opcode0_cnaaq  = 0217, // (143 decimal)
+	opcode0_ldx0   = 0220, // (144 decimal)
+	opcode0_ldx1   = 0221, // (145 decimal)
+	opcode0_ldx2   = 0222, // (146 decimal)
+	opcode0_ldx3   = 0223, // (147 decimal)
+	opcode0_ldx4   = 0224, // (148 decimal)
+	opcode0_ldx5   = 0225, // (149 decimal)
+	opcode0_ldx6   = 0226, // (150 decimal)
+	opcode0_ldx7   = 0227, // (151 decimal)
+	opcode0_lbar   = 0230, // (152 decimal)
+	opcode0_rsw    = 0231, // (153 decimal)
+	opcode0_ldbr   = 0232, // (154 decimal)
+	opcode0_rmcm   = 0233, // (155 decimal)
+	opcode0_szn    = 0234, // (156 decimal)
+	opcode0_lda    = 0235, // (157 decimal)
+	opcode0_ldq    = 0236, // (158 decimal)
+	opcode0_ldaq   = 0237, // (159 decimal)
+	opcode0_orsx0  = 0240, // (160 decimal)
+	opcode0_orsx1  = 0241, // (161 decimal)
+	opcode0_orsx2  = 0242, // (162 decimal)
+	opcode0_orsx3  = 0243, // (163 decimal)
+	opcode0_orsx4  = 0244, // (164 decimal)
+	opcode0_orsx5  = 0245, // (165 decimal)
+	opcode0_orsx6  = 0246, // (166 decimal)
+	opcode0_orsx7  = 0247, // (167 decimal)
+	opcode0_spri0  = 0250, // (168 decimal)
+	opcode0_spbp1  = 0251, // (169 decimal)
+	opcode0_spri2  = 0252, // (170 decimal)
+	opcode0_spbp3  = 0253, // (171 decimal)
+	opcode0_spri   = 0254, // (172 decimal)
+	opcode0_orsa   = 0255, // (173 decimal)
+	opcode0_orsq   = 0256, // (174 decimal)
+	opcode0_lsdp   = 0257, // (175 decimal)
+	opcode0_orx0   = 0260, // (176 decimal)
+	opcode0_orx1   = 0261, // (177 decimal)
+	opcode0_orx2   = 0262, // (178 decimal)
+	opcode0_orx3   = 0263, // (179 decimal)
+	opcode0_orx4   = 0264, // (180 decimal)
+	opcode0_orx5   = 0265, // (181 decimal)
+	opcode0_orx6   = 0266, // (182 decimal)
+	opcode0_orx7   = 0267, // (183 decimal)
+	opcode0_tsp0   = 0270, // (184 decimal)
+	opcode0_tsp1   = 0271, // (185 decimal)
+	opcode0_tsp2   = 0272, // (186 decimal)
+	opcode0_tsp3   = 0273, // (187 decimal)
+	opcode0_ora    = 0275, // (189 decimal)
+	opcode0_orq    = 0276, // (190 decimal)
+	opcode0_oraq   = 0277, // (191 decimal)
+	opcode0_canx0  = 0300, // (192 decimal)
+	opcode0_canx1  = 0301, // (193 decimal)
+	opcode0_canx2  = 0302, // (194 decimal)
+	opcode0_canx3  = 0303, // (195 decimal)
+	opcode0_canx4  = 0304, // (196 decimal)
+	opcode0_canx5  = 0305, // (197 decimal)
+	opcode0_canx6  = 0306, // (198 decimal)
+	opcode0_canx7  = 0307, // (199 decimal)
+	opcode0_eawp0  = 0310, // (200 decimal)
+	opcode0_easp0  = 0311, // (201 decimal)
+	opcode0_eawp2  = 0312, // (202 decimal)
+	opcode0_easp2  = 0313, // (203 decimal)
+	opcode0_cana   = 0315, // (205 decimal)
+	opcode0_canq   = 0316, // (206 decimal)
+	opcode0_canaq  = 0317, // (207 decimal)
+	opcode0_lcx0   = 0320, // (208 decimal)
+	opcode0_lcx1   = 0321, // (209 decimal)
+	opcode0_lcx2   = 0322, // (210 decimal)
+	opcode0_lcx3   = 0323, // (211 decimal)
+	opcode0_lcx4   = 0324, // (212 decimal)
+	opcode0_lcx5   = 0325, // (213 decimal)
+	opcode0_lcx6   = 0326, // (214 decimal)
+	opcode0_lcx7   = 0327, // (215 decimal)
+	opcode0_eawp4  = 0330, // (216 decimal)
+	opcode0_easp4  = 0331, // (217 decimal)
+	opcode0_eawp6  = 0332, // (218 decimal)
+	opcode0_easp6  = 0333, // (219 decimal)
+	opcode0_lca    = 0335, // (221 decimal)
+	opcode0_lcq    = 0336, // (222 decimal)
+	opcode0_lcaq   = 0337, // (223 decimal)
+	opcode0_ansx0  = 0340, // (224 decimal)
+	opcode0_ansx1  = 0341, // (225 decimal)
+	opcode0_ansx2  = 0342, // (226 decimal)
+	opcode0_ansx3  = 0343, // (227 decimal)
+	opcode0_ansx4  = 0344, // (228 decimal)
+	opcode0_ansx5  = 0345, // (229 decimal)
+	opcode0_ansx6  = 0346, // (230 decimal)
+	opcode0_ansx7  = 0347, // (231 decimal)
+	opcode0_epp0   = 0350, // (232 decimal)
+	opcode0_epbp1  = 0351, // (233 decimal)
+	opcode0_epp2   = 0352, // (234 decimal)
+	opcode0_epbp3  = 0353, // (235 decimal)
+	opcode0_stac   = 0354, // (236 decimal)
+	opcode0_ansa   = 0355, // (237 decimal)
+	opcode0_ansq   = 0356, // (238 decimal)
+	opcode0_stcd   = 0357, // (239 decimal)
+	opcode0_anx0   = 0360, // (240 decimal)
+	opcode0_anx1   = 0361, // (241 decimal)
+	opcode0_anx2   = 0362, // (242 decimal)
+	opcode0_anx3   = 0363, // (243 decimal)
+	opcode0_anx4   = 0364, // (244 decimal)
+	opcode0_anx5   = 0365, // (245 decimal)
+	opcode0_anx6   = 0366, // (246 decimal)
+	opcode0_anx7   = 0367, // (247 decimal)
+	opcode0_epp4   = 0370, // (248 decimal)
+	opcode0_epbp5  = 0371, // (249 decimal)
+	opcode0_epp6   = 0372, // (250 decimal)
+	opcode0_epbp7  = 0373, // (251 decimal)
+	opcode0_ana    = 0375, // (253 decimal)
+	opcode0_anq    = 0376, // (254 decimal)
+	opcode0_anaq   = 0377, // (255 decimal)
+	opcode0_mpf    = 0401, // (257 decimal)
+	opcode0_mpy    = 0402, // (258 decimal)
+	opcode0_cmg    = 0405, // (261 decimal)
+	opcode0_lde    = 0411, // (265 decimal)
+	opcode0_rscr   = 0413, // (267 decimal)
+	opcode0_ade    = 0415, // (269 decimal)
+	opcode0_ufm    = 0421, // (273 decimal)
+	opcode0_dufm   = 0423, // (275 decimal)
+	opcode0_fcmg   = 0425, // (277 decimal)
+	opcode0_dfcmg  = 0427, // (279 decimal)
+	opcode0_fszn   = 0430, // (280 decimal)
+	opcode0_fld    = 0431, // (281 decimal)
+	opcode0_dfld   = 0433, // (283 decimal)
+	opcode0_ufa    = 0435, // (285 decimal)
+	opcode0_dufa   = 0437, // (287 decimal)
+	opcode0_sxl0   = 0440, // (288 decimal)
+	opcode0_sxl1   = 0441, // (289 decimal)
+	opcode0_sxl2   = 0442, // (290 decimal)
+	opcode0_sxl3   = 0443, // (291 decimal)
+	opcode0_sxl4   = 0444, // (292 decimal)
+	opcode0_sxl5   = 0445, // (293 decimal)
+	opcode0_sxl6   = 0446, // (294 decimal)
+	opcode0_sxl7   = 0447, // (295 decimal)
+	opcode0_stz    = 0450, // (296 decimal)
+	opcode0_smic   = 0451, // (297 decimal)
+	opcode0_scpr   = 0452, // (298 decimal)
+	opcode0_stt    = 0454, // (300 decimal)
+	opcode0_fst    = 0455, // (301 decimal)
+	opcode0_ste    = 0456, // (302 decimal)
+	opcode0_dfst   = 0457, // (303 decimal)
+	opcode0_fmp    = 0461, // (305 decimal)
+	opcode0_dfmp   = 0463, // (307 decimal)
+	opcode0_fstr   = 0470, // (312 decimal)
+	opcode0_frd    = 0471, // (313 decimal)
+	opcode0_dfstr  = 0472, // (314 decimal)
+	opcode0_dfrd   = 0473, // (315 decimal)
+	opcode0_fad    = 0475, // (317 decimal)
+	opcode0_dfad   = 0477, // (319 decimal)
+	opcode0_rpl    = 0500, // (320 decimal)
+	opcode0_bcd    = 0505, // (325 decimal)
+	opcode0_div    = 0506, // (326 decimal)
+	opcode0_dvf    = 0507, // (327 decimal)
+	opcode0_fneg   = 0513, // (331 decimal)
+	opcode0_fcmp   = 0515, // (333 decimal)
+	opcode0_dfcmp  = 0517, // (335 decimal)
+	opcode0_rpt    = 0520, // (336 decimal)
+	opcode0_fdi    = 0525, // (341 decimal)
+	opcode0_dfdi   = 0527, // (343 decimal)
+	opcode0_neg    = 0531, // (345 decimal)
+	opcode0_cams   = 0532, // (346 decimal)
+	opcode0_negl   = 0533, // (347 decimal)
+	opcode0_ufs    = 0535, // (349 decimal)
+	opcode0_dufs   = 0537, // (351 decimal)
+	opcode0_sprp0  = 0540, // (352 decimal)
+	opcode0_sprp1  = 0541, // (353 decimal)
+	opcode0_sprp2  = 0542, // (354 decimal)
+	opcode0_sprp3  = 0543, // (355 decimal)
+	opcode0_sprp4  = 0544, // (356 decimal)
+	opcode0_sprp5  = 0545, // (357 decimal)
+	opcode0_sprp6  = 0546, // (358 decimal)
+	opcode0_sprp7  = 0547, // (359 decimal)
+	opcode0_sbar   = 0550, // (360 decimal)
+	opcode0_stba   = 0551, // (361 decimal)
+	opcode0_stbq   = 0552, // (362 decimal)
+	opcode0_smcm   = 0553, // (363 decimal)
+	opcode0_stc1   = 0554, // (364 decimal)
+	opcode0_ssdp   = 0557, // (367 decimal)
+	opcode0_rpd    = 0560, // (368 decimal)
+	opcode0_fdv    = 0565, // (373 decimal)
+	opcode0_dfdv   = 0567, // (375 decimal)
+	opcode0_fno    = 0573, // (379 decimal)
+	opcode0_fsb    = 0575, // (381 decimal)
+	opcode0_dfsb   = 0577, // (383 decimal)
+	opcode0_tze    = 0600, // (384 decimal)
+	opcode0_tnz    = 0601, // (385 decimal)
+	opcode0_tnc    = 0602, // (386 decimal)
+	opcode0_trc    = 0603, // (387 decimal)
+	opcode0_tmi    = 0604, // (388 decimal)
+	opcode0_tpl    = 0605, // (389 decimal)
+	opcode0_ttf    = 0607, // (391 decimal)
+	opcode0_rtcd   = 0610, // (392 decimal)
+	opcode0_rcu    = 0613, // (395 decimal)
+	opcode0_teo    = 0614, // (396 decimal)
+	opcode0_teu    = 0615, // (397 decimal)
+	opcode0_dis    = 0616, // (398 decimal)
+	opcode0_tov    = 0617, // (399 decimal)
+	opcode0_eax0   = 0620, // (400 decimal)
+	opcode0_eax1   = 0621, // (401 decimal)
+	opcode0_eax2   = 0622, // (402 decimal)
+	opcode0_eax3   = 0623, // (403 decimal)
+	opcode0_eax4   = 0624, // (404 decimal)
+	opcode0_eax5   = 0625, // (405 decimal)
+	opcode0_eax6   = 0626, // (406 decimal)
+	opcode0_eax7   = 0627, // (407 decimal)
+	opcode0_ret    = 0630, // (408 decimal)
+	opcode0_rccl   = 0633, // (411 decimal)
+	opcode0_ldi    = 0634, // (412 decimal)
+	opcode0_eaa    = 0635, // (413 decimal)
+	opcode0_eaq    = 0636, // (414 decimal)
+	opcode0_ldt    = 0637, // (415 decimal)
+	opcode0_ersx0  = 0640, // (416 decimal)
+	opcode0_ersx1  = 0641, // (417 decimal)
+	opcode0_ersx2  = 0642, // (418 decimal)
+	opcode0_ersx3  = 0643, // (419 decimal)
+	opcode0_ersx4  = 0644, // (420 decimal)
+	opcode0_ersx5  = 0645, // (421 decimal)
+	opcode0_ersx6  = 0646, // (422 decimal)
+	opcode0_ersx7  = 0647, // (423 decimal)
+	opcode0_spri4  = 0650, // (424 decimal)
+	opcode0_spbp5  = 0651, // (425 decimal)
+	opcode0_spri6  = 0652, // (426 decimal)
+	opcode0_spbp7  = 0653, // (427 decimal)
+	opcode0_stacq  = 0654, // (428 decimal)
+	opcode0_ersa   = 0655, // (429 decimal)
+	opcode0_ersq   = 0656, // (430 decimal)
+	opcode0_scu    = 0657, // (431 decimal)
+	opcode0_erx0   = 0660, // (432 decimal)
+	opcode0_erx1   = 0661, // (433 decimal)
+	opcode0_erx2   = 0662, // (434 decimal)
+	opcode0_erx3   = 0663, // (435 decimal)
+	opcode0_erx4   = 0664, // (436 decimal)
+	opcode0_erx5   = 0665, // (437 decimal)
+	opcode0_erx6   = 0666, // (438 decimal)
+	opcode0_erx7   = 0667, // (439 decimal)
+	opcode0_tsp4   = 0670, // (440 decimal)
+	opcode0_tsp5   = 0671, // (441 decimal)
+	opcode0_tsp6   = 0672, // (442 decimal)
+	opcode0_tsp7   = 0673, // (443 decimal)
+	opcode0_lcpr   = 0674, // (444 decimal)
+	opcode0_era    = 0675, // (445 decimal)
+	opcode0_erq    = 0676, // (446 decimal)
+	opcode0_eraq   = 0677, // (447 decimal)
+	opcode0_tsx0   = 0700, // (448 decimal)
+	opcode0_tsx1   = 0701, // (449 decimal)
+	opcode0_tsx2   = 0702, // (450 decimal)
+	opcode0_tsx3   = 0703, // (451 decimal)
+	opcode0_tsx4   = 0704, // (452 decimal)
+	opcode0_tsx5   = 0705, // (453 decimal)
+	opcode0_tsx6   = 0706, // (454 decimal)
+	opcode0_tsx7   = 0707, // (455 decimal)
+	opcode0_tra    = 0710, // (456 decimal)
+	opcode0_call6  = 0713, // (459 decimal)
+	opcode0_tss    = 0715, // (461 decimal)
+	opcode0_xec    = 0716, // (462 decimal)
+	opcode0_xed    = 0717, // (463 decimal)
+	opcode0_lxl0   = 0720, // (464 decimal)
+	opcode0_lxl1   = 0721, // (465 decimal)
+	opcode0_lxl2   = 0722, // (466 decimal)
+	opcode0_lxl3   = 0723, // (467 decimal)
+	opcode0_lxl4   = 0724, // (468 decimal)
+	opcode0_lxl5   = 0725, // (469 decimal)
+	opcode0_lxl6   = 0726, // (470 decimal)
+	opcode0_lxl7   = 0727, // (471 decimal)
+	opcode0_ars    = 0731, // (473 decimal)
+	opcode0_qrs    = 0732, // (474 decimal)
+	opcode0_lrs    = 0733, // (475 decimal)
+	opcode0_als    = 0735, // (477 decimal)
+	opcode0_qls    = 0736, // (478 decimal)
+	opcode0_lls    = 0737, // (479 decimal)
+	opcode0_stx0   = 0740, // (480 decimal)
+	opcode0_stx1   = 0741, // (481 decimal)
+	opcode0_stx2   = 0742, // (482 decimal)
+	opcode0_stx3   = 0743, // (483 decimal)
+	opcode0_stx4   = 0744, // (484 decimal)
+	opcode0_stx5   = 0745, // (485 decimal)
+	opcode0_stx6   = 0746, // (486 decimal)
+	opcode0_stx7   = 0747, // (487 decimal)
+	opcode0_stc2   = 0750, // (488 decimal)
+	opcode0_stca   = 0751, // (489 decimal)
+	opcode0_stcq   = 0752, // (490 decimal)
+	opcode0_sreg   = 0753, // (491 decimal)
+	opcode0_sti    = 0754, // (492 decimal)
+	opcode0_sta    = 0755, // (493 decimal)
+	opcode0_stq    = 0756, // (494 decimal)
+	opcode0_staq   = 0757, // (495 decimal)
+	opcode0_lprp0  = 0760, // (496 decimal)
+	opcode0_lprp1  = 0761, // (497 decimal)
+	opcode0_lprp2  = 0762, // (498 decimal)
+	opcode0_lprp3  = 0763, // (499 decimal)
+	opcode0_lprp4  = 0764, // (500 decimal)
+	opcode0_lprp5  = 0765, // (501 decimal)
+	opcode0_lprp6  = 0766, // (502 decimal)
+	opcode0_lprp7  = 0767, // (503 decimal)
+	opcode0_arl    = 0771, // (505 decimal)
+	opcode0_qrl    = 0772, // (506 decimal)
+	opcode0_lrl    = 0773, // (507 decimal)
+	opcode0_gtb    = 0774, // (508 decimal)
+	opcode0_alr    = 0775, // (509 decimal)
+	opcode0_qlr    = 0776, // (510 decimal)
+	opcode0_llr    = 0777 // (511 decimal)
+} opcode0_t;
+
+// Opcodes with low bit (bit 27) == 1.  Enum value is value of upper 9 bits.
+typedef enum {
+	opcode1_mve    = 0020, // (16 decimal)
+	opcode1_mvne   = 0024, // (20 decimal)
+	opcode1_csl    = 0060, // (48 decimal)
+	opcode1_csr    = 0061, // (49 decimal)
+	opcode1_sztl   = 0064, // (52 decimal)
+	opcode1_sztr   = 0065, // (53 decimal)
+	opcode1_cmpb   = 0066, // (54 decimal)
+	opcode1_mlr    = 0100, // (64 decimal)
+	opcode1_mrl    = 0101, // (65 decimal)
+	opcode1_cmpc   = 0106, // (70 decimal)
+	opcode1_scd    = 0120, // (80 decimal)
+	opcode1_scdr   = 0121, // (81 decimal)
+	opcode1_scm    = 0124, // (84 decimal)
+	opcode1_scmr   = 0125, // (85 decimal)
+	opcode1_sptr   = 0154, // (108 decimal)
+	opcode1_mvt    = 0160, // (112 decimal)
+	opcode1_tct    = 0164, // (116 decimal)
+	opcode1_tctr   = 0165, // (117 decimal)
+	opcode1_lptr   = 0173, // (123 decimal)
+	opcode1_ad2d   = 0202, // (130 decimal)
+	opcode1_sb2d   = 0203, // (131 decimal)
+	opcode1_mp2d   = 0206, // (134 decimal)
+	opcode1_dv2d   = 0207, // (135 decimal)
+	opcode1_ad3d   = 0222, // (146 decimal)
+	opcode1_sb3d   = 0223, // (147 decimal)
+	opcode1_mp3d   = 0226, // (150 decimal)
+	opcode1_dv3d   = 0227, // (151 decimal)
+	opcode1_lsdr   = 0232, // (154 decimal)
+	opcode1_spbp0  = 0250, // (168 decimal)
+	opcode1_spri1  = 0251, // (169 decimal)
+	opcode1_spbp2  = 0252, // (170 decimal)
+	opcode1_spri3  = 0253, // (171 decimal)
+	opcode1_ssdr   = 0254, // (172 decimal)
+	opcode1_lptp   = 0257, // (175 decimal)
+	opcode1_mvn    = 0300, // (192 decimal)
+	opcode1_btd    = 0301, // (193 decimal)
+	opcode1_cmpn   = 0303, // (195 decimal)
+	opcode1_dtb    = 0305, // (197 decimal)
+	opcode1_easp1  = 0310, // (200 decimal)
+	opcode1_eawp1  = 0311, // (201 decimal)
+	opcode1_easp3  = 0312, // (202 decimal)
+	opcode1_eawp3  = 0313, // (203 decimal)
+	opcode1_easp5  = 0330, // (216 decimal)
+	opcode1_eawp5  = 0331, // (217 decimal)
+	opcode1_easp7  = 0332, // (218 decimal)
+	opcode1_eawp7  = 0333, // (219 decimal)
+	opcode1_epbp0  = 0350, // (232 decimal)
+	opcode1_epp1   = 0351, // (233 decimal)
+	opcode1_epbp2  = 0352, // (234 decimal)
+	opcode1_epp3   = 0353, // (235 decimal)
+	opcode1_epbp4  = 0370, // (248 decimal)
+	opcode1_epp5   = 0371, // (249 decimal)
+	opcode1_epbp6  = 0372, // (250 decimal)
+	opcode1_epp7   = 0373, // (251 decimal)
+	opcode1_sareg  = 0443, // (291 decimal)
+	opcode1_spl    = 0447, // (295 decimal)
+	opcode1_lareg  = 0463, // (307 decimal)
+	opcode1_lpl    = 0467, // (311 decimal)
+	opcode1_a9bd   = 0500, // (320 decimal)
+	opcode1_a6bd   = 0501, // (321 decimal)
+	opcode1_a4bd   = 0502, // (322 decimal)
+	opcode1_abd    = 0503, // (323 decimal)
+	opcode1_awd    = 0507, // (327 decimal)
+	opcode1_s9bd   = 0520, // (336 decimal)
+	opcode1_s6bd   = 0521, // (337 decimal)
+	opcode1_s4bd   = 0522, // (338 decimal)
+	opcode1_sbd    = 0523, // (339 decimal)
+	opcode1_swd    = 0527, // (343 decimal)
+	opcode1_camp   = 0532, // (346 decimal)
+	opcode1_ara0   = 0540, // (352 decimal)
+	opcode1_ara1   = 0541, // (353 decimal)
+	opcode1_ara2   = 0542, // (354 decimal)
+	opcode1_ara3   = 0543, // (355 decimal)
+	opcode1_ara4   = 0544, // (356 decimal)
+	opcode1_ara5   = 0545, // (357 decimal)
+	opcode1_ara6   = 0546, // (358 decimal)
+	opcode1_ara7   = 0547, // (359 decimal)
+	opcode1_sptp   = 0557, // (367 decimal)
+	opcode1_aar0   = 0560, // (368 decimal)
+	opcode1_aar1   = 0561, // (369 decimal)
+	opcode1_aar2   = 0562, // (370 decimal)
+	opcode1_aar3   = 0563, // (371 decimal)
+	opcode1_aar4   = 0564, // (372 decimal)
+	opcode1_aar5   = 0565, // (373 decimal)
+	opcode1_aar6   = 0566, // (374 decimal)
+	opcode1_aar7   = 0567, // (375 decimal)
+	opcode1_trtn   = 0600, // (384 decimal)
+	opcode1_trtf   = 0601, // (385 decimal)
+	opcode1_tmoz   = 0604, // (388 decimal)
+	opcode1_tpnz   = 0605, // (389 decimal)
+	opcode1_ttn    = 0606, // (390 decimal)
+	opcode1_arn0   = 0640, // (416 decimal)
+	opcode1_arn1   = 0641, // (417 decimal)
+	opcode1_arn2   = 0642, // (418 decimal)
+	opcode1_arn3   = 0643, // (419 decimal)
+	opcode1_arn4   = 0644, // (420 decimal)
+	opcode1_arn5   = 0645, // (421 decimal)
+	opcode1_arn6   = 0646, // (422 decimal)
+	opcode1_arn7   = 0647, // (423 decimal)
+	opcode1_spbp4  = 0650, // (424 decimal)
+	opcode1_spri5  = 0651, // (425 decimal)
+	opcode1_spbp6  = 0652, // (426 decimal)
+	opcode1_spri7  = 0653, // (427 decimal)
+	opcode1_nar0   = 0660, // (432 decimal)
+	opcode1_nar1   = 0661, // (433 decimal)
+	opcode1_nar2   = 0662, // (434 decimal)
+	opcode1_nar3   = 0663, // (435 decimal)
+	opcode1_nar4   = 0664, // (436 decimal)
+	opcode1_nar5   = 0665, // (437 decimal)
+	opcode1_nar6   = 0666, // (438 decimal)
+	opcode1_nar7   = 0667, // (439 decimal)
+	opcode1_sar0   = 0740, // (480 decimal)
+	opcode1_sar1   = 0741, // (481 decimal)
+	opcode1_sar2   = 0742, // (482 decimal)
+	opcode1_sar3   = 0743, // (483 decimal)
+	opcode1_sar4   = 0744, // (484 decimal)
+	opcode1_sar5   = 0745, // (485 decimal)
+	opcode1_sar6   = 0746, // (486 decimal)
+	opcode1_sar7   = 0747, // (487 decimal)
+	opcode1_sra    = 0754, // (492 decimal)
+	opcode1_lar0   = 0760, // (496 decimal)
+	opcode1_lar1   = 0761, // (497 decimal)
+	opcode1_lar2   = 0762, // (498 decimal)
+	opcode1_lar3   = 0763, // (499 decimal)
+	opcode1_lar4   = 0764, // (500 decimal)
+	opcode1_lar5   = 0765, // (501 decimal)
+	opcode1_lar6   = 0766, // (502 decimal)
+	opcode1_lar7   = 0767, // (503 decimal)
+	opcode1_lra    = 0774 // (508 decimal)
+} opcode1_t;
 
 #endif

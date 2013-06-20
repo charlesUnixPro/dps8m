@@ -103,8 +103,106 @@ const char *sim_stop_messages[] = {
 //    return SCPE_OK;
 //}
 
+/*
+ * init_opcodes()
+ *
+ * This initializes the is_eis[] array which we use to detect whether or
+ * not an instruction is an EIS instruction.
+ *
+ * TODO: Change the array values to show how many operand words are
+ * used.  This would allow for better symbolic disassembly.
+ *
+ * BUG: unimplemented instructions may not be represented
+ */
+
+int is_eis[1024];    // hack
+
+void init_opcodes()
+{
+    memset(is_eis, 0, sizeof(is_eis));
+    
+    is_eis[(opcode1_cmpc<<1)|1] = 1;
+    is_eis[(opcode1_scd<<1)|1] = 1;
+    is_eis[(opcode1_scdr<<1)|1] = 1;
+    is_eis[(opcode1_scm<<1)|1] = 1;
+    is_eis[(opcode1_scmr<<1)|1] = 1;
+    is_eis[(opcode1_tct<<1)|1] = 1;
+    is_eis[(opcode1_tctr<<1)|1] = 1;
+    is_eis[(opcode1_mlr<<1)|1] = 1;
+    is_eis[(opcode1_mrl<<1)|1] = 1;
+    is_eis[(opcode1_mve<<1)|1] = 1;
+    is_eis[(opcode1_mvt<<1)|1] = 1;
+    is_eis[(opcode1_cmpn<<1)|1] = 1;
+    is_eis[(opcode1_mvn<<1)|1] = 1;
+    is_eis[(opcode1_mvne<<1)|1] = 1;
+    is_eis[(opcode1_csl<<1)|1] = 1;
+    is_eis[(opcode1_csr<<1)|1] = 1;
+    is_eis[(opcode1_cmpb<<1)|1] = 1;
+    is_eis[(opcode1_sztl<<1)|1] = 1;
+    is_eis[(opcode1_sztr<<1)|1] = 1;
+    is_eis[(opcode1_btd<<1)|1] = 1;
+    is_eis[(opcode1_dtb<<1)|1] = 1;
+    is_eis[(opcode1_dv3d<<1)|1] = 1;
+}
+
+void ic_history_init();
+
 
 /*! Reset routine */
+t_stat cpu_reset_mm (DEVICE *dptr)
+{
+    
+    log_msg(INFO_MSG, "CPU::reset", "Running\n");
+    
+    init_opcodes();
+    ic_history_init();
+    
+    bootimage_loaded = 0;
+    memset(&events, 0, sizeof(events));
+    memset(&cpu, 0, sizeof(cpu));
+    memset(&cu, 0, sizeof(cu));
+    memset(&PPR, 0, sizeof(PPR));
+    cu.SD_ON = 1;
+    cu.PT_ON = 1;
+    cpu.ic_odd = 0;
+    
+    // TODO: reset *all* other structures to zero
+    
+    set_addr_mode(ABSOLUTE_mode);
+    
+    // We statup with either a fault or an interrupt.  So, a trap pair from the
+    // appropriate location will end up being the first instructions executed.
+#ifdef PUTBACK
+    if (sys_opts.startup_interrupt) {
+        // We'll first generate interrupt #4.  The IOM will have initialized
+        // memory to have a DIS (delay until interrupt set) instruction at the
+        // memory location used to hold the trap words for this interrupt.
+        cpu.cycle = INTERRUPT_cycle;
+        events.int_pending = 1;
+        events.interrupts[4] = 1;   // system fault, IOM zero, channels 0-31 -- MDD-005
+    } else {
+        // Generate a startup fault.
+        // We'll end up in a loop of trouble faults for opcode zero until the IOM
+        // finally overwites the trouble fault vector with a DIS from the tape
+        // label.
+        cpu.cycle = FETCH_cycle;
+        fault_gen(startup_fault);   // pressing POWER ON button causes this fault
+    }
+#endif
+    cpu.cycle = FETCH_cycle;
+
+    //calendar_a = 0xdeadbeef;
+    //calendar_q = 0xdeadbeef;
+    
+#if FEAT_INSTR_STATS
+    memset(&sys_stats, 0, sizeof(sys_stats));
+#endif
+    
+    opt_debug ++;
+    
+    return 0;
+}
+
 t_stat cpu_reset (DEVICE *dptr)
 {
     if (M)
@@ -125,13 +223,17 @@ t_stat cpu_reset (DEVICE *dptr)
     PPR.P = 1;
     
     processorCycle = UNKNOWN_CYCLE;
-    processorAddressingMode = ABSOLUTE_MODE;
+    //processorAddressingMode = ABSOLUTE_MODE;
+    set_addr_mode(ABSOLUTE_mode);
     
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
     cpuCycles = 0;
     
     // XXX free up previous deferred segments (if any)
+    
+    
+    cpu_reset_mm(dptr);
     
     return SCPE_OK;
 }
