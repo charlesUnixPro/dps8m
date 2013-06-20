@@ -296,7 +296,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define I_TRUNC F_L     /*!< truncation */ ///< 0000100
 #define I_NBAR	F_K     /*!< not BAR mode */ ///< 0000200
 #define I_PMASK	F_J     /*!< parity mask */ ///< 0000400
-#define I_PAR	F_I     /*!< parity error */ ///< 0001000
+#define I_PERR	F_I     /*!< parity error */ ///< 0001000
 #define I_TALLY	F_H     /*!< tally runout */ ///< 0002000
 #define I_OMASK F_G     /*!< overflow mask */ ///< 0004000
 #define I_EUFL	F_F     /*!< exponent underflow */ ///< 0010000
@@ -1719,6 +1719,9 @@ void set_addr_mode(addr_modes_t mode);
 // addressing mode, ring of operation, and settings of the active
 // segment when in the appending (segmented) address mode.)
 typedef enum { NORMAL_mode, PRIV_mode } instr_modes_t;
+
+int is_priv_mode();
+
 
 // The control unit of the CPU is always in one of several states. We
 // don't currently use all of the states used in the physical CPU.

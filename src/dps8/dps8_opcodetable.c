@@ -858,7 +858,7 @@ char *op1text[512] = {
 	"epbp4", "epp5",  "epbp6", "epp7",  NULL,    NULL,    NULL,    NULL,
 	NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
 	NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
-	NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
+	"emCall",    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
 	NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
 	NULL,    NULL,    NULL,    "sareg", NULL,    NULL,    NULL,    "spl",
 	NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,

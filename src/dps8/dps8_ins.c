@@ -460,9 +460,52 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0634:  ///< ldi
             // C(Y)18,31 → C(IR)
+
+            //int tIR = rIR;
             
-            tmp18 = (GETLO(CY) >> 4) & 037777;  // 14-bits
-            rIR = bitfieldInsert(rIR, tmp18, 4, 14);
+            tmp18 = GETLO(CY) & 0777770;  // upper 15-bits of lower 18-bits
+
+            // set mask for all bits that do not change
+            //int mask0 = 0220;
+            
+            // set mask for all bits that can always be set ...
+            //int mask1 = 0777040;
+            //rIR &= mask1 & tmp18;    // set the bits that can always be set
+
+            bool bAbsPriv = get_addr_mode() == ABSOLUTE_mode || is_priv_mode();
+
+            SCF(tmp18 & I_ZERO,  rIR, I_ZERO);
+            SCF(tmp18 & I_NEG,   rIR, I_NEG);
+            SCF(tmp18 & I_CARRY, rIR, I_CARRY);
+            SCF(tmp18 & I_OFLOW, rIR, I_OFLOW);
+            SCF(tmp18 & I_EOFL,  rIR, I_EOFL);
+            SCF(tmp18 & I_EUFL,  rIR, I_EUFL);
+            SCF(tmp18 & I_OMASK, rIR, I_OMASK);
+            SCF(tmp18 & I_TALLY, rIR, I_TALLY);
+            SCF(tmp18 & I_PERR,  rIR, I_PERR);
+            SCF(bAbsPriv && (rIR & I_PMASK), rIR, I_PMASK);
+            SCF(tmp18 & I_TRUNC, rIR, I_TRUNC);
+            SCF(bAbsPriv && (rIR & I_MIIF), rIR, I_MIIF);
+            SCF(tmp18 & I_HEX,  rIR, I_HEX);
+
+            // Indicators:
+            //  Parity Mask:
+            //      If C(Y)27 = 1, and the processor is in absolute or instruction privileged mode, then ON; otherwise OFF.
+            //      This indicator is not affected in the normal or BAR modes.
+            //  Not BAR mode:
+            //      Cannot be changed by the ldi instruction
+            //  MIIF:
+            //      If C(Y)30 = 1, and the processor is in absolute or instruction privileged mode, then ON; otherwise OFF.
+            //      This indicator is not affected in normal or BAR modes.
+            //  Absolute mode:
+            //      Cannot be changed by the ldi instruction
+            //  All others: If corresponding bit in C(Y) is 1, then ON; otherwise, OFF
+            
+            
+            //rIR = tmp18;
+            
+            //tmp18 = (GETLO(CY) >> 4) & 037777;  // 14-bits
+            //rIR = bitfieldInsert(rIR, tmp18, 4, 14);
             
             break;
             
@@ -3618,6 +3661,13 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0616:  ///< dis
+            if (i->i) {
+                log_msg(WARN_MSG, "OPU::dis", "DIS with inhibit set\n");
+            } else {
+                log_msg(WARN_MSG, "OPU::dis", "DIS\n");
+            }
+            cpu.cycle = DIS_cycle;
+
             return STOP_DIS;
  
             

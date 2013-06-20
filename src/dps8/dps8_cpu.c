@@ -9,6 +9,8 @@
 
 #include "dps8.h"
 
+#define sim_instr_NEW sim_instr
+
 a8 saved_PC = 0;
 int32 flags = 0;
 
@@ -900,12 +902,42 @@ int fetch_instr_MM(uint IC, instr_t *ip)
 }
 #endif
 
-int fetch_instr(uint IC, DCDstruct **i)
+/*
+ * instruction decoder .....
+ *
+ * if dst is not NULL place results into dst, if dst is NULL plae results into global currentInstruction
+ */
+DCDstruct *decodeInstruction2(word36 inst, DCDstruct *dst)     // decode instruction into structure
 {
-    *i = fetchInstruction(IC, *i);
+    DCDstruct *p = dst == NULL ? newDCDstruct() : dst;
     
-    return 0;
+    p->opcode  = GET_OP(inst);  // get opcode
+    p->opcodeX = GET_OPX(inst); // opcode extension
+    p->address = GET_ADDR(inst);// address field from instruction
+    p->a       = GET_A(inst);   // "A" - the indirect via pointer register flag
+    p->i       = GET_I(inst);   // inhibit interrupt flag
+    p->tag     = GET_TAG(inst); // instruction tag
+    
+    p->iwb = getIWBInfo(p);     // get info for IWB instruction
+    
+    // HWR 18 June 2013
+    p->iwb->opcode = p->opcode;
+    p->IWB = inst;
+    
+    return p;
+}
+
+int fetch_instr(uint IC, DCDstruct *i)
+{
+    DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
+    
+    Read(p, IC, &p->IWB, InstructionFetch, 0);
+    
+    cpu.read_addr = IC;
+    
+    decodeInstruction2(p->IWB, p);
     // ToDo: cause to return non 0 if a fault occurs
+    return 0;
 }
 
 //=============================================================================
@@ -1097,7 +1129,6 @@ int store_abs_word(uint addr, t_uint64 word)
 
 int store_abs_pair(uint addr, t_uint64 word0, t_uint64 word1)
 {
-    
     int ret;
     uint Y = (addr % 2 == 0) ? addr : addr - 1;
     
@@ -1438,6 +1469,7 @@ void freeDCDstruct(DCDstruct *p)
     free(p);
 }
 
+
 /*
  * instruction fetcher ...
  * fetch + decode instruction at 18-bit address 'addr'
@@ -1475,6 +1507,8 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     p->iwb->opcode = p->opcode;
     p->IWB = inst;
     
+    
+    // ToDo: may need to rethink how.when this is dome. Seems to crash the cu
     // is this a multiword EIS?
     if (p->iwb->ndes > 1)
     {
@@ -1493,6 +1527,41 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 // MM stuff ...
 
+    /*
+     * is_priv_mode()
+     *
+     * Report whether or or not the CPU is in privileged mode.
+     * True if in absolute mode or if priv bit is on in segment TPR.TSR
+     *
+     * TODO: is_priv_mode() probably belongs in the CPU source file.
+     *
+     */
+    
+    int is_priv_mode()
+    {
+        // ToDo: fix this when time permits
+        
+//        if (IR.abs_mode)
+//            return 1;
+//        SDW_t *SDWp = get_sdw();    // Get SDW for segment TPR.TSR
+//        if (SDWp == NULL) {
+//            if (cpu.apu_state.fhld) {
+//                // TODO: Do we need to check cu.word1flags.oosb and other flags to
+//                // know what kind of fault to gen?
+//                fault_gen(acc_viol_fault);
+//                cpu.apu_state.fhld = 0;
+//            }
+//            log_msg(WARN_MSG, "APU::is-priv-mode", "Segment does not exist?!?\n");
+//            cancel_run(STOP_BUG);
+//            return 0;   // arbitrary
+//        }
+//        if (SDWp->priv)
+//            return 1;
+//        if(opt_debug>0)
+//            log_msg(DEBUG_MSG, "APU", "Priv check fails for segment %#o.\n", TPR.TSR);
+//        return 0;
+        return 1;
+    }
 
 
 /*
@@ -1964,17 +2033,27 @@ static void execute_ir_MM(void)
 
 t_stat execute_ir(DCDstruct *i)
 {
+    ++ sys_stats.n_instr;
+#if FEAT_INSTR_STATS
+    ++ sys_stats.instr[ip->opcode].nexec;
+#if FEAT_INSTR_STATS_TIMING
+    uint32 start = sim_os_msec();
+#endif
+#endif
+
     cpu.trgo = 0;       // will be set true by instructions that alter flow
     
-    cpu.opcode = i->opcode << 1 | i->opcodeX;
+    cpu.opcode = i->opcode << 1 | (i->opcodeX ? 1 : 0);
     
     uint op = cpu.opcode;
-    char *opname = opcodes2text[op];
+
+    int bit27 = op % 2;
+
+    char *opname = bit27 ? op1text[op >> 1] : op0text[op >> 1]; //;opcodes2text[op];
     
     cu.rpts = 0;    // current instruction isn't a repeat type instruction (as far as we know so far)
     saved_tro = IR.tally_runout;
     
-    int bit27 = op % 2;
     op >>= 1;
     if (opname == NULL) {
         if (op == 0172 && bit27 == 1) {
@@ -1996,15 +2075,38 @@ t_stat execute_ir(DCDstruct *i)
     cpu.poa = 1;        // prepare operand address flag
 
     
-    
+    // ToDo: may need to rethink how.when this is dome. Seems to crash the cu
+    // is this a multiword EIS?
+    if (i->iwb->ndes > 1)
+    {
+        memset(i->e, 0, sizeof(EISstruct)); // clear out e
+        i->e->op0 = i->IWB;
+        // XXX: for XEC/XED/faults, this should trap?? I think -MCW
+        for(int n = 0 ; n < i->iwb->ndes; n += 1)
+            Read(i, rIC + 1 + n, &i->e->op[n], OperandRead, 0); // I think.
+    }
     
     t_stat ret = executeInstruction(i);
     if (ret == CONT_TRA)
     {
         cpu.trgo = 1;
-        cpu.irodd_invalid = 1;
+        // cpu.irodd_invalid = 1;
     }
-    return ret;
+    
+    if (i->iwb->ndes)
+    {
+        cpu.irodd_invalid = 1;
+        rIC += i->iwb->ndes + 1;
+    }
+    
+#if FEAT_INSTR_STATS
+#if FEAT_INSTR_STATS_TIMING
+    sys_stats.instr[ip->opcode].nmsec += sim_os_msec() - start;
+#endif
+#endif
+
+    // ToDo: change to return non-zero if fault
+    return 0;
 }
 
 //=============================================================================
@@ -2119,7 +2221,7 @@ static t_stat control_unit(void)
             cu.instr_fetch = 1;
             
             //if (fetch_instr_MM(PPR.IC - PPR.IC % 2, &cu.IR) != 0) {
-            if (fetch_instr(PPR.IC - PPR.IC % 2, &currentInstruction) != 0) {
+            if (fetch_instr(PPR.IC - PPR.IC % 2, currentInstruction) != 0) {
                 cpu.cycle = FAULT_cycle;
                 cpu.irodd_invalid = 1;
             } else {
@@ -2287,7 +2389,7 @@ static t_stat control_unit(void)
             xr |= cu.IR.inhibit << 7;
             
             DCDstruct i;
-            decodeInstruction(xr, &i);
+            decodeInstruction2(xr, &i);
             
             execute_ir(& i);   // executing in FAULT CYCLE, not EXECUTE CYCLE
             if (break_on_fault) {
@@ -2367,7 +2469,7 @@ static t_stat control_unit(void)
             xr |= cu.IR.inhibit << 7;
             
             DCDstruct i;
-            decodeInstruction(xr, &i);
+            decodeInstruction2(xr, &i);
             execute_ir(&i);   // executing in INTERRUPT CYCLE, not EXECUTE CYCLE
             log_msg(WARN_MSG, "CU", "Interrupt -- lightly tested\n");
             (void) cancel_run(STOP_BKPT);
@@ -2448,7 +2550,8 @@ static t_stat control_unit(void)
                     }
                     break;
                 }
-                decode_instr(&cu.IR, cu.IRODD);
+                //decode_instr(&cu.IR, cu.IRODD);
+                decodeInstruction2(cu.IRODD, currentInstruction);
             }
             
             // Do we have a breakpoint here?
@@ -2799,8 +2902,10 @@ void flush_logs()
         fflush(sim_deb);
 }
 
-t_stat sim_instr (void)
+t_stat sim_instr_NEW (void)
 {
+    currentInstruction->e = &E;
+    
     restore_from_simh();
     // setup_streams(); // Route the C++ clog and cdebug streams to match SIMH settings
     
