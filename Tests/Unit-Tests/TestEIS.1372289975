@@ -1,0 +1,118 @@
+Info:     CPU::reset:         Running
+
+dps-8/m simulator V4.0-0 Beta        git commit id: f386776a
+2398 (004536) words loaded
+This is TestEIS ... 6/26 16:39 
+BTD Tests ...
+Result: 055065061062 (-512) (Should be 055065061062 (-512))
+Result: 000065065053 (55+) (Should be 000065065053 (55+))
+Result: 320000000001 043105000000 (Should be 320000000001 043105000000)
+Result: '      -12345' (Should be '      -12345')
+DTB Tests ...
+Result: 777777775456 (Should be 777777775456)
+Result: 777777001000 (Should be 777777001000)
+Result: 000000000777 (Should be 000000000777)
+MVNE Tests ...
+Result: '   $3004.05-' (Should be '   $3004.05-')
+Result: '   $3004.05-' (Should be '   $3004.05-')
+Result: '   ?3004.05@' (Should be '   ?3004.05@')
+Result '*2505,09-   ' (Should be '*2505,09-   ')
+MVE Tests ...
+Result: '* SMITHROGER, WILLIAM S. - #25' (Should be '* SMITHROGER, WILLIAM S. - #25')
+Result: 'code error#2' (Should be 'code error#2')
+MLR Tests .....
+Result: '0000ABCDEFGHIJKL  ' (Should be 'xxxxABCDEFGHIJKL  ')
+Result: 000000000022 064126170235 (Should be 000000000022 064126170235)
+Result: 'SOURCE T' (Should be 'SOURCE T')
+Result: '.....LE ....' (Should be '.....LE ....')
+Result: "HIS IS" (Should be "HIS IS")
+MRL Tests .....
+Result: '0000  ABCDEFGHIJKL' (Should be 'xxxx  ABCDEFGHIJKL')
+Result: '000000320001 043105147211' (Should be '000000320001 043105147211')
+MVT Tests ...
+Result: '001043105155' (Should be '001043105155')
+Result: '022064126314' (Should be '022064126314')
+Result: 'TTYMESSAGE201     !!' (Should be 'TTYMESSAGE201     !!')
+Result: '123M' (Should be '123M')
+Result: '1234' (Should be '1234')
+Result: '-1234FFF' (Should be '-1234FFF')
+SCM Tests ... (Results 3, 0 & 7)
+Result: 3
+Result: 0
+Result: 7
+Found a 'g' ...
+SCMR Tests (Results 3 & 4)...
+Result: 3
+Result: 4
+TCT Tests ... (Results 020000000013 & 040000000004)
+Result: 020000000013
+Result: 040000000004
+TCTR Tests (Result 000000000012) ...
+Result: 000000000012
+CMPC Tests ...
+They are equal
+SCD Tests ... 5, 16, & 3
+Result: 000000000005
+Result: 000000000016
+Result: 000000000003
+SCDR Tests ... 6 & 3
+Result: 000000000006
+Result: 000000000003
+CMPB Tests ...
+1. FLD1 > FLD2
+2. FLD1 < FLD2
+3. FLD1 = FLD2
+CSL Tests ...
+fault(): 13 3 Overflow (ofl) 'csl truncation fault'
+Result: 777777235012
+Result: 000000777777
+Result: 777700000000
+Result: 000000000077
+CSR Tests ...
+fault(): 13 3 Overflow (ofl) 'csr truncation fault'
+Result: 333300000000
+Result: 777777777777
+SZTL Tests ...
+1. Passed
+2. Passed
+SZTR Tests ....
+1. Passed
+Result: 000000200000
+2. Passed
+Result: 000000400220
+AD2D Tests ....
+1. Result: 053071070066 063066066000 (Should be 053071070066 063066066000)
+2. Result: 053061063063 064000000000 (Should be 053061063063 064000000000)
+3. Result: 001023105153 (Should be 001023105153)
+AD3D Tests ... 
+1. Result 000260145126 (Should be 000260145126)
+2. Result 000013003106 (Should be 000013003106)
+SB2D Tests...
+1. result 055066065064 063060071376 (Should be 055066065064 063060071376) 
+2. result 8753 0864 (Should be 8753 0864)
+SB3D Tests ... 
+1. Result 000000000053 060060060177 (Should be 000000000053 060060060177)
+2. Result 320010144031 (Should be 320010144031)
+MP2D Tests ...
+1. Result 260000044151 (Should be 260000044151)
+2. Result 301043105375 (Should be 301043105375)
+MP3D Tests ... 
+1. Result +61 7284 (Should be +61 7284)
+2. Result 275060206377 (Should be 275060206377)
+DV2D Tests ... 
+1. Result 304062020003 (Should be 304062020003)
+2. Result 300044150000 (Should be 300044150000)
+DV3D Tests ... 
+1. Result 000263202162 (Should be 000263202162)
+2. Result 013103202162 (Should be 013103202162)
+CMPN Tests ... 
+1. Result FLD2 = FLD1
+2. Result FLD2 = FLD1
+3. Result FLD2 > FLD1
+WARNING:  OPU::dis:           DIS
+
+cpuCycles = 25642
+TestEIS-10> g 0
+
+DIS instruction, IC: 003252 (000000616000)
+Goodbye

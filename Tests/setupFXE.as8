@@ -110,14 +110,9 @@ setupFXE:
 "	tra	initializer$initializer	" call PL/1
 
 
-    "eax7    48
-    "tsp2    pr7|stack_header.push_op_ptr,*
-    
-    " set up initial stach frame
-
-    "tsp2 pr7|stack_header.entry_op_ptr, *
-
-    "push    
+    " set up initial stack frame
+    tsp2 pr7|stack_header.entry_op_ptr,*
+    push
     
 	tra		0,2				" ... and return to caller
     

@@ -1,17 +1,10 @@
 
-dec	1.414213562373095048801d+00
-"    000244  aa   002552 023631     235  	dec	1.414213562373095048801d+00
-"    000245  aa   477473 631102 
-dec	1.414213562373095048801
-dec	.1414213562373095048801d1
-
-
 " ******************************************
 " *                                        *
 " * Copyright, (C) Honeywell Limited, 1985 *
 " *                                        *
 " ******************************************
-*	name	square_root_
+	name	square_root_
 " Modification history:
 "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
 "	based on the GCOS routine '7nbb'.
@@ -40,14 +33,14 @@ dec	.1414213562373095048801d1
 	bool	P0.25H,000200	" yields HFP +0.25 under 'du' modification
 	bool	P4.0H,002200	" yields HFP +4.0 under 'du' modification
 
-*	segdef	square_root_,hfp_square_root_
+	segdef	square_root_,hfp_square_root_
 
 
 square_root_:
 	fad     =0.0,du		" normalize input arg
 	tze     pr3|0		" if x = 0 return (0)
 	tpl     calc_square_root	" if x < 0:
-    	fneg	0           	"   x = -x
+    fneg	0           "   x = -x
 	fst     pr2|x
 	ldq     13,dl
 *	tsx0	<call_math_error_>|[call_math_error_]
@@ -62,14 +55,14 @@ calc_square_root:
 	tze     2,ic		" if mod (e, 2) = 1:
     lde     =-1b25,du	"   EA := m = .5*m
 	ldq     pr2|x		" Q := 8/expon,28/garbage
-	qrs     28		" Q := 28/0,8/expon
+	qrs     28          " Q := 28/0,8/expon
 	adq     =1,dl		" calculate e+1
-	qrs     1		" calculate divide (e+1, 2, 7)
-	qls     28		" position result in exponent field
+	qrs     1           " calculate divide (e+1, 2, 7)
+	qls     28          " position result in exponent field
 	stq     pr2|e		" store Q := e = divide (e+1, 2, 7)
-	ldq     =0		" clear Q
+	ldq     =0          " clear Q
 	dfst	pr2|m		" store EAQ := m
-	fmp     p2		" calculate root_m = p(m)
+	fmp     p2          " calculate root_m = p(m)
 	fad     p1
 	fmp     pr2|m
 	fad     p0
@@ -83,9 +76,9 @@ calc_square_root:
 	dfdi	pr2|m
 	dfad	pr2|root_m
 	ade     =-1b25,du	" root_m = .5 * (root_m + float (m, 63)/root_m)
-                            	" root_x = root_m
+                        " root_x = root_m
 	ade     pr2|e		" calculate addr (root_x) -> expon =
-                        	"   addr (root_x) -> expon + divide (e+1, 2, 7)
+                        "   addr (root_x) -> expon + divide (e+1, 2, 7)
 	frd	0
 	tra     pr3|0		" return (root_x)
 

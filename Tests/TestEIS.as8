@@ -1018,7 +1018,7 @@ SZTR1b: call    ioa(msg31)
         tra     EISdec0
 
                             " memory contents in octal
-FLD1ar: dec     0           " x x x x x x 4 0 0 0 0 0
+FLD1ar: dec     0           " x x x x x x 4 0 0 0 0 0 (Hey what about NBAR & ABS?)
                             " indicators set? zero
 
 

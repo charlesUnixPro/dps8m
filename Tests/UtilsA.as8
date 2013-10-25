@@ -22,7 +22,7 @@ A0:     spri2   save2
         
         tsx2	rd_clock
         staq	Date        "MM/DD HH:MM
-        staq    pr0|02000
+        "staq    pr0|02000
         
         tsx2    erpt
         acc     /Date : '^g^g'\r\n/

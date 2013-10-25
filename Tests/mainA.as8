@@ -14,61 +14,58 @@
     link    I, <UtilsA>|[ioa]
     link    D, <UtilsA>|[rd_clockA]
 
-    temp    first       " a stack temporary @ sp+50(8)
-
-main:
-        tsx2    setupFXE
-        "lprplp  lot_            " set-up lp to point to this segments linkage section
-        "eppsp   stack_0         " set-up stack pointer
-
-    ldaq	.one_arg_header
-    staq	.po2_arg_list
-    epp1	.arg1
-    spri1	.po2_arg_list+2     " pointer to arg1
-    epp1	.retval
-    spri1	.po2_arg_list+4     " pointer to retval
-
-    eppap	.po2_arg_list
+    tempd    arglist(6)
     
+main:
+    tsx2    setupFXE
+
+    "ldaq	.one_arg_header
+    "staq	.po2_arg_list
+    "epp1	.arg1
+    "spri1	.po2_arg_list+2     " pointer to arg1
+    "epp1	.retval
+    "spri1	.po2_arg_list+4     " pointer to retval
+
+    "eppap	.po2_arg_list
+
+    ldaq	.two_arg_header
+    staq	arglist
+    epp1	.arg1
+    spri1	arglist+2     " pointer to arg1
+    epp1	.retval
+    spri1	arglist+4     " pointer to retval
+
+    eppap	arglist
+
 
     "    tra     pot2
         
-        LDA     I
-        tsp2	pr4|I, *        " ioa
-        acc     /Howdy world! - It's /
+    LDA     I
+    tsp2	pr4|I, *        " ioa
+    acc     /Howdy world! - It's /
 
-        "tsp2    rd_clockA
-        "tsp2     <UtilsA>|[rd_clockA]
-        tsp2    lp|D,*
-        "tsp2    UtilsA$rd_clockA
+    "tsp2    rd_clockA
+    "tsp2    <UtilsA>|[rd_clockA]
+    tsp2    lp|D,*
+    "tsp2    UtilsA$rd_clockA
 
-        staq	Date        " MM/DD HH:MM
+    staq	Date        " MM/DD HH:MM
         
-        tsp2	ioa
-        acc     /'^g^g'\r\n/
-        nop     Date
-        nop     Date+1
-
-        "ldq     =123456
-        "stq     first
-        "lda     first
-        "sta     f
-
-        "tsp2    ioa
-        "acc     /first: ^d\r\n/
-        "nop     f
+    tsp2	ioa
+    acc     /'^g^g'\r\n/
+    nop     Date
+    nop     Date+1
 
 pot:
-    "lda     =512
-    "sta     .arg1
+    lda     =512
+    sta     .arg1
     
     sprpap      g
     sprp4       f
     short_call  power_of_two
     lprp4       f
     lprpap      g
-    "getlp      " seems to be broken
-
+    
     tsp2	ioa
     acc     /We did it!!! 2**^d=^d\r\n/
     nop     .retval
@@ -79,19 +76,69 @@ pot2:
     sta     .arg1
     
     call    power_of_two2(ap|0)
-    
+
     tsp2	ioa
     acc     /We did it again!!! 2**^d=^d\r\n/
     nop     .retval
     nop     .arg1
 
+bcd:
+    LDA     1542,DL
+    LDQ     0,DL
+    BCD     8000,DL
+    BCD     6400,DL
+    BCD     5120,DL
+    BCD     4096,DL
+    stq     .retval
+    tsp2    ioa
+    acc     /Q=^n (Should be Q=1050402)\r\n/
+    nop     .retval
+
+    LDA     =666
+    LDQ     0,DL
+    BCD     =800
+    BCD     =640
+    BCD     =512
+    stq     .retval
+    tsp2    ioa
+    acc     /Q=^n (Should be Q=60606)\r\n/
+    nop     .retval
+
+
+    LDA     =0522241
+    ldq     =0
+    bcd     =800000
+    bcd     =640000
+    bcd     =512000
+    bcd     =409600
+    bcd     =327680
+    bcd     =262144
+    
+    stq     .retval
+" Q=010703020107
+
+    tsp2    ioa
+    acc     /Q=^n (Should be Q=010703020107)\r\n/
+    nop     .retval
+
+
 	dis
     
-  	"tempd	.temp
-    "tempd	.po2_arg_list(2)
+    
+    dec     8               " 1-digit
+    dec     64              " 2-digit
+    dec     512             " 3-digit
+    dec     4096            " 4-digit
+    dec     32768           " 5-digit
+    dec     262144          " 6-digit
+    dec     2097152         " 7-digit
+    dec     16777216        " 8-digit
+    dec     134217728       " 9-digit
+    dec     1073741824      " 10-digit
+
   	even
 
-    "bss     .arg1,2
+    bss     .arg1,2
     bss     .retval,2
     bss     .po2_arg_list, 4
 
@@ -99,16 +146,20 @@ pot2:
    	vfd	17/2,1/0,18/4
    	vfd	18/0,18/0
 
+.two_arg_header:
+	oct     000004000004		" 2 args, inter_seg call
+	oct     0                   " no descriptors
+
 
 	even
 Date:	bss     2
 f:      bss     1
 g:      bss     1
 
-.arg1:  dec     512, 0
+".arg1:  dec     512, 0
 
     INCLUDE     setupFXE.as8
-    
+
 	end
 
 arg_header:

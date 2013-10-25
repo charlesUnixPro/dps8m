@@ -1,7 +1,8 @@
 "
 " code to test the callx/exit ....
 "
-
+" DEPRECIATED callx/push? have been removed from simulator
+"
 "
 " play with new callx/exit instructions ....
 "

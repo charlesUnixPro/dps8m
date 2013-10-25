@@ -1,0 +1,11 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: f386776a
+28 (000034) words loaded
+This is a test of C-Style escapes ...
+... and we're back ...
+
+cpuCycles = 196
+TestString-10> g 0
+
+DIS instruction, IC: 000005 (000000616000)
+Goodbye

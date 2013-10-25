@@ -1,0 +1,20 @@
+#!/bin/sh
+
+DPS8=~/Documents/Stuff/dps8m/Private/DerivedData/Build/Products/Debug/dps8
+
+SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS"
+
+EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
+
+echo Epoch is $EPOCH
+
+for VARIABLE in $SRC
+do
+    echo  Running "$VARIABLE" ...
+
+    TEST="$VARIABLE"."$EPOCH"
+
+	$DPS8  "$VARIABLE" > $TEST
+	diff $TEST "$VARIABLE".out
+done
+

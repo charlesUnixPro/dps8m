@@ -1,3 +1,32 @@
+
+Incorporated parts of Michael Mondy's Multics-emu project into my simulator
+Therefore, portion of my simulator are ….
+
+ Copyright (c) 2007-2013 Michael Mondy
+ 
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at http://example.org/project/LICENSE.
+
+Along with the decNumber package …
+/* ------------------------------------------------------------------ */
+/* Copyright (c) IBM Corporation, 2000, 2009.  All rights reserved.   */
+/*                                                                    */
+/* This software is made available under the terms of the             */
+/* ICU License -- ICU 1.8.1 and later.                                */
+/*                                                                    */
+
+
+Sun Jun  9 18:34:10 PDT 2013
+Beginning of unit testing framework
+
+call/push/return seem to be functioning correctly. Just wish I knew when to use call vs. short_call etc. Little documentation on the practical differences between call & short_call just a few short descriptions in ALM docs. I know what the code does but why would you use one over the other and when?
+
+Thu Jun  6 16:52:11 PDT 2013
+short_call / short_return work in the FXE (Faux eXecution Environment.)
+
+
 Tue May 14 19:45:44 PDT 2013
 as8+: completed integration of Multics-style calling conventions. Assembler now generated meta info that *should* support the Multics execution environment's C/S/R API
 

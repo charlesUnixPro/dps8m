@@ -38,14 +38,14 @@
         lda     =0123456654321
         tsx2	octwd
         
-        lda     hex "=0x123abc
-        tsx2    hexwd
+        "lda     0x123abc
+        "tsx2    hexwd
       
         call    ioa (m1, A3, A3, Api, A4, A5, A6)
   
         DIS
 
-hex:    vfd     24/0x123abc
+hex:    vfd     o24/123456
 
 HELLO1: SAVE
         call        ioa(msg3a)
@@ -59,8 +59,8 @@ Hello2: save        2,3,4,5,6,7
         "dis
         
         call        ioa (msg2d)
-        return      Hello2  , 2
-
+        return      Hello2, 2
+        
 msg2d:  acc         "This is a test of CALL/SAVE/RETURN w/ multiple saves ...\r\n"
 
 
