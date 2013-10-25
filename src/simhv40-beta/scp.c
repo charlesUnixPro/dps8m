@@ -221,6 +221,7 @@
 #include "sim_tape.h"
 #include "sim_ether.h"
 #include "sim_serial.h"
+#include "sim_video.h"
 #include "sim_sock.h"
 #include <signal.h>
 #include <ctype.h>
@@ -232,7 +233,7 @@
 #endif
 #include <sys/stat.h>
 
-#if defined(HAVE_DLOPEN)                                 /* Dynamic Readline support */
+#if defined(HAVE_DLOPEN)                                /* Dynamic Readline support */
 #include <dlfcn.h>
 #endif
 
@@ -475,6 +476,9 @@ FILE *sim_log = NULL;                                   /* log file */
 FILEREF *sim_log_ref = NULL;                            /* log file file reference */
 FILE *sim_deb = NULL;                                   /* debug file */
 FILEREF *sim_deb_ref = NULL;                            /* debug file file reference */
+int32 sim_deb_switches = 0;                             /* debug switches */
+REG *sim_deb_PC = NULL;                                 /* debug PC register pointer */
+struct timespec sim_deb_basetime;                       /* debug timestamp relative base time */
 char *sim_prompt = NULL;                                /* prompt string */
 static FILE *sim_gotofile;                              /* the currently open do file */
 static int32 sim_goto_line[MAX_DO_NEST_LVL+1];          /* the current line number in the currently open do file */
@@ -1181,9 +1185,18 @@ if (dptr->flags & DEV_DEBUG) {
         }
     }
 if ((dptr->modifiers) && (dptr->numunits != 1)) {
+    if (dptr->units->flags & UNIT_DISABLE) {
+        fprint_header (st, &found, header);
+        sprintf (buf, "set %sn ENABLE", sim_dname (dptr));
+        fprintf (st,  "%-30s\tEnables unit %sn\n", buf, sim_dname (dptr));
+        sprintf (buf, "set %sn DISABLE", sim_dname (dptr));
+        fprintf (st,  "%-30s\tDisables unit %sn\n", buf, sim_dname (dptr));
+        }
     for (mptr = dptr->modifiers; mptr->mask != 0; mptr++) {
         if ((!MODMASK(mptr,MTAB_VUN)) && MODMASK(mptr,MTAB_XTD))
             continue;                                           /* skip device only modifiers */
+        if ((!mptr->valid) && MODMASK(mptr,MTAB_XTD))
+            continue;                                           /* skip show only modifiers */
         if (mptr->mstring) {
             fprint_header (st, &found, header);
             sprintf (buf, "set %s%s %s%s", sim_dname (dptr), (dptr->numunits > 1) ? "n" : "0", mptr->mstring, (strchr(mptr->mstring, '=')) ? "" : (MODMASK(mptr,MTAB_VALR) ? "=val" : (MODMASK(mptr,MTAB_VALO) ? "{=val}": "")));
@@ -1310,8 +1323,27 @@ GET_SWITCHES (cptr);
 if (*cptr) {
     cptr = get_glyph (cptr, gbuf, 0);
     if ((cmdp = find_cmd (gbuf))) {
-        if (*cptr)
-            return SCPE_2MARG;
+        if (*cptr) {
+            if ((cmdp->action == &set_cmd) || (cmdp->action == &show_cmd)) {
+                DEVICE *dptr;
+                UNIT *uptr;
+                t_stat r;
+
+                cptr = get_glyph (cptr, gbuf, 0);
+                dptr = find_unit (gbuf, &uptr);
+                if (dptr == NULL) {
+                    dptr = find_dev (gbuf);
+                    if (dptr == NULL)
+                        return SCPE_2MARG;
+                    }
+                r = help_dev_help (stdout, dptr, uptr, (cmdp->action == &set_cmd) ? "SET" : "SHOW");
+                if (sim_log)
+                    help_dev_help (sim_log, dptr, uptr, (cmdp->action == &set_cmd) ? "SET" : "SHOW");
+                return r;
+                }
+            else
+                return SCPE_2MARG;
+            }
         if (cmdp->help) {
             fputs (cmdp->help, stdout);
             if (sim_log)
@@ -2269,15 +2301,19 @@ if ((dptr = find_dev (gbuf))) {                         /* device match? */
     uptr = dptr->units;                                 /* first unit */
     ctbr = set_dev_tab;                                 /* global table */
     lvl = MTAB_VDV;                                     /* device match */
+    GET_SWITCHES (cptr);                                /* get more switches */
     }
 else if ((dptr = find_unit (gbuf, &uptr))) {            /* unit match? */
     if (uptr == NULL)                                   /* invalid unit */
         return SCPE_NXUN;
     ctbr = set_unit_tab;                                /* global table */
     lvl = MTAB_VUN;                                     /* unit match */
+    GET_SWITCHES (cptr);                                /* get more switches */
     }
-else if ((gcmdp = find_ctab (set_glob_tab, gbuf)))      /* global? */
+else if ((gcmdp = find_ctab (set_glob_tab, gbuf))) {    /* global? */
+    GET_SWITCHES (cptr);                                /* get more switches */
     return gcmdp->action (gcmdp->arg, cptr);            /* do the rest */
+    }
 else {
     if (sim_dflt_dev->modifiers)
         for (mptr = sim_dflt_dev->modifiers; mptr->mask != 0; mptr++) {
@@ -2291,9 +2327,12 @@ else {
             }
     if (!dptr)
         return SCPE_NXDEV;                              /* no match */
+    lvl = MTAB_VDV;                                     /* device match */
+    uptr = dptr->units;                                 /* first unit */
     }
 if (*cptr == 0)                                         /* must be more */
     return SCPE_2FARG;
+GET_SWITCHES (cptr);                                    /* get more switches */
 
 while (*cptr != 0) {                                    /* do all mods */
     cptr = get_glyph (svptr = cptr, gbuf, ',');         /* get modifier */
@@ -2501,12 +2540,12 @@ return r;
 
 t_stat show_cmd_fi (FILE *ofile, int32 flag, char *cptr)
 {
-uint32 lvl;
+uint32 lvl = 0xFFFFFFFF;
 char gbuf[CBUFSIZE], *cvptr;
 DEVICE *dptr;
 UNIT *uptr;
 MTAB *mptr;
-SHTAB *shtb, *shptr;
+SHTAB *shtb = NULL, *shptr;
 
 static SHTAB show_glob_tab[] = {
     { "CONFIGURATION", &show_config, 0 },
@@ -2601,7 +2640,7 @@ while (*cptr != 0) {                                    /* do all mods */
         *cvptr++ = 0;
     for (mptr = dptr->modifiers; mptr->mask != 0; mptr++) {
         if (((mptr->mask & MTAB_XTD)?                   /* right level? */
-            (mptr->mask & lvl): (MTAB_VUN & lvl)) &&
+            ((mptr->mask & lvl) == lvl): (MTAB_VUN & lvl)) &&
             ((mptr->disp && mptr->pstring &&            /* named disp? */
             (MATCH_CMD (gbuf, mptr->pstring) == 0))
  //           ||
@@ -2616,7 +2655,7 @@ while (*cptr != 0) {                                    /* do all mods */
             }                                           /* end if */
         }                                               /* end for */
     if (mptr->mask == 0) {                              /* no match? */
-        if ((shptr = find_shtab (shtb, gbuf)))          /* global match? */
+        if (shtb && (shptr = find_shtab (shtb, gbuf)))          /* global match? */
             shptr->action (ofile, dptr, uptr, shptr->arg, cptr);
         else return SCPE_ARG;
         }                                               /* end if */
@@ -2811,6 +2850,9 @@ if (flag) {
     fprintf (st, "\n\t\tMemory Access: %s Endian", sim_end ? "Little" : "Big");
     fprintf (st, "\n\t\tMemory Pointer Size: %d bits", (int)sizeof(dptr)*8);
     fprintf (st, "\n\t\t%s", sim_toffset_64 ? "Large File (>2GB) support" : "No Large File support");
+#if defined (USE_SIM_VIDEO)
+    fprintf (st, "\n\t\tSDL Video support: %s", vid_version());
+#endif
     fprintf (st, "\n\t\tOS clock tick size: %dms", os_tick_size);
 #if defined(__VMS)
     if (1) {
@@ -3633,12 +3675,16 @@ if (dptr == NULL)                                       /* found dev? */
     return SCPE_NXDEV;
 if (uptr == NULL)                                       /* valid unit? */
     return SCPE_NXUN;
-if ((uptr->flags & UNIT_ATT) &&                         /* already attached? */
-    !(uptr->dynflags & UNIT_ATTMULT)) {                 /* and only single attachable */
-    r = scp_detach_unit (dptr, uptr);                   /* detach it */
-    if (r != SCPE_OK)                                   /* error? */
-        return r;
-    }
+if (uptr->flags & UNIT_ATT)                             /* already attached? */
+    if (!(uptr->dynflags & UNIT_ATTMULT) &&             /* and only single attachable */
+        !(dptr->flags & DEV_DONTAUTO)) {                /* and auto detachable */
+        r = scp_detach_unit (dptr, uptr);               /* detach it */
+        if (r != SCPE_OK)                               /* error? */
+            return r;
+        }
+    else
+        if (!(uptr->dynflags & UNIT_ATTMULT))
+            return SCPE_ALATT;                          /* Already attached */
 sim_trim_endspc (cptr);                                 /* trim trailing spc */
 return scp_attach_unit (dptr, uptr, cptr);              /* attach */
 }
@@ -4627,7 +4673,6 @@ return sim_cancel (&sim_step_unit);
 void int_handler (int sig)
 {
 stop_cpu = 1;
-sim_interval = 0;           /* should speed up stop detection */
 return;
 }
 
@@ -6073,9 +6118,11 @@ return val;
         format  =       leading zeroes format
    Outputs:
         status  =       error status
+        if stream is NULL, returns length of output that would
+        have been generated.
 */
 
-t_stat fprint_val (FILE *stream, t_value val, uint32 radix,
+t_stat sprint_val (char *buffer, t_value val, uint32 radix,
     uint32 width, uint32 format)
 {
 #define MAX_WIDTH ((int) ((CHAR_BIT * sizeof (t_value) * 4 + 3)/3))
@@ -6109,7 +6156,9 @@ switch (format) {
             dbuf[MAX_WIDTH - (digit * 4)] = ',';
         d = d - commas;
         if (width > MAX_WIDTH) {
-            fprintf (stream, "%*s", -((int)width), dbuf);
+            if (!buffer)
+                return width;
+            sprintf (buffer, "%*s", -((int)width), dbuf);
             return SCPE_OK;
             }
         else
@@ -6129,7 +6178,26 @@ switch (format) {
             d = MAX_WIDTH - (ndigits + commas);
         break;
     }
-if (fputs (&dbuf[d], stream) == EOF)
+if (!buffer)
+    return strlen(dbuf+d);
+if (width < strlen(dbuf+d))
+    return SCPE_IOERR;
+strcpy(buffer, dbuf+d);
+return SCPE_OK;
+}
+
+t_stat fprint_val (FILE *stream, t_value val, uint32 radix,
+    uint32 width, uint32 format)
+{
+char dbuf[MAX_WIDTH + 1];
+t_stat r;
+
+if (!stream)
+    return sprint_val (NULL, val, radix, width, format);
+if (width > MAX_WIDTH)
+    width = MAX_WIDTH;
+r = sprint_val (dbuf, val, radix, width, format);
+if (fputs (dbuf, stream) == EOF)
     return SCPE_IOERR;
 return SCPE_OK;
 }
@@ -6138,7 +6206,7 @@ return SCPE_OK;
 
         sim_activate            add entry to event queue
         sim_activate_abs        add entry to event queue even if event already scheduled
-        sim_activate_notbefure  add entry to event queue even if event already scheduled
+        sim_activate_notbefore  add entry to event queue even if event already scheduled
                                 but not before the specified time
         sim_activate_after      add entry to event queue after a specified amount of wall time
         sim_cancel              remove entry from event queue
@@ -6812,7 +6880,7 @@ return SCPE_OK;
 /* Debug printout routines, from Dave Hittner */
 
 const char* debug_bstates = "01_^";
-const char* debug_fmt     = "DBG(%.0f)%s> %s %s: ";
+char debug_line_prefix[256];
 int32 debug_unterm  = 0;
 
 /* Finds debug phrase matching bitmask from from device DEBTAB table */
@@ -6838,12 +6906,36 @@ return debtab_nomatch;
 
 /* Prints standard debug prefix unless previous call unterminated */
 
-static void sim_debug_prefix (uint32 dbits, DEVICE* dptr)
+static const char *sim_debug_prefix (uint32 dbits, DEVICE* dptr)
 {
-if (!debug_unterm) {
-    char* debug_type = get_dbg_verb (dbits, dptr);
-    fprintf(sim_deb, debug_fmt, sim_gtime(), AIO_MAIN_THREAD ? "" : "+", dptr->name, debug_type);
+char* debug_type = get_dbg_verb (dbits, dptr);
+static const char* debug_fmt     = "DBG(%.0f)%s> %s %s: ";
+char tim_t[32] = "";
+char tim_a[32] = "";
+char pc_s[64] = "";
+struct timespec time_now;
+
+if (sim_deb_switches & (SWMASK ('T') | SWMASK ('R') | SWMASK ('A'))) {
+    clock_gettime(CLOCK_REALTIME, &time_now);
+    if (sim_deb_switches & SWMASK ('R'))
+        sim_timespec_diff (&time_now, &time_now, &sim_deb_basetime);
     }
+if (sim_deb_switches & SWMASK ('T')) {
+    time_t tnow = (time_t)time_now.tv_sec;
+    struct tm *now = gmtime(&tnow);
+
+    sprintf(tim_t, "%02d:%02d:%02d.%03d ", now->tm_hour, now->tm_min, now->tm_sec, (int)(time_now.tv_nsec/1000000));
+    }
+if (sim_deb_switches & SWMASK ('A')) {
+    sprintf(tim_t, "%lld.%03d ", (long long)(time_now.tv_sec), (int)(time_now.tv_nsec/1000000));
+    }
+if (sim_deb_switches & SWMASK ('P')) {
+    t_value val = get_rval (sim_deb_PC, 0);
+    sprintf(pc_s, "-%s:", sim_deb_PC->name);
+    sprint_val (&pc_s[strlen(pc_s)], val, sim_deb_PC->radix, sim_deb_PC->width, sim_deb_PC->flags & REG_FMT);
+    }
+sprintf(debug_line_prefix, "DBG(%s%s%.0f%s)%s> %s %s: ", tim_t, tim_a, sim_gtime(), pc_s, AIO_MAIN_THREAD ? "" : "+", dptr->name, debug_type);
+return debug_line_prefix;
 }
 
 void fprint_fields (FILE *stream, t_value before, t_value after, BITFIELD* bitdefs)
@@ -6895,7 +6987,8 @@ void sim_debug_bits(uint32 dbits, DEVICE* dptr, BITFIELD* bitdefs,
     uint32 before, uint32 after, int terminate)
 {
 if (sim_deb && (dptr->dctrl & dbits)) {
-    sim_debug_prefix(dbits, dptr);                      /* print prefix if required */
+    if (!debug_unterm)
+        fprintf(sim_deb, "%s", sim_debug_prefix(dbits, dptr));                      /* print prefix if required */
     fprint_fields (sim_deb, (t_value)before, (t_value)after, bitdefs); /* print xlation, transition */
     if (terminate)
         fprintf(sim_deb, "\r\n");
@@ -6922,6 +7015,7 @@ if (sim_deb && (dptr->dctrl & dbits)) {
     va_list arglist;
     int32 i, j, len;
     char* debug_type = get_dbg_verb (dbits, dptr);
+    const char* debug_prefix = sim_debug_prefix(dbits, dptr);   /* prefix to print if required */
 
     buf[bufsize-1] = '\0';
 
@@ -6969,13 +7063,13 @@ if (sim_deb && (dptr->dctrl & dbits)) {
 
     for (i = j = 0; i < len; ++i) {
         if ('\n' == buf[i]) {
-            if (i > j) {
-                if (debug_unterm)
-                    fprintf (sim_deb, "%.*s\r\n", i-j, &buf[j]);
-                else                                    /* print prefix when required */
-                    fprintf (sim_deb, "DBG(%.0f)%s> %s %s: %.*s\r\n", sim_gtime(), 
-                                                                    AIO_MAIN_THREAD ? "" : "+",
-                                                                    dptr->name, debug_type, i-j, &buf[j]);
+            if (i >= j) {
+                if ((i != j) || (i == 0)) {
+                    if (debug_unterm)
+                        fprintf (sim_deb, "%.*s\r\n", i-j, &buf[j]);
+                    else                                /* print prefix when required */
+                        fprintf (sim_deb, "%s%.*s\r\n", debug_prefix, i-j, &buf[j]);
+                    }
                 debug_unterm = 0;
                 }
             j = i + 1;
@@ -6984,10 +7078,8 @@ if (sim_deb && (dptr->dctrl & dbits)) {
     if (i > j) {
         if (debug_unterm)
             fprintf (sim_deb, "%.*s", i-j, &buf[j]);
-        else                                    /* print prefix when required */
-            fprintf (sim_deb, "DBG(%.0f)%s> %s %s: %.*s", sim_gtime(), 
-                                                            AIO_MAIN_THREAD ? "" : "+",
-                                                            dptr->name, debug_type, i-j, &buf[j]);
+        else                                        /* print prefix when required */
+            fprintf (sim_deb, "%s%.*s", debug_prefix, i-j, &buf[j]);
         }
 
 /* Set unterminated flag for next time */

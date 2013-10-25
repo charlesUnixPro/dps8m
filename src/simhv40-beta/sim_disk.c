@@ -74,6 +74,7 @@ Internal routines:
 
 #include "sim_defs.h"
 #include "sim_disk.h"
+#include "sim_ether.h"
 #include <ctype.h>
 #include <sys/stat.h>
 
@@ -1404,6 +1405,8 @@ t_addr da;
 int32 wds = ctx->sector_size/sizeof (uint16);
 uint16 *buf;
 DEVICE *dptr;
+char *namebuf, *c;
+uint32 packid;
 
 if ((sec < 2) || (wds < 16))
     return SCPE_ARG;
@@ -1419,7 +1422,20 @@ if (!get_yn ("Overwrite last track? [N]", FALSE))
     return SCPE_OK;
 if ((buf = (uint16 *) malloc (wds * sizeof (uint16))) == NULL)
     return SCPE_MEM;
-buf[0] = buf[1] = 012345u;
+if ((namebuf = (char *) malloc (1 + strlen (uptr->filename))) == NULL) {
+    free (buf);
+    return SCPE_MEM;
+    }
+strcpy (namebuf, uptr->filename);
+if ((c = strrchr (namebuf, '/')))
+    strcpy (namebuf, c+1);
+if ((c = strrchr (namebuf, '\\')))
+    strcpy (namebuf, c+1);
+if ((c = strrchr (namebuf, ']')))
+    strcpy (namebuf, c+1);
+packid = eth_crc32(0, namebuf, strlen (namebuf));
+buf[0] = (uint16)packid;
+buf[1] = (uint16)(packid >> 16) & 0x7FFF;   /* Make sure MSB is clear */
 buf[2] = buf[3] = 0;
 for (i = 4; i < wds; i++)
     buf[i] = 0177777u;

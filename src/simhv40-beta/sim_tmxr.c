@@ -447,8 +447,8 @@ if (lp->modem_control) {
 if ((!lp->mp->buffered) && (!lp->txbfd)) {
     lp->txbfd = 0;
     lp->txbsz = TMXR_MAXBUF;
-    lp->txb = (char *)realloc (lp->txb, lp->txbsz);
     }
+lp->txb = (char *)realloc (lp->txb, lp->txbsz);
 return;
 }
 
@@ -3437,7 +3437,8 @@ if (lp->txlog == NULL) {                                /* error? */
     free (lp->txlogname);                               /* free buffer */
     return SCPE_OPENERR;
     }
-lp->mp->uptr->filename = tmxr_mux_attach_string (lp->mp->uptr->filename, lp->mp);
+if (mp->uptr)                                           /* attached?, then update attach string */
+    lp->mp->uptr->filename = tmxr_mux_attach_string (lp->mp->uptr->filename, lp->mp);
 return SCPE_OK;
 }
 

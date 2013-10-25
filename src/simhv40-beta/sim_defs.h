@@ -384,15 +384,17 @@ struct sim_device {
 #define DEV_V_TYPE      4                               /* Attach type */
 #define DEV_S_TYPE      3                               /* Width of Type Field */
 #define DEV_V_SECTORS   7                               /* Unit Capacity is in 512byte sectors */
+#define DEV_V_DONTAUTO  8                               /* Do not auto detach already attached units */
 #define DEV_V_UF_31     12                              /* user flags, V3.1 */
 #define DEV_V_UF        16                              /* user flags */
 #define DEV_V_RSV       31                              /* reserved */
 
-#define DEV_DIS         (1 << DEV_V_DIS)                /* device can be set enabled or disabled */
-#define DEV_DISABLE     (1 << DEV_V_DISABLE)            /* device is currently disabled */
+#define DEV_DIS         (1 << DEV_V_DIS)                /* device is currently disabled */
+#define DEV_DISABLE     (1 << DEV_V_DISABLE)            /* device can be set enabled or disabled */
 #define DEV_DYNM        (1 << DEV_V_DYNM)               /* device requires call on msize routine to change memory size */
 #define DEV_DEBUG       (1 << DEV_V_DEBUG)              /* device supports SET DEBUG command */
 #define DEV_SECTORS     (1 << DEV_V_SECTORS)            /* capacity is 512 byte sectors */
+#define DEV_DONTAUTO    (1 << DEV_V_DONTAUTO)           /* Do not auto detach already attached units */
 #define DEV_NET         0                               /* Deprecated - meaningless */
 
 
@@ -633,14 +635,22 @@ struct sim_fileref {
 #define UDATA(act,fl,cap) NULL,act,NULL,NULL,NULL,0,0,(fl),0,(cap),0,NULL,0,0
 
 #if defined (__STDC__) || defined (_WIN32)
+/* Right Justified Octal Register Data */
 #define ORDATA(nm,loc,wd) #nm, &(loc), 8, (wd), 0, 1, NULL, NULL
+/* Right Justified Decimal Register Data */
 #define DRDATA(nm,loc,wd) #nm, &(loc), 10, (wd), 0, 1, NULL, NULL
+/* Right Justified Hexadecimal Register Data */
 #define HRDATA(nm,loc,wd) #nm, &(loc), 16, (wd), 0, 1, NULL, NULL
+/* One-bit binary flag at an arbitrary offset in a 32-bit word Register */
 #define FLDATA(nm,loc,pos) #nm, &(loc), 2, 1, (pos), 1, NULL, NULL
+/* Arbitrary location and Radix Register */
 #define GRDATA(nm,loc,rdx,wd,pos) #nm, &(loc), (rdx), (wd), (pos), 1, NULL, NULL
+/* Arrayed register whose data is kept in a standard C array Register */
 #define BRDATA(nm,loc,rdx,wd,dep) #nm, (loc), (rdx), (wd), 0, (dep), NULL, NULL
+/* Arrayed register whose data is part of the UNIT structure */
 #define URDATA(nm,loc,rdx,wd,off,dep,fl) \
     #nm, &(loc), (rdx), (wd), (off), (dep), NULL, NULL, ((fl) | REG_UNIT)
+/* Same as above, but with additional description initializer */
 #define ORDATAD(nm,loc,wd,desc) #nm, &(loc), 8, (wd), 0, 1, (desc), NULL
 #define DRDATAD(nm,loc,wd,desc) #nm, &(loc), 10, (wd), 0, 1, (desc), NULL
 #define HRDATAD(nm,loc,wd,desc) #nm, &(loc), 16, (wd), 0, 1, (desc), NULL
@@ -649,6 +659,7 @@ struct sim_fileref {
 #define BRDATAD(nm,loc,rdx,wd,dep,desc) #nm, (loc), (rdx), (wd), 0, (dep), (desc), NULL
 #define URDATAD(nm,loc,rdx,wd,off,dep,fl,desc) \
     #nm, &(loc), (rdx), (wd), (off), (dep), (desc), NULL, ((fl) | REG_UNIT)
+/* Same as above, but with additional description initializer, and bitfields */
 #define ORDATADF(nm,loc,wd,desc,flds) #nm, &(loc), 8, (wd), 0, 1, (desc), (flds)
 #define DRDATADF(nm,loc,wd,desc,flds) #nm, &(loc), 10, (wd), 0, 1, (desc), (flds)
 #define HRDATADF(nm,loc,wd,desc,flds) #nm, &(loc), 16, (wd), 0, 1, (desc), (flds)
