@@ -166,21 +166,26 @@ void cu_safe_store()
 
 PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
 
+
+//=============================================================================
+
+
+
 t_stat executeInstruction(DCDstruct *ci)
 {
-    word36 IWB  = ci->IWB;          ///< instruction working buffer
-    opCode *iwb = ci->iwb;          ///< opCode *
-    int32  opcode = ci->opcode;     ///< opcode
-    bool   opcodeX = ci->opcodeX;   ///< opcode extension
-    word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
-    bool   a = ci->a;               ///< bit-29 - addressing via pointer register
-    bool   i = ci->i;               ///< interrupt inhibit bit.
-    word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
+    const word36 IWB  = ci->IWB;          ///< instruction working buffer
+    const opCode *iwb = ci->iwb;          ///< opCode *
+    const int32  opcode = ci->opcode;     ///< opcode
+    const bool   opcodeX = ci->opcodeX;   ///< opcode extension
+    const word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
+    const bool   a = ci->a;               ///< bit-29 - addressing via pointer register
+    const bool   i = ci->i;               ///< interrupt inhibit bit.
+    const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
     
     TPR.CA = ci->address;           // address from opcode
     rY = ci->address;
     
-    ci->stiTally = TSTF(rIR, I_TALLY);  // for sti instruction
+    ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
     
     if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
     {
@@ -217,14 +222,15 @@ t_stat executeInstruction(DCDstruct *ci)
         
         if (iwb->flags & (READ_OPERAND | PREPARE_CA ))
             doComputedAddressFormation(ci, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
-
+        
         // XXX this may be too simplistic ....
 
         // ToDo: Read72 is also used to read in 72-bits, but not into Ypair! Fix this
         if (iwb->flags & READ_YPAIR)
             Read2(ci, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
 
-        finalAddress = (word24)CY;
+        //finalAddress = (word24)CY; // why was this here???
+        finalAddress = TPR.CA;  // ???
     }
     
     //t_stat ret = opcodeX ? DoEISInstruction(ci) : DoBasicInstruction(ci);
@@ -463,7 +469,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
 
             //int tIR = rIR;
             
-            tmp18 = GETLO(CY) & 0777770;  // upper 15-bits of lower 18-bits
+            tmp18 = GETLO(CY) & 0777760;  // upper 14-bits of lower 18-bits
 
             // set mask for all bits that do not change
             //int mask0 = 0220;
@@ -486,7 +492,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             SCF(bAbsPriv && (rIR & I_PMASK), rIR, I_PMASK);
             SCF(tmp18 & I_TRUNC, rIR, I_TRUNC);
             SCF(bAbsPriv && (rIR & I_MIIF), rIR, I_MIIF);
-            SCF(tmp18 & I_HEX,  rIR, I_HEX);
+            //SCF(tmp18 & I_HEX,  rIR, I_HEX);
 
             // Indicators:
             //  Parity Mask:
@@ -2505,6 +2511,12 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             
         case 0630:  ///< ret
+            
+            // Parity mask: If C(Y)27 = 1, and the processor is in absolute or mask privileged mode, then ON; otherwise OFF. This indicator is not affected in the normal or BAR modes.
+            // Nor BAR mode: Can be set OFF but not ON by the ret instruction
+            // Absolute mode: Can be set OFF but not ON by the ret instruction
+            // All oter indicators: If corresponding bit in C(Y) is 1, then ON; otherwise, OFF
+            
             /// C(Y)0,17 → C(PPR.IC)
             /// C(Y)18,31 → C(IR)
             /// XXX Not completely implemented
@@ -3358,12 +3370,34 @@ t_stat DoBasicInstruction(DCDstruct *i)
             bPuls2 = true;
             break;
          
-            // TODo: implement RPD/RPL
+            // TODO: implement RPD/RPL
         case 0560:  ///< rpd
         case 0500:  ///< rpl
             return STOP_UNIMP;
+
+        case 7770520:  ///< rpt
+        {
+            // MM's rpt implementation seems quite complex (with interactions with the control unit and all) and not
+            // certain if is better than mine. More complex is better, right? Dunno. May revisit this later.
             
-        case 0520:  ///< rpt            
+            cu.rpts = 1;
+            // AL39, page 209
+            uint tally = (i->address >> 10);
+            uint c = (i->address >> 7) & 1;
+            uint term = i->address & 0177;
+            cu.delta = i->tag;
+            if (c)
+                rX[0] = i->address;    // Entire 18 bits
+            cu.rpt = 1;
+            cu.repeat_first = 1;
+            // Setting cu.rpt will cause the instruction to be executed
+            // until the termination is met.
+            // See cpu.c for the rest of the handling.
+            log_msg(INFO_MSG, "OPU", "RPT instruction found\n");
+            return 0;
+        }
+
+        case 0520:  ///< rpt
             {
                 //Execute the instruction at C(PPR.IC)+1 either a specified number of times
                 //or until a specified termination condition is met.
@@ -3389,10 +3423,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
                 int Xn = nxt->tag - 8;          // Get Xn of next instruction
     
                 if (nxt->iwb->flags & NO_RPT)   // repeat allowed for this instruction?
-                {
                     doFault(i, FAULT_IPR, 0, "no rpt allowed for instruction");
-                }
-                
+                                
                 //If C = 1, then C(rpt instruction word)0,17 → C(X0); otherwise, C(X0) unchanged prior to execution.
                 bool c1 = TSTBIT(i->IWB, 25);
                 if (c1)
@@ -3457,7 +3489,11 @@ t_stat DoBasicInstruction(DCDstruct *i)
                     {
                         SETF(rIR, I_TALLY);
                         exit = true;
-                    }
+                        // Note that the code in bootload_tape.alm expects that
+                        // the tally runout *not* be set when both the
+                        // termination condition is met and bits 0..7 of
+                        // reg X[0] hits zero.
+                    } else
                     
                     //  d. If a terminate condition has been met, then set the tally runout indicator OFF and terminate
                     if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
@@ -3489,13 +3525,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
                         CLRF(rIR, I_TALLY);
                         exit = true;
                     }
-                    
+
                     //  e. Go to step a
                     cpuCycles += 1; // XXX remove later when we can get this into the main loop
 
                 } while (exit == false);
                 
-                rIC += 1;   // bump instruction counter
+                // XXX when using MMs fault code / ControlUnit() we don't do this here ...
+                //rIC += 1;   // bump instruction counter
             }
             break;
             
@@ -3677,7 +3714,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
     }
     
     if (i->iwb->flags & STORE_OPERAND)
-        writeOperand(i);         // write C(Y) to TPR.CA for any instructions that needs it .....
+        writeOperand(i);  // write C(Y) to TPR.CA for any instructions that needs it .....
     
     if (i->iwb->flags & STORE_YPAIR)
         writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....

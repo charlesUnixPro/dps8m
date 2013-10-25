@@ -1292,6 +1292,7 @@ void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     static int pos = 0;         ///< current character position
     static int size = 0;        ///< size of char
     static int _k = -1;         ///< k of MFk
+
     if (k)
     {
         _k = k;
@@ -1406,8 +1407,9 @@ void _btd(EISstruct *e)
     if (n128 < 0)
         n128 = -n128;
     
-    if (n128 == 0)  // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
-        SETF(e->_flags, I_ZERO);
+    //if (n128 == 0)  // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
+        //SETF(e->_flags, I_ZERO);
+    SCF(n128 == 0, e->_flags, I_ZERO);
    
     int N = e->N2;  // number of chars to write ....
     
@@ -1449,7 +1451,7 @@ void _btd(EISstruct *e)
     }
     else
     {
-        while (N)
+        while (N > 0)
         {
             EISwriteToOutputStringReverse(e, 0, (e->TN2 == CTN4) ? 0 : '0');
             N -= 1;

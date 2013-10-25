@@ -51,6 +51,7 @@ static DEBTAB cpu_dt[] = {
     { "REGDUMP",    DBG_REGDUMP     }, // don't move as it messes up DBG message
     { "ADDRMOD",    DBG_ADDRMOD     },
     { "APPENDING",  DBG_APPENDING   },
+    { "UNIT",       DBG_UNIT        },
     { NULL,         0               }
 };
 
@@ -172,7 +173,7 @@ t_stat cpu_reset_mm (DEVICE *dptr)
     
     // We statup with either a fault or an interrupt.  So, a trap pair from the
     // appropriate location will end up being the first instructions executed.
-#ifdef PUTBACK
+#ifdef PUTBACK_WHEN_WE_WANT_TO_StART_NORMALLY
     if (sys_opts.startup_interrupt) {
         // We'll first generate interrupt #4.  The IOM will have initialized
         // memory to have a DIS (delay until interrupt set) instruction at the
@@ -198,7 +199,7 @@ t_stat cpu_reset_mm (DEVICE *dptr)
     memset(&sys_stats, 0, sizeof(sys_stats));
 #endif
     
-    opt_debug ++;
+    opt_debug = 16;;
     
     return 0;
 }

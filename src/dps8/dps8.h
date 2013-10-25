@@ -278,10 +278,10 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define F_N             (1 << F_V_N)
 #define F_O             (1 << F_V_O)
 
-#define SETF(flags, x)         flags = (flags |  (x))
-#define CLRF(flags, x)         flags = (flags & ~(x))
-#define TSTF(flags, x)         (flags & (x))
-#define SCF(cond, flags, x)    { if ((cond)) SETF(flags, x); else CLRF(flags, x); }
+#define SETF(flags, x)         flags = ((flags) |  (x))
+#define CLRF(flags, x)         flags = ((flags) & ~(x))
+#define TSTF(flags, x)         ((flags) & (x))
+#define SCF(cond, flags, x)    { if ((cond)) SETF((flags), x); else CLRF((flags), x); }
 
 #define SETBIT(dst, bitno)      ((dst) | (1 << (bitno)))
 //#define SETBIT(dst, bitno)      ((dst) = (1 << (bitno)))
@@ -330,6 +330,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_ADDRMOD     (1 << 9)    ///< follow address modifications
 #define DBG_APPENDING   (1 << 10)   ///< follow appending unit operations
 #define DBG_TRACEEXT    (1 << 11)   ///< extended instruction trace
+#define DBG_UNIT        (1 << 12)   ///< "Unit" debugging
 
 /* Global data */
 
@@ -802,7 +803,7 @@ extern	word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 extern	word8	tCF;	/*!< character position field [3b] */
 
 extern word6 Td, Tm;
-extern word4 CT_HOLD;
+//extern word4 CT_HOLD;
 extern word36 CY;
 
 /* what about faults? */
@@ -1529,6 +1530,7 @@ extern t_stat loadSpecial(char *buff);
 
 extern bool adrTrace;   ///< when true perform address modification tracing
 extern bool apndTrace;  ///< when true do appending unit tracing
+extern bool unitTrace;  ///< when true do unit level tracing
 
 //extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
 #define cpuCycles sys_stats.total_cycles
@@ -1727,7 +1729,11 @@ int is_priv_mode();
 // don't currently use all of the states used in the physical CPU.
 // The FAULT_EXEC cycle did not exist in the physical hardware.
 typedef enum {
-    ABORT_cycle = ABORT_CYCLE, FAULT_cycle = FAULT_CYCLE, EXEC_cycle, FAULT_EXEC_cycle, INTERRUPT_cycle,
+    ABORT_cycle = ABORT_CYCLE,
+    FAULT_cycle = FAULT_CYCLE,
+    EXEC_cycle,
+    FAULT_EXEC_cycle,
+    INTERRUPT_cycle,
     FETCH_cycle = INSTRUCTION_FETCH,
     DIS_cycle // A pseudo cycle for handling the DIS instruction
     // CA FETCH OPSTORE, DIVIDE_EXEC

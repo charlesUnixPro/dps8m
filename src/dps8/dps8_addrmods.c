@@ -20,14 +20,13 @@ extern word36 YPair[2];
 
 word6 Tm = 0;
 word6 Td = 0;
-word6 CT_HOLD = 0;
+//word6 CT_HOLD = 0;
 
 bool directOperandFlag = false;
 word36 directOperand = 0;
 
 
 bool adrTrace = false;   ///< when true do address modifications traceing
-
 
 char *strCAFoper(eCAFoper o)
 {
@@ -98,6 +97,7 @@ word18 getCr(word4 Tdes)
  */
 void doComputedAddressFormation(DCDstruct *i, eCAFoper operType) // What about write operands esp in tally IT???
 {
+    
     word18 tmp18;
     
     directOperandFlag = false;
@@ -190,6 +190,7 @@ R_MOD1:;
 
 //! Figure 6-4. Register Then Indirect Modification Flowchart
 RI_MOD:;
+    
     if (adrTrace)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Td=%o\n", Td);
@@ -237,11 +238,11 @@ RI_MOD2:;
 //! Figure 6-5. Indirect Then Register Modification Flowchart
 IR_MOD:;
     
-    CT_HOLD = Td;
+    cu.CT_HOLD = Td;
     
     if (adrTrace)
     {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: CT_HOLD=%o\n", CT_HOLD, Td);
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: CT_HOLD=%o\n", cu.CT_HOLD, Td);
     }
     
 IR_MOD_1:
@@ -269,7 +270,7 @@ IR_MOD_2:;
              
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, CT_HOLD);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
             }
             if (Td == IT_F2 || Td == IT_F3)
                 // Abort. FT2 or 3
@@ -277,7 +278,7 @@ IR_MOD_2:;
             // fall through to TM_R
             
         case TM_R:
-            Cr = getCr(CT_HOLD);
+            Cr = getCr(cu.CT_HOLD);
             
             if (adrTrace)
             {

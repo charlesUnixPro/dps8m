@@ -10,6 +10,7 @@
 #include "dps8.h"
 
 #define sim_instr_NEW sim_instr
+//#define sim_instr_HWR sim_instr
 
 a8 saved_PC = 0;
 int32 flags = 0;
@@ -319,6 +320,7 @@ t_stat sim_instr_HWR (void)
     /* Main instruction fetch/decode loop */
     adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
     apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
+    unitTrace = (cpu_dev.dctrl & DBG_UNIT) && sim_deb;      // perform UNIT tracing
     
     //currentInstruction = &_currentInstruction;
     currentInstruction->e = &E;
@@ -917,6 +919,8 @@ DCDstruct *decodeInstruction2(word36 inst, DCDstruct *dst)     // decode instruc
     p->a       = GET_A(inst);   // "A" - the indirect via pointer register flag
     p->i       = GET_I(inst);   // inhibit interrupt flag
     p->tag     = GET_TAG(inst); // instruction tag
+    
+    //cu.tag = p->tag;    // ???
     
     p->iwb = getIWBInfo(p);     // get info for IWB instruction
     
@@ -1541,8 +1545,8 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     {
         // ToDo: fix this when time permits
         
-//        if (IR.abs_mode)
-//            return 1;
+        if (TSTF(rIR, I_ABS))       //IR.abs_mode)
+            return 1;
 //        SDW_t *SDWp = get_sdw();    // Get SDW for segment TPR.TSR
 //        if (SDWp == NULL) {
 //            if (cpu.apu_state.fhld) {
@@ -2052,7 +2056,7 @@ t_stat execute_ir(DCDstruct *i)
     char *opname = bit27 ? op1text[op >> 1] : op0text[op >> 1]; //;opcodes2text[op];
     
     cu.rpts = 0;    // current instruction isn't a repeat type instruction (as far as we know so far)
-    saved_tro = IR.tally_runout;
+    saved_tro = TSTF(rIR, I_TALLY); // IR.tally_runout;
     
     op >>= 1;
     if (opname == NULL) {
@@ -2061,7 +2065,7 @@ t_stat execute_ir(DCDstruct *i)
             cancel_run(STOP_BUG);
             return 0;
         }
-        log_msg(WARN_MSG, "OPU", "Illegal opcode %03o(%d)\n", op, bit27);
+        log_msg(WARN_MSG, "OPU", "Illegal opcode %03o(%d) -- %06lo\n", op, bit27, rIC);
         fault_gen(illproc_fault);
         return 1;
     } else {
@@ -2090,7 +2094,7 @@ t_stat execute_ir(DCDstruct *i)
     if (ret == CONT_TRA)
     {
         cpu.trgo = 1;
-        // cpu.irodd_invalid = 1;
+        cpu.irodd_invalid = 1;
     }
     
     if (i->iwb->ndes)
@@ -2173,7 +2177,8 @@ static t_stat control_unit(void)
             uint32 n = sim_qcount();
             if (n == 0) {
                 log_msg(ERR_MSG, "CU", "DIS instruction running, but no activities are pending.\n");
-                reason = STOP_BUG;
+                //reason = STOP_BUG;
+                reason = STOP_DIS;
             } else
                 log_msg(DEBUG_MSG, "CU", "Delaying until an interrupt is set.\n");
             break;
@@ -2644,7 +2649,7 @@ static t_stat control_unit(void)
                         // So, for instructions like cmpaq, the index register
                         // points to the entry after the one found.
                         int n = cu.tag & 07;
-                        reg_X[n] += cu.delta;
+                        rX[n] += cu.delta;
                         if (opt_debug) log_msg(DEBUG_MSG, "CU", "Incrementing X[%d] by %#o to %#o.\n", n, cu.delta, reg_X[n]);
                         // Note that the code in bootload_tape.alm expects that
                         // the tally runout *not* be set when both the
@@ -2652,6 +2657,8 @@ static t_stat control_unit(void)
                         // reg X[0] hits zero.
                         if (t == 0) {
                             IR.tally_runout = 1;
+                            SETF(rIR, I_TALLY);
+                            
                             cu.rpt = 0;
                             if (opt_debug) log_msg(DEBUG_MSG, "CU", "Repeated instruction hits tally runout; halting rpt.\n");
                         }
@@ -2660,17 +2667,17 @@ static t_stat control_unit(void)
                         // Note that register X[0] is 18 bits
                         int terminate = 0;
                         if (getbit18(reg_X[0], 11))
-                            terminate |= IR.zero;
+                            terminate |= TSTF(rIR, I_ZERO); //IR.zero;
                         if (getbit18(reg_X[0], 12))
-                            terminate |= ! IR.zero;
+                            terminate |= !TSTF(rIR, I_ZERO);   // ! IR.zero;
                         if (getbit18(reg_X[0], 13))
-                            terminate |= IR.neg;
+                            terminate |= TSTF(rIR, I_NEG);  //IR.neg;
                         if (getbit18(reg_X[0], 14))
-                            terminate |= ! IR.neg;
+                            terminate |= !TSTF(rIR, I_NEG); //! IR.neg;
                         if (getbit18(reg_X[0], 15))
-                            terminate |= IR.carry;
+                            terminate |= TSTF(rIR, I_CARRY);    //IR.carry;
                         if (getbit18(reg_X[0], 16))
-                            terminate |= ! IR.carry;
+                            terminate |= !TSTF(rIR, I_CARRY);    // ! IR.carry;
                         if (getbit18(reg_X[0], 17)) {
                             log_msg(DEBUG_MSG, "CU", "Checking termination conditions for overflows.\n");
                             // Process overflows -- BUG: what are all the
@@ -2682,15 +2689,31 @@ static t_stat control_unit(void)
                                     fault_gen(overflow_fault);
                                 terminate = 1;
                             }
+                            if (TSTF(rIR, I_OFLOW) || TSTF(rIR, I_EOFL)) {
+                                if (TSTF(rIR, I_OMASK))
+                                    SETF(rIR, I_OFLOW);
+                                else
+                                    fault_gen(overflow_fault);
+                                terminate = 1;
+                            }
+
                         }
                         if (terminate) {
                             cu.rpt = 0;
                             log_msg(DEBUG_MSG, "CU", "Repeated instruction meets termination condition.\n");
                             IR.tally_runout = 0;
+                            CLRF(rIR, I_TALLY);
                             // BUG: need IC incr, etc
                         } else {
                             if (! IR.tally_runout)
+                            {
                                 if (opt_debug>0) log_msg(DEBUG_MSG, "CU", "Repeated instruction will continue.\n");
+                            }
+                            if (!TSTF(rIR, I_TALLY))
+                            {
+                                if (opt_debug>0) log_msg(DEBUG_MSG, "CU", "Repeated instruction will continue.\n");
+                            }
+
                         }
                     }
                     // TODO: if rpt double incr PPR.IC with wrap
@@ -2904,6 +2927,11 @@ void flush_logs()
 
 t_stat sim_instr_NEW (void)
 {
+    /* Main instruction fetch/decode loop */
+    adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
+    apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
+    unitTrace = (cpu_dev.dctrl & DBG_UNIT) && sim_deb;      // perform UNIT tracing
+    
     currentInstruction->e = &E;
     
     restore_from_simh();
@@ -3033,7 +3061,7 @@ t_stat sim_instr_NEW (void)
             if (reason == 0)
                 reason = cancel;
 #if 0
-            if (reason == STOP_DIS) {
+            if (reason == STOP_DIS) {¡
                 // Until we implement something fancier, DIS will just freewheel...
                 cpu.cycle = DIS_cycle;
                 reason = 0;
@@ -3043,18 +3071,513 @@ t_stat sim_instr_NEW (void)
         }
     }   // while (reason == 0)
     log_msg(DEBUG_MSG, "MAIN::CU", "Finished cycle loop; total cycles %lld; sim time is %f, %d events pending, first event at %d\n", sys_stats.total_cycles, sim_gtime(), sim_qcount(), sim_interval);
-    
+
+    if (!sim_quiet)
+        printf("Finished cycle loop; total cycles %lld; sim time is %f, %d events pending, first event at %d\n", sys_stats.total_cycles, sim_gtime(), sim_qcount(), sim_interval);
+
     delta += sim_os_msec() - start;
     uint32 ncycles = sys_stats.total_cycles - start_cycles;
     sys_stats.total_msec += delta;
     sys_stats.total_instr += sys_stats.n_instr;
     if (delta > 500)
-        log_msg(INFO_MSG, "CU", "Step: %.1f seconds: %d cycles at %d cycles/sec, %d instructions at %d instr/sec\n",
+        log_msg(INFO_MSG, "CU", "Step: %.3f seconds: %d cycles at %d cycles/sec, %d instructions at %d instr/sec\n",
                 (float) delta / 1000, ncycles, ncycles*1000/delta, sys_stats.n_instr, sys_stats.n_instr*1000/delta);
-    
+
+    //if (delta > 500)
+    if (!sim_quiet)
+        printf("Step: %.3f seconds: %d cycles at %d cycles/sec, %d instructions at %d instr/sec\n",
+                (float) delta / 1000, ncycles, ncycles*1000/delta, sys_stats.n_instr, sys_stats.n_instr*1000/delta);
+
     save_to_simh();     // pack private variables into SIMH's world
     flush_logs();
     
     return reason;
 }
 
+#if 0
+    enum atag_tm { atag_r = 0, atag_ri = 1, atag_it = 2, atag_ir = 3 };
+    
+    // CPU allows [2^6 .. 2^12]; multics uses 2^10
+    static const int page_size = 1024;
+    
+    typedef struct {    // TODO: having a temp CA is ugly and doesn't match HW
+        int32 soffset;      // Signed copy of CA (15 or 18 bits if from instr;
+        // 18 bits if from indirect word)
+        uint32 tag;
+        flag_t more;
+        enum atag_tm special;
+    } ca_temp_t;
+
+    /*
+     * addr_mod()
+     *
+     * Called by OPU for most instructions
+     * Generate 18bit computed address TPR.CA
+     * Returns non-zero on error or group 1-6 fault
+     *
+     */
+    
+    int addr_mod(const instr_t *ip)
+    {
+        
+        /*
+         AL39,5-1: In abs mode, the appending unit is bypassed for instr
+         fetches and *most* operand fetches and the final 18-bit computed
+         address (TPR.CA) from addr prep becomes the main memory addr.
+         
+         ...
+         Two modes -- absolute mode or appending mode.  [Various constucts] in
+         absolute mode places the processor in append mode for one or more addr
+         preparation cycles.  If a transfer of control is made with any of the
+         above constructs, the proc remains in append mode after the xfer.
+         */
+        
+        char *moi = "APU::addr-mod";
+        
+        // FIXME: do reg and indir word stuff first?
+        
+        TPR.is_value = 0;   // FIXME: Use "direct operand flag" instead
+        TPR.value = 0135701234567;  // arbitrary junk ala 0xdeadbeef
+        
+        // Addr appending below
+        
+        addr_modes_t orig_mode = get_addr_mode();
+        addr_modes_t addr_mode = orig_mode;
+        int ptr_reg_flag = ip->mods.single.pr_bit;
+        ca_temp_t ca_temp;  // FIXME: hack
+        
+        // FIXME: The following check should only be done after a sequential
+        // instr fetch, not after a transfer!  We're only called by do_op(),
+        // so this criteria is *almost* met.   Need to detect transfers.
+        // Figure 6-10 claims we update the TPR.TSR segno as instructed by a "PR"
+        // bit 29 only if we're *not* doing a sequential instruction fetch.
+        
+        ca_temp.tag = ip->mods.single.tag;
+        
+        if (cu.rpt) {
+            // Special handling for repeat instructions
+            TPR.TBR = 0;
+            cu.tag = ca_temp.tag;
+            uint td = ca_temp.tag & 017;
+            int n = td & 07;
+            if (cu.repeat_first) {
+                if (opt_debug)
+                    log_msg(DEBUG_MSG, moi,
+                            "RPT: First repetition; incr will be 0%o(%d).\n",
+                            ip->addr, ip->addr);
+                TPR.CA = ip->addr;
+                // FIXME: do we need to sign-extend to allow for negative "addresses"?
+                ca_temp.soffset = ip->addr;
+            } else {
+                // Note that we don't add in a delta for X[n] here.   Instead the
+                // CPU increments X[n] after every instruction.  So, for
+                // instructions like cmpaq, the index register points to the entry
+                // after the one found.
+                TPR.CA = 0;
+                ca_temp.soffset = 0;
+                if(opt_debug)
+                    log_msg(DEBUG_MSG, moi,
+                            "RPT: X[%d] is 0%o(%d).\n", n, reg_X[n], reg_X[n]);
+            }
+        } else if (ptr_reg_flag == 0) {
+            ca_temp.soffset = sign18(ip->addr);
+            // TPR.TSR = PPR.PSR;   -- done prior to fetch_instr()
+            // TPR.TRR = PPR.PRR;   -- done prior to fetch_instr()
+            TPR.CA = ip->addr;
+            TPR.TBR = 0;
+        } else {
+            if (cu.instr_fetch) {
+                log_msg(ERR_MSG, moi,
+                        "Bit 29 is on during an instruction fetch.\n");
+                cancel_run(STOP_WARN);
+            }
+            if (orig_mode != APPEND_mode) {
+                log_msg(NOTIFY_MSG, moi,
+                        "Turning on APPEND mode for PR based operand.\n");
+                set_addr_mode(addr_mode = APPEND_mode);
+            }
+            // AL39: Page 341, Figure 6-7 shows 3 bit PR & 15 bit offset
+            int32 offset = ip->addr & MASKBITS(15);
+            ca_temp.soffset = sign15(offset);
+            uint pr = ip->addr >> 15;
+            TPR.TSR = AR_PR[pr].PR.snr;     // FIXME: see comment above re figure 6-10
+            TPR.TRR = max3(AR_PR[pr].PR.rnr, TPR.TRR, PPR.PRR);
+            TPR.CA = (AR_PR[pr].wordno + ca_temp.soffset) & MASK18;
+            TPR.TBR = AR_PR[pr].PR.bitno;
+            int err = TPR.TBR < 0 || TPR.TBR > 35;
+            if (opt_debug || err)
+                log_msg(err ? WARN_MSG : DEBUG_MSG, moi,
+                        "Using PR[%d]: TSR=0%o, TRR=0%o, CA=0%o(0%o+0%o<=>%d+%d), bitno=0%o\n",
+                        pr, TPR.TSR, TPR.TRR, TPR.CA, AR_PR[pr].wordno, ca_temp.soffset,
+                        AR_PR[pr].wordno, ca_temp.soffset, TPR.TBR);
+            if (err) {
+                log_msg(ERR_MSG, moi, "Bit offset %d outside range of 0..35\n",
+                        TPR.TBR);
+                cancel_run(STOP_BUG);
+            }
+            ca_temp.soffset = sign18(TPR.CA);
+            
+            // FIXME: Enter append mode & stay if execute a transfer -- fixed?
+        }
+        
+        if (cu.instr_fetch) {
+            uint p = is_priv_mode();    // Get priv bit from the SDW for TPR.TSR
+            if (PPR.P != p)
+                log_msg(INFO_MSG, moi, "PPR.P priv flag changing from %c to %c.\n",
+                        (PPR.P) ? 'Y' : 'N', p ? 'Y' : 'N');
+            PPR.P = p;
+        }
+        
+        int op = ip->opcode;
+        int bit27 = op % 2;
+        op >>= 1;
+        if (bit27 == 0) {
+            if (op == opcode0_stca || op == opcode0_stcq)
+                return 0;
+            if (op == opcode0_stba || op == opcode0_stbq)
+                return 0;
+            if (op == opcode0_lcpr)
+                return 0;
+            if (op == opcode0_scpr)
+                return 0;
+        }
+        
+#if 0
+        ???
+        if eis multi-word
+            variable = bits 0..17 (first 18 bits)
+            int_inhibit = bit 28 // aka I
+            mf1 = bits 29..36   // aka modification field
+#endif
+            
+            ca_temp.more = 1;
+        int mult = 0;
+        
+        while (ca_temp.more) {
+            if (compute_addr(ip, &ca_temp) != 0) {
+                if (ca_temp.more) log_msg(NOTIFY_MSG, moi, "Not-Final (not-incomplete) CA: 0%0o\n", TPR.CA);
+                ca_temp.soffset = sign18(TPR.CA);
+                // return 1;
+            }
+            if (ca_temp.more)
+                mult = 1;
+            ca_temp.soffset = sign18(TPR.CA);
+            if (ca_temp.more)
+                if(opt_debug>0)
+                    log_msg(DEBUG_MSG, moi, "Post CA: Continuing indirect fetches\n");
+#if 0
+            if (ca_temp.more)
+                log_msg(DEBUG_MSG, moi, "Pre Seg: Continuing indirect fetches\n");
+            if (do_esn_segmentation(ip, &ca_temp) != 0) {
+                log_msg(DEBUG_MSG, moi, "Final (incomplete) CA: 0%0o\n", TPR.CA);
+                return 1;
+            }
+            if (ca_temp.more)
+                log_msg(DEBUG_MSG, moi, "Post Seg: Continuing indirect fetches\n");
+#endif
+            if (ca_temp.more)
+                mult = 1;
+        }
+        if (mult) {
+            if(opt_debug>0) log_msg(DEBUG_MSG, moi, "Final CA: 0%0o\n", TPR.CA);
+        }
+        
+        addr_mode = get_addr_mode();    // may have changed
+        
+        if (addr_mode == BAR_mode) {
+            if (addr_mode == BAR_mode && ptr_reg_flag == 0) {
+                // Todo: Add CA to BAR.base; add in PR; check CA vs bound
+            }
+            // FIXME: Section 4 says make sure CA cycle handled AR reg mode and
+            // constants
+            if (TPR.is_value) {
+                log_msg(WARN_MSG, moi, "BAR mode not fully implemented.\n");
+                return 0;
+            } else {
+                log_msg(ERR_MSG, moi, "BAR mode not implemented.\n");
+                cancel_run(STOP_BUG);
+                return 1;
+            }
+        }
+        
+        if (addr_mode == ABSOLUTE_mode && ptr_reg_flag == 0) {
+            // TPR.CA is the 18-bit absolute main memory addr
+            if (orig_mode != addr_mode)
+                log_msg(DEBUG_MSG, moi, "finished\n");
+            return 0;
+        }
+        
+        // APPEND mode handled by fetch_word() etc
+        
+        if (orig_mode != addr_mode)
+            log_msg(DEBUG_MSG, moi, "finished\n");
+        return 0;
+    }
+    
+    //=============================================================================
+    
+    /*
+     * compute_addr()
+     *
+     * Perform a "CA" cycle as per figure 6-2 of AL39.
+     *
+     * Generate an 18-bit computed address (in TPR.CA) as specified in section 6
+     * of AL39.
+     * In our version, this may include replacing TPR.CA with a 36 bit constant or
+     * other value if an appropriate modifier (e.g., du) is present.
+     *
+     */
+    
+    static int compute_addr(const instr_t *ip, ca_temp_t *ca_tempp)
+    {
+        ca_tempp->more = 0;
+        
+        // FIXME: Need to do ESN special handling if loop is continued
+        
+        // the and is a hint to the compiler for the following switch...
+        enum atag_tm tm = (ca_tempp->tag >> 4) & 03;
+        
+        uint td = ca_tempp->tag & 017;
+        
+        ca_tempp->special = tm;
+        
+        if (cu.rpt) {
+            // Check some requirements, but don't generate a fault (AL39 doesn't
+            // say whether or not we should fault)
+            if (tm != atag_r && tm != atag_ri)
+                log_msg(ERR_MSG, "APU", "Repeated instructions must use register or register-indirect address modes.\n");
+            else
+                if (td == 0)
+                    log_msg(ERR_MSG, "APU", "Repeated instructions should not use X[0].\n");
+        }
+        
+        switch(tm) {
+            case atag_r: {
+                // Tm=0 -- register (r)
+                if (td != 0)
+                    reg_mod(td, ca_tempp->soffset);
+                if (cu.rpt) {
+                    int n = td & 07;
+                    reg_X[n] = TPR.CA;
+                }
+                return 0;
+            }
+            case atag_ri: {
+                // Tm=1 -- register then indirect (ri)
+                if (td == 3 || td == 7) {
+                    // ",du" or ",dl"
+                    log_msg(WARN_MSG, "APU", "RI with td==0%o is illegal.\n", td);
+                    fault_gen(illproc_fault);   // need illmod sub-category
+                    return 1;
+                }
+                int off = ca_tempp->soffset;
+                uint ca = TPR.CA;
+                reg_mod(td, off);
+                if(opt_debug)
+                    log_msg(DEBUG_MSG, "APU",
+                            "RI: pre-fetch:  TPR.CA=0%o <==  TPR.CA=%o + 0%o\n",
+                            TPR.CA, ca, TPR.CA - ca);
+                t_uint64 word;
+                if (cu.rpt) {
+                    int n = td & 07;
+                    reg_X[n] = TPR.CA;
+                    if (opt_debug>0) {
+                        log_msg(DEBUG_MSG, "APU",
+                                "RI for repeated instr: Setting X[%d] to CA 0%o(%d).\n",
+                                n, reg_X[n], reg_X[n]);
+                        log_msg(DEBUG_MSG, "APU",
+                                "RI for repeated instr: Not doing address appending on CA.\n");
+                    }
+                    if (fetch_abs_word(TPR.CA, &word) != 0)
+                        return 1;
+                } else
+                    if (addr_append(&word) != 0)
+                        return 1;
+                if(opt_debug>0) log_msg(DEBUG_MSG, "APU",
+                                        "RI: fetch:  word at TPR.CA=0%o is 0%llo\n", TPR.CA, word);
+                if (cu.rpt) {
+                    // ignore tag and don't allow more indirection
+                    return 0;
+                }
+                ca_tempp->tag = word & MASKBITS(6);
+                if (TPR.CA % 2 == 0 && (ca_tempp->tag == 041 || ca_tempp->tag == 043)) {
+                    int ret = do_its_itp(ip, ca_tempp, word);
+                    if(opt_debug>0) log_msg(DEBUG_MSG, "APU",
+                                            "RI: post its/itp: TPR.CA=0%o, tag=0%o\n",
+                                            TPR.CA, ca_tempp->tag);
+                    if (ret != 0) {
+                        if (ca_tempp->tag != 0) {
+                            log_msg(WARN_MSG, "APU",
+                                    "RI: post its/itp: canceling remaining APU cycles.\n");
+                            cancel_run(STOP_WARN);
+                        }
+                        return ret;
+                    }
+                } else {
+                    TPR.CA = word >> 18;
+                    if(opt_debug>0) log_msg(DEBUG_MSG, "APU",
+                                            "RI: post-fetch: TPR.CA=0%o, tag=0%o\n",
+                                            TPR.CA, ca_tempp->tag);
+                }
+                // break;   // Continue a new CA cycle
+                ca_tempp->more = 1;     // Continue a new CA cycle
+                // FIXME: flowchart says start CA, but we do ESN
+                return 0;
+            }
+            case atag_it: {
+                // Tm=2 -- indirect then tally (it)
+                // FIXME: see "it" flowchart for looping (Td={15,17}
+                switch(td) {
+                    case 0:
+                        log_msg(WARN_MSG, "APU", "IT with Td zero not valid in instr word.\n");
+                        fault_gen(f1_fault);    // This mode not ok in instr word
+                        break;
+                    case 6:
+                        // This mode not ok in an instr word
+                        log_msg(WARN_MSG, "APU", "IT with Td six is a fault.\n");
+                        fault_gen(fault_tag_2_fault);
+                        break;
+                    case 014: {
+                        t_uint64 iword;
+                        int ret;
+                        int iloc = TPR.CA;
+                        if ((ret = addr_append(&iword)) == 0) {
+                            int addr = getbits36(iword, 0, 18);
+                            int tally = getbits36(iword, 18, 12);
+                            int tag = getbits36(iword, 30, 6);
+                            ++tally;
+                            tally &= MASKBITS(12);  // wrap from 4095 to zero
+                            // FIXME: do we need to fault?
+                            IR.tally_runout = (tally == 0);
+                            if (IR.tally_runout)
+                                log_msg(NOTIFY_MSG, "APU", "IT(di): tally runout\n");
+                            --addr;
+                            addr &= MASK18; // wrap from zero to 2^18-1
+                            iword = setbits36(iword, 0, 18, addr);
+                            iword = setbits36(iword, 18, 12, tally);
+                            TPR.CA = addr;
+                            if (opt_debug) {
+                                // give context for appending msgs
+                                log_msg(DEBUG_MSG, "APU",
+                                        "IT(di): addr now 0%o, tally 0%o\n",
+                                        addr, tally);
+                            }
+                            ret = store_word(iloc, iword);
+                        }
+                        return ret;
+                    }
+                        // case 015: more=1 depending upon tag
+                    case 016: {
+                        // mode "id" -- increment addr and decrement tally
+                        t_uint64 iword;
+                        int ret;
+                        int iloc = TPR.CA;
+                        if ((ret = addr_append(&iword)) == 0) {
+                            int addr = getbits36(iword, 0, 18);
+                            int tally = getbits36(iword, 18, 12);
+                            int tag = getbits36(iword, 30, 6);
+                            TPR.CA = addr;
+                            --tally;
+                            tally &= MASKBITS(12);  // wrap from zero to 4095
+                            IR.tally_runout = (tally == 0); // NOTE: The Bpush macro usage in bootload_0 implies that we should *not* fault
+                            ++addr;
+                            addr &= MASK18; // wrap from 2^18-1 to zero
+                            iword = setbits36(iword, 0, 18, addr);
+                            iword = setbits36(iword, 18, 12, tally);
+                            if (opt_debug) {
+                                // give context for appending msgs
+                                log_msg(DEBUG_MSG, "APU", "IT(id): addr now 0%o, tally 0%o\n", addr, tally);
+                            }
+                            ret = store_word(iloc, iword);
+                        }
+                        return ret;
+                    }
+                    default:
+                        log_msg(ERR_MSG, "APU",
+                                "IT with Td 0%o not implemented.\n", td);
+                        cancel_run(STOP_BUG);
+                        return 1;
+                }
+                break;
+            }
+            case atag_ir: {
+                // Tm=3 -- indirect then register (ir)
+                int nloops = 0;
+                while(tm == atag_ir || tm == atag_ri) {
+                    if (++nloops > 1)
+                        log_msg(NOTIFY_MSG, "APU::IR", "loop # %d\n", nloops);
+                    if (tm == atag_ir)
+                        cu.CT_HOLD = td;
+                    // FIXME: Maybe handle special tag (41 itp, 43 its).  Or post
+                    // handle?
+                    if(opt_debug>0) log_msg(DEBUG_MSG, "APU::IR",
+                                            "pre-fetch: Td=0%o, TPR.CA=0%o\n", td, TPR.CA);
+                    t_uint64 word;
+                    if (addr_append(&word) != 0)
+                        return 1;
+                    if(opt_debug>0) log_msg(DEBUG_MSG, "APU::IR",
+                                            "fetched:  word at TPR.CA=0%o is 0%llo:\n",
+                                            TPR.CA, word);
+                    ca_tempp->tag = word & MASKBITS(6);
+                    if (TPR.CA % 2 == 0 &&
+                        (ca_tempp->tag == 041 || ca_tempp->tag == 043))
+                    {
+                        int ret = do_its_itp(ip, ca_tempp, word);
+                        if(opt_debug>0) log_msg(DEBUG_MSG, "APU::IR",
+                                                "post its/itp: TPR.CA=0%o, tag=0%o\n",
+                                                TPR.CA, ca_tempp->tag);
+                        if (ret != 0) {
+                            if (ca_tempp->tag != 0) {
+                                log_msg(WARN_MSG, "APU",
+                                        "IR: post its/itp: canceling remaining APU cycles.\n");
+                                cancel_run(STOP_WARN);
+                            }
+                            return ret;
+                        }
+                    } else {
+                        TPR.CA = word >> 18;
+                        tm = (ca_tempp->tag >> 4) & 03;
+                        td = ca_tempp->tag & 017;
+                        if(opt_debug>0) log_msg(DEBUG_MSG, "APU::IR",
+                                                "post-fetch: TPR.CA=0%o, tag=0%o, new tm=0%o; td = %o\n",
+                                                TPR.CA, ca_tempp->tag, tm, td);
+                        if (td == 0) {
+                            // FIXME: Disallow a reg_mod() with td equal to
+                            // NULL (AL39)
+                            // Disallow always or maybe ok for ir?
+                            log_msg(ERR_MSG, "APU::IR", "Found td==0 (for tm=0%o)\n", tm);
+                            cancel_run(STOP_WARN);
+                        }
+                        switch(tm) {
+                            case atag_ri:
+                                log_msg(WARN_MSG, "APU::IR",
+                                        "IR followed by RI.  Not tested\n");
+                                reg_mod(td, ca_tempp->soffset);
+                                break;      // continue looping
+                            case atag_r:
+                                reg_mod(cu.CT_HOLD, ca_tempp->soffset);
+                                return 0;
+                            case atag_it:
+                                //reg_mod(td, ca_tempp->soffset);
+                                log_msg(ERR_MSG, "APU::IR", "Need to run normal IT algorithm, ignoring fault 1.\n"); // actually cannot have fault 1 if disallow td=0 above
+                                cancel_run(STOP_BUG);
+                                return 0;
+                            case atag_ir:
+                                log_msg(WARN_MSG, "APU::IR", "IR followed by IR, continuing to loop.  Not tested\n");
+                                cu.CT_HOLD = ca_tempp->tag & MASKBITS(4);
+                                break;      // keep looping
+                        }
+                    }
+                    //log_msg(WARN_MSG, "APU::IR", "Finished, but unverified.\n");
+                    //cancel_run(STOP_WARN);
+                    log_msg(DEBUG_MSG, "APU::IR", "Finished.\n");
+                    return 0;
+                }
+            }
+        }
+        
+        // FIXME: Need to do ESN special handling if loop is continued
+        
+        return 0;
+    }
+#endif

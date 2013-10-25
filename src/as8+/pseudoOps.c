@@ -1429,8 +1429,8 @@ void doSave(list *reglist)                           // for save pseudoop
     ///              .
     ///          LDX(i1)  **,DU
     ///          RET      BBBBB+1
-    ///          STI      BBBBB+1
-    ///          STX1     BBBBB+1
+    ///          STI      BBBBB+1       // <== This worked fine on everything except the multics machines where this can, because of the ABS indicatior,
+    ///          STX1     BBBBB+1       // <== appear to be an indirect word
     ///          STX(i1)  BBBBB+2
     ///             .
     ///             .
@@ -1535,7 +1535,7 @@ void doReturn(char *BBBBB, word36 k)                  // for return pseudoop
     ///      TRA     BBBBB+2
     
     /// RETURN  BBBBB,k
-    ///      LDX1    BBBBB+1,*
+    ///      LDX1    BBBBB+1,*  // <== This worked fine on everything except the multics machines where this can, because of the ABS indicatior, appear to be an indirect word
     ///      SBLX1   k,DU
     ///      STX1    BBBBB+1
     ///      TRA     BBBBB+2
@@ -1572,7 +1572,7 @@ void doReturn(char *BBBBB, word36 k)                  // for return pseudoop
             return;
         }
         /// Generate:
-        ///      LDX1    BBBBB+1,*
+        ///      LDX1    BBBBB+1,* (LDX1    BBBBB+1,I)
         ///      SBLX1   k,DU
         ///      STX1    BBBBB+1
         ///      TRA     BBBBB+2
@@ -1582,11 +1582,14 @@ void doReturn(char *BBBBB, word36 k)                  // for return pseudoop
         ///< XXX HWR added - 25 Dec25 2012 - Either docs are wrong or I implemented it wrong.
         ///< To return to the kth Error routine need to subtract 1 from k - if k is to begin at 1.
         ///< still has weirdness .......
+        ///< XXX HWR 25 June 2013. k is correct. No comment about the above comment. Heh, heh,
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o %s\n", (*addr)++, BBBBB + 1, getOpcode("LDX1"), getmod("*"), inLine);
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, k,         getOpcode("SBLX1"), getmod("DU"));
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 1, getOpcode("STX1"), 0);
         //fprintf(oct, "%6.6o xxxx %06o%04o%02o\n",    (*addr)++, BBBBB + 2, getOpcode("TRA"), 0);
-        sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("ldx1") | getmod("*"));
+        
+        //sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("ldx1") | getmod("*"));
+        sprintf(w, "%06o%06o", BBBBB + 1, getEncoding("ldx1") | getmod("i")); // similiar to * but ignoted the tag field
         outas8Stri(w, addr, LEXline);
         addr += 1;
         

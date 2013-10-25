@@ -1198,8 +1198,16 @@ inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
     return result;
 }
 
+bool unitTrace = false; // when TRUE unit tracing is enabled ...
+
 void log_msg(enum log_level level, const char* who, const char* format, ...)
 {
+    //if (sim_quiet && level != INFO_MSG)
+    //    return;
+ 
+    if (unitTrace == false)
+        return;
+    
     if (level == DEBUG_MSG) {
         if (opt_debug == 0)
             return;

@@ -536,8 +536,12 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
                 decBCDFromNumber(out, set->digits, &scale, ro);
                 for(int i = 0 ; i < set->digits ; i += 1 )
                     out[i] += '0';
-                //out[set->digits] = 0;
-                strcpy(out, out+set->digits-adjLen);
+                
+                // HWR 24 Oct 2013
+                char temp[256];
+                strcpy(temp, out+set->digits-adjLen);
+                strcpy(out, temp);
+                //strcpy(out, out+set->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
                 
                 //fprintf(stderr, "R OVR\n");
                 ovr = true;
@@ -638,7 +642,12 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
                     for(int i = 0 ; i < r->digits ; i += 1 )
                         out[i] += '0';
                     out[r->digits] = 0;
-                    strcpy(out, out+r->digits-adjLen);
+                    
+                    // HWR 24 Oct 2013
+                    char temp[256];
+                    strcpy(temp, out+r->digits-adjLen);
+                    strcpy(out, temp);
+                    //strcpy(out, out+r->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
                     
                     //fprintf(stderr, "OVR\n");
                     ovr = true;
