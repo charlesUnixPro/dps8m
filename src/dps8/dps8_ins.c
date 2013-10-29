@@ -1109,7 +1109,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             OVR: If range of A is exceeded, then ON
             CARRY: If a carry out of A0 is generated, then ON; otherwise OFF
              
-            XXX: check Michael Mondy's notes on 36-bit addition and T&D stuff. Need to reimplement code
+            TODO: check Michael Mondy's notes on 36-bit addition and T&D stuff. Need to reimplement code
              
              
             */
@@ -3531,8 +3531,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
 
                 } while (exit == false);
                 
-                // XXX when using MMs fault code / ControlUnit() we don't do this here ...
-                //rIC += 1;   // bump instruction counter
+                // Note: when using MMs fault code / ControlUnit() we don't do this here ...
+                rIC += 1;   // bump instruction counter
             }
             break;
             

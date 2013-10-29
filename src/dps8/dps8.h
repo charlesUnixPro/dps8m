@@ -2718,7 +2718,7 @@ typedef enum {
 	opcode0_gtb    = 0774, // (508 decimal)
 	opcode0_alr    = 0775, // (509 decimal)
 	opcode0_qlr    = 0776, // (510 decimal)
-	opcode0_llr    = 0777 // (511 decimal)
+	opcode0_llr    = 0777  // (511 decimal)
 } opcode0_t;
 
 // Opcodes with low bit (bit 27) == 1.  Enum value is value of upper 9 bits.
@@ -2851,7 +2851,7 @@ typedef enum {
 	opcode1_lar5   = 0765, // (501 decimal)
 	opcode1_lar6   = 0766, // (502 decimal)
 	opcode1_lar7   = 0767, // (503 decimal)
-	opcode1_lra    = 0774 // (508 decimal)
+	opcode1_lra    = 0774  // (508 decimal)
 } opcode1_t;
 
 #endif

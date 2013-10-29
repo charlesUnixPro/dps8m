@@ -9,8 +9,8 @@
 
 #include "dps8.h"
 
-#define sim_instr_NEW sim_instr
-//#define sim_instr_HWR sim_instr
+//#define sim_instr_NEW sim_instr
+#define sim_instr_HWR sim_instr
 
 a8 saved_PC = 0;
 int32 flags = 0;
@@ -831,17 +831,17 @@ extern int is_eis[];
 
 void decode_instr(instr_t *ip, t_uint64 word)
 {
-    ip->addr = getbits36(word, 0, 18);
-    ip->opcode = getbits36(word, 18, 10);
-    ip->inhibit = getbits36(word, 28, 1);
+    ip->addr = (uint)getbits36(word, 0, 18);
+    ip->opcode = (uint)getbits36(word, 18, 10);
+    ip->inhibit = (uint)getbits36(word, 28, 1);
     if (! (ip->is_eis_multiword = is_eis[ip->opcode])) {
-        ip->mods.single.pr_bit = getbits36(word, 29, 1);
-        ip->mods.single.tag = getbits36(word, 30, 6);
+        ip->mods.single.pr_bit = (uint)getbits36(word, 29, 1);
+        ip->mods.single.tag = (uint)getbits36(word, 30, 6);
     } else {
-        ip->mods.mf1.ar = getbits36(word, 29, 1);
-        ip->mods.mf1.rl = getbits36(word, 30, 1);
-        ip->mods.mf1.id = getbits36(word, 31, 1);
-        ip->mods.mf1.reg = getbits36(word, 32, 4);
+        ip->mods.mf1.ar = (uint)getbits36(word, 29, 1);
+        ip->mods.mf1.rl = (uint)getbits36(word, 30, 1);
+        ip->mods.mf1.id = (uint)getbits36(word, 31, 1);
+        ip->mods.mf1.reg = (uint)getbits36(word, 32, 4);
     }
 }
 
