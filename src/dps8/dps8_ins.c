@@ -21,6 +21,9 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *dst);      // fetch (+ decod
 
 t_stat doInstruction(DCDstruct *i);
 
+t_stat doXED(word36 *Ypair);
+
+
 /**
  * writeOperand() - write (a potentially modified) CY to memory at TPR.CA using whatever modifications are necessary ...
  */
@@ -3305,7 +3308,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
             
-        case 0717:  ///< xed
+        case opcode0_xed:   // 0717:  ///< xed
             {
             /// The xed instruction itself does not affect any indicator. However, the execution of the instruction pair from C(Y-pair) may affect indicators.
             /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
@@ -3317,7 +3320,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
             ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
             
             // XXX This is probably way wrong and too simplistic, but it's a start ...
-                
+               
+#ifdef XEC_MOVED_OUT_OF_SWITCH
             DCDstruct _xec;   // our decoded instruction struct
             EISstruct _eis;
             
@@ -3340,8 +3344,15 @@ t_stat DoBasicInstruction(DCDstruct *i)
                 
             if (ret)
                 return (ret);
-    
+#endif
+                
+                t_stat ret = doXED(Ypair);
+
+                if (ret)
+                    return (ret);
+
             }
+            
             break;
             
         case 001:   ///< mme
@@ -4972,6 +4983,48 @@ t_stat DoEISInstruction(DCDstruct *i)
 
 }
 
+/*
+ * Perform a XED instruction according to Ypair.
+ * (It has been borken out of the main instruction execution switch to facilitate it's use
+ * for interrupt/fault procesing.)
+ */
+t_stat doXED(word36 *Ypair)
+{
+    /// The xed instruction itself does not affect any indicator. However, the execution of the instruction pair from C(Y-pair) may affect indicators.
+    /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
+    /// If the execution of the instruction pair from C(Y-pair) alters C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1. If the even instruction from C(Y-pair) alters C(PPR.IC), then the transfer of control is effective immediately and the odd instruction is not executed.
+    
+    /// To execute an instruction pair having an rpd instruction as the odd instruction, the xed instruction must be located at an odd address. The instruction pair repeated is that instruction pair at C PPR.IC)+1, that is, the instruction pair immediately following the xed instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so the the next instruction fetched for execution is from the first word following the repeated instruction pair.
+    /// The instruction pair at C(Y-pair) may cause any of the processor defined fault conditions, but only the directed faults (0,1,2,3) and the access violation fault may be restarted successfully by the hardware. Note that the software induced fault tag (1,2,3) faults cannot be properly restarted.
+    ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
+    ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
+    
+    // XXX This is probably way wrong and too simplistic, but it's a start ...
+    
+    DCDstruct _xec;   // our decoded instruction struct
+    EISstruct _eis;
+    
+    _xec.IWB = Ypair[0];
+    _xec.e = &_eis;
+    
+    DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
+    
+    t_stat ret = executeInstruction(xec);
+    
+    if (ret)
+        return (ret);
+    
+    _xec.IWB = Ypair[1];
+    _xec.e = &_eis;
+    
+    xec = decodeInstruction(Ypair[1], &_xec);               // fetch instruction into current instruction
+    
+    ret = executeInstruction(xec);
+    
+    return (ret);
+}
+
+
 #include <ctype.h>
 
 /**
@@ -5035,30 +5088,6 @@ emCall(DCDstruct *i)
             break;
         }
             
-//        case 7:     ///< putdescA put alpha-numeric descriptor given in A to stdout .....
-//        {
-//            word18 addr = GETHI(rA);    // get address of data to write (ABS mode only)
-//            int CN = (int)bitfieldExtract36(rA, 15, 3);  // get starting character position
-//            int TA = (int)bitfieldExtract36(rA, 13, 2);  // get data type
-//            int  N = (int)bitfieldExtract36(rA, 0, 12);   // get char count
-//            
-//            get469(0, 0, 0);    // initialize char getter
-//            for(int n = 0 ; n < N ; n += 1)
-//            {
-//                int c = get469(&addr, &CN, TA); // get character
-//                switch (TA)
-//                {
-//                    case CTA4:
-//                    case CTA6:
-//                        putc(GEBcdToASCII[c], stdout);
-//                        break;
-//                    case CTA9:
-//                        putc(c & 0x7f, stdout);
-//                        break;
-//                }
-//            }
-//            break;
-//        }
     }
 }
 
