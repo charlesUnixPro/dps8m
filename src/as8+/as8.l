@@ -120,7 +120,7 @@ FltLiteral      \={real}
 VFDLiteral      \=[Vv]
 
 ITSLiteral      \=[Ii][Tt][Ss]
-ITPLiteral      \=[Ii][Tt][Ss]
+ITPLiteral      \=[Ii][Tt][Pp]
 
 everythingelse	.
 
@@ -875,7 +875,7 @@ int  FILEsp = -1;		/*!< (FILE*) stack pointer		*/
 extern char *srcFile;
 
 char *LEXp = 0;
-char LEXline[256];  // current input line
+char LEXline[2560];  // current input line
 
 char *
 LEXCurrentFilename()

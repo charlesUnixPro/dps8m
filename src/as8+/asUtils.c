@@ -151,7 +151,8 @@ void dumpSymtab(bool bSort)
             strcpy(temp, s->defnFile);
             char *p = strrchr(temp, '/');
             if (p)
-                strcpy(temp, p+1);
+                //strcpy(temp, p+1);
+                memmove(temp, p+1, strlen(p+1)+1);  // can no longer copy overlapping strings under xcode5
             strcat(temp, ":");
         }
         printf("%-16s %d", temp, s->defnLine);
@@ -455,8 +456,9 @@ char *ltrim(char *s)
 	for (p = s; (*p == ' ' || *p == '\t') && *p != '\0'; p++)
         ;
     
-	strcpy(s, p);
-	return(s);
+	//strcpy(s, p);
+    memmove(s, p, strlen(p) + 1);
+    return(s);
 }
 
 /** ------------------------------------------------------------------------- */

@@ -549,7 +549,8 @@ outRec *outas8ins(word36 ins, word18 address, char *srctext)
     {
         while (q)
         {
-            strcpy(q, q + 1);
+            //strcpy(q, q + 1);
+            memmove(q, q + 1, strlen(q + 1) + 1); // // can no longer copy overlapping strings under xcode5
             q = strchr(p->src, '\n');
         }
     }

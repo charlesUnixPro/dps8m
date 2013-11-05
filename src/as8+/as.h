@@ -373,7 +373,7 @@ void  LEXgetPush(char *filename);
 char *LEXCurrentFilename();
 void  LEXfseekEOF();
 extern char *LEXp;  // current source char
-extern char LEXline[256];   // current source line
+extern char LEXline[2560];   // current source line
 extern int FILEsp;          /*!< (FILE*) stack pointer		*/
 
 int yyparse(), yylex();
