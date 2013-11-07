@@ -1,3 +1,28 @@
+Thu Nov  7 14:44:27 PST 2013
+Fixed bug in encoding of dfdi instruction. Added READ_YPAIR to flags.
+
+Mon Nov  4 21:21:13 PST 2013
+Enlarged input buffer to 2560 characters.
+Fixed typo in as8.l ITP literal rule 
+
+Tue Oct 29 18:04:05 PDT 2013
+
+Changed more operlapping strcpy()'s to memmove()'s. I understand why XCode5 (llvm) changed this behavior, but code that has
+worked on at least 3 different architectures over the last 20-years should not break.  That's what I get for not assuming
+that my code would ever run under SMP when I wrote some of my utility routines in the early 90's. >sheesh<
+
+Incorporated new unit-test for the Faux eXecution Environment. (The FXE is an attempt to create an execution environment for the simulator that is similiar to the standard Multics model. This makes testing of intersegment stuff much easier and allows for the creation and execution of a form of module not unlike Multics segments - although considerably simplified.)
+
+Began testing of the XED instruction. Simple test cases seem to work. Needs further testing.
+
+Mon Oct 28 20:28:43 PDT 2013
+
+Removed calls to MMs fault/interrupt processing stuff.
+Will be reimplemenmting for dps8m using homegrown code.
+Fixed minor bug with XCode5 and overlapping string copies
+Updated simh to latest version
+
+
 
 Incorporated parts of Michael Mondy's Multics-emu project into my simulator
 Therefore, portion of my simulator are ….

@@ -34,9 +34,9 @@
                                 " Fault No. 26-30 are Undefined
     equ	FAULT_NO_TRB,   31      " Trouble
 
+" The trap causes the forced execution of a pair of instructions in a main memory location, unique to the fault or interrupt, known as the fault or interrupt vector. The first of the forced instructions may cause safe storage of the processor status. The second instruction in a fault vector should be some form of transfer, or the faulting program will be resumed at the point of interruption.
 
-
-FAULT_SDF:  bss     2   "  shutdown fault
+FAULT_SDF:  bss     2   " shutdown fault
 FAULT_STR:  bss     2   " store fault
 FAULT_MME:  bss     2   " master mode entry
 FAULT_F1:   bss     2   " fault tag 1
@@ -52,10 +52,10 @@ FAULT_SUF:  bss     2   " startup
 FAULT_OFL:  bss     2   " overflow
 FAULT_DIV:  bss     2   " divide check
 FAULT_EXF:  bss     2   " execute
-FAULT_DF0:  bss     2   " directed fault 1
+FAULT_DF0:  bss     2   " directed fault 0
 FAULT_DF1:  bss     2   " directed fault 1
-FAULT_DF2:  bss     2   " directed fault 1
-FAULT_DF3:  bss     2   " directed fault 1
+FAULT_DF2:  bss     2   " directed fault 2
+FAULT_DF3:  bss     2   " directed fault 3
 FAULT_ACV:  bss     2   " access violation
 FAULT_MME2: bss     2   " Master mode entry 2
 FAULT_MME3: bss     2   " Master mode entry 3
@@ -74,7 +74,7 @@ FAULT_TRB:  bss     2   " Trouble
 
 	 mod    16
 __pr:
-	its	0,0		pr0 -> seg 0 etc
+	its	0,0		" pr0 -> seg 0 etc
 	its	1,0
 	its	2,0
 	its	3,0

@@ -9,11 +9,8 @@
 
     
 i0:
-    lda     =42
-    sta     result1
-
-    ldq     =-42
-    stq     result2
+    lda     result1
+    ldq     result2
 
     call    ioa(msg2a, result1, result2)
 
@@ -35,11 +32,12 @@ msg2b:     acc         "Result  (after): A=^d Q=^d\r\n"
 
             even
 Date:       bss     2
-result1:    bss 1
-result2:    bss 1
+result1:    dec     42
+result2:    dec     -42
 
-i1:     lda     =123456
-i2:     ldq     =7891011
+            even
+i1:         lda     =123456
+i2:         ldq     =7891011
 
 i4:
 

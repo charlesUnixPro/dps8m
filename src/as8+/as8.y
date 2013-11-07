@@ -363,6 +363,7 @@ literal
     | ITSLIT '(' expr ',' expr ',' modifier ')'     { $$ = doITSITPLiteral(043, $3->value, $5->value, $7); }
     | VFDLIT '(' vfdArgs ')'                        { $$ = doVFDLiteral($3); popAndReset();  }
     | DECLIT2                                       { $$ = doNumericLiteral72($1);           }
+    | '=' instr                                     { /* rfu for instruction literal */      }
     ;
 
 

@@ -140,10 +140,10 @@ rdclock.day_of_century:
 	bss	,1
 rdclock.zone_temp:
 	"dec	5
-    dec     7   "8
+    dec     8
 rdclock.zone_name:
 	"aci	'est '
-    aci     'pst '
+    aci     'pdt '
 
 datenum:	bss	,1
 date:	bss	,1
