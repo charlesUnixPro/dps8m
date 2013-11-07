@@ -223,7 +223,7 @@ t_stat executeInstruction(DCDstruct *ci)
          
          */
         
-        if (iwb->flags & (READ_OPERAND | PREPARE_CA ))
+        if (iwb->flags & (READ_OPERAND | PREPARE_CA))
             doComputedAddressFormation(ci, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
         
         // XXX this may be too simplistic ....
@@ -231,7 +231,7 @@ t_stat executeInstruction(DCDstruct *ci)
         // ToDo: Read72 is also used to read in 72-bits, but not into Ypair! Fix this
         if (iwb->flags & READ_YPAIR)
             Read2(ci, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
-
+        
         //finalAddress = (word24)CY; // why was this here???
         finalAddress = TPR.CA;  // ???
     }
@@ -2197,7 +2197,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// Zero: If C(AQ) = 0, then ON; otherwise OFF
             /// Neg: If C(AQ)0 = 1, then ON; otherwise OFF
             
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            // XXX Why is this here?
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
             
             rE = (Ypair[0] >> 28) & 0377;
             
@@ -2278,14 +2279,17 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0477:  ///< dfad
             /// The dfad instruction may be thought of as a dufa instruction followed by a fno instruction.
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+
+            // XXX Why is this here???
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufa(i);
             fno(i);
             break;
             
         case 0437:  ///< dufa
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            // XXX Why is this here???
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufa(i);
             break;
@@ -2309,14 +2313,17 @@ t_stat DoBasicInstruction(DCDstruct *i)
             // The dfsb instruction is identical to the dfad instruction with the exception that
             // the twos complement of the mantissa of the operand from main memory is used.
             //return STOP_UNIMP;
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            
+            // XXX Why is this here???
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufs(i);
             fno(i);
             break;
 
         case 0537:  ///< dufs
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            // XXX Why is this here???
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufs(i);
             break;
@@ -2339,7 +2346,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// fno instruction.
             
             // XXX Why is this here???
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufm(i);
             fno(i);
@@ -2348,7 +2355,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0423:  ///< dufm
             // XXX Why is this here???
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufm(i);
             break;
@@ -2369,14 +2376,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0527:  ///< dfdi
             // XXX Why is this here???
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfdi(i);
             break;
             
         case 0567:  ///< dfdv
             // XXX Why is this here???
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfdv(i);
             break;
@@ -2424,8 +2431,9 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0427:  ///< dfcmg
             /// C(E) :: C(Y-pair)0,7
             /// | C(AQ)0,63 | :: | C(Y-pair)8,71 |
-            
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+
+            // XXX Why is this here???
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfcmg(i);
             break;
@@ -2435,7 +2443,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// C(AQ)0,63 :: C(Y-pair)8,71
 
             // XXX Why is this here???
-            ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfcmp(i);
             break;

@@ -340,7 +340,7 @@ struct opCode NonEISopcodes[01000] = {
     {}, {}, {}, {},
     {"fdi", READ_OPERAND, 0},
     {},
-    {"dfdi", READ_OPERAND, 0},
+    {"dfdi", PREPARE_CA | READ_YPAIR, 0},
     {},
     {"neg", 0},
     {"cams", 0},
