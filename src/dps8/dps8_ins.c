@@ -1408,10 +1408,11 @@ t_stat DoBasicInstruction(DCDstruct *i)
                 SCF(CY == 0, rIR, I_ZERO);
                 SCF(rQ & SIGN, rIR, I_NEG);
                 // XXX divide check fault
+                doFault(i, div_fault, 0, "divide check");
             }
             else
             {
-                // XXX need to fix to perform signed arithmetic
+                // XXX need to fix to perform signed arithmetic - done?
                 rA = SIGNEXT36(rQ) % SIGNEXT36(CY);   // remainder 1st to keep rQ
                 rQ = SIGNEXT36(rQ) / SIGNEXT36(CY);
                 
@@ -2336,6 +2337,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0463:  ///< dfmp
             /// The dfmp instruction may be thought of as a dufm instruction followed by a
             /// fno instruction.
+            
+            // XXX Why is this here???
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufm(i);
@@ -2344,6 +2347,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0423:  ///< dufm
+            // XXX Why is this here???
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufm(i);
@@ -2364,12 +2368,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0527:  ///< dfdi
+            // XXX Why is this here???
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfdi(i);
             break;
             
         case 0567:  ///< dfdv
+            // XXX Why is this here???
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfdv(i);
@@ -2427,7 +2433,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0517:  ///< dfcmp
             /// C(E) :: C(Y-pair)0,7
             /// C(AQ)0,63 :: C(Y-pair)8,71
-            
+
+            // XXX Why is this here???
             ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfcmp(i);

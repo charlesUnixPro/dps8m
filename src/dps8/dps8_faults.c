@@ -322,6 +322,7 @@ int fault_check_group(int group)
 DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst);     // decode instruction into structure
 t_stat executeInstruction(DCDstruct *ci);
 
+#ifdef NOT_USED
 t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
 {
     // XXX stolen from xed instruction
@@ -355,21 +356,63 @@ t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
     //return SCPE_OK;
     return ret;
 }
+#endif
 
-void doFault(DCDstruct *i, int faultNumber, int subfault, char *faultMsg)
+t_stat doXED(word36 *Ypair);
+
+bool bFaultCycle = false;       // when true then in FAULT CYCLE
+
+void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
 {
-    if (faultNumber < 0 || faultNumber > 31)
-    //if (faultNumber & ~037)  // quicker?
+    //if (faultNumber < 0 || faultNumber > 31)
+    if (faultNumber & ~037)  // quicker?
     {
-        printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subfault, faultMsg ? faultMsg : "?");
+        printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
         return;
     }
 
-    //return;
-    
     dps8faults *f = &_faults[faultNumber];
-
-    printf("fault(): %d %d %s (%s) '%s'\r\n", f->fault_number, f->fault_group,  f->fault_name, f->fault_mnemonic, faultMsg ? faultMsg : "?");
+    
+    if (bFaultCycle)    // if already in a FAULT CYCLE then signal trouble faule
+        f = &_faults[FAULT_TRB];
+    else
+    {
+        // TODO: safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
+    }
+    
+    int fltAddress = rFAULTBASE & 07740;            // (12-bits of which the top-most 7-bits are used)
+    
+    word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
+  
+    bFaultCycle = true;                 // enter FAULT CYCLE
+    
+    word36 faultPair[2];
+    core_read2(addr, faultPair, faultPair+1);
+    
+    // In the FAULT CYCLE, the processor safe-stores the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction, then enters temporary absolute mode, forces the current ring of execution C(PPR.PRR) to 0, and generates a computed address for the fault trap pair by concatenating the setting of the FAULT BASE switches on the processor configuration panel with twice the fault number (see Table 7-1). This computed address and the operation code for the Execute Double (xed) instruction are forced into the instruction register and executed as an instruction. Note that the execution of the instruction is not done in a normal EXECUTE CYCLE but in the FAULT CYCLE with the processor in temporary absolute mode.
+    
+    addr_modes_t am = get_addr_mode();  // save address mode
+    
+    PPR.PRR = 0;
+    
+    set_addr_mode(ABSOLUTE_mode);
+    
+    t_stat xrv = doXED(faultPair);
+    
+    bFaultCycle = false;                // exit FAULT CYCLE
+    
+    if (xrv == CONT_TRA)
+        longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
+    
+    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
+    
+    if (xrv == 0)
+        longjmp(jmpMain, JMP_NEXT);     // execute next instruction
+    else if (0)                         // TODO: need to put test in to retry instruction
+        longjmp(jmpMain, JMP_RETRY);    // retry instruction
+    
+    
+//    printf("fault(): %d %d %s (%s) '%s'\r\n", f->fault_number, f->fault_group,  f->fault_name, f->fault_mnemonic, faultMsg ? faultMsg : "?");
 //
 //    if (f->fault_group == 7 && i && i->a)
 //        return;

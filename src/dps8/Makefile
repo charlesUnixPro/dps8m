@@ -15,6 +15,7 @@ C_SRCS += \
 ./dps8_sys.c \
 ./dps8_utils.c \
 ./dps8_decimal.c \
+./dps8_faults.c \
 ../simh/scp.c \
 ../simh/sim_console.c \
 ../simh/sim_disk.c \
@@ -46,6 +47,7 @@ OBJS += \
 ./dps8_sys.o \
 ./dps8_utils.o \
 ./dps8_decimal.o \
+./dps8_faults.o \
 ../simh/scp.o \
 ../simh/sim_console.o \
 ../simh/sim_disk.o \
