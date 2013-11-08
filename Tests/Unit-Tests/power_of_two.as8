@@ -1,0 +1,54 @@
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+" *                                                         *
+" * Copyright (c) 1972 by Massachusetts Institute of        *
+" * Technology and Honeywell Information Systems, Inc.      *
+" *                                                         *
+" * Modified 6 June 2013 by H Reed for use under simh/dps8  *
+" ***********************************************************
+
+"
+" function to return N where 2**N=M, returns 0 if M is not power of 2
+"
+" usage is N = power_of_two(M)
+"
+	name	power_of_two
+
+	entry	power_of_two
+"
+power_of_two:
+	lda     0,dl		"init answer
+	ldq     ap|2,*		"get M
+	sbq     1,dl		"get M-1
+	anq     ap|2,*		"form M & (M-1)
+	tnz     done		"^= 0 means not power of 2
+	ldq     ap|2,*		"restore M
+	qrl     1           "shift right
+	tze     done		"shift until zero
+	ada     1,dl		"update count
+	tra     -3,ic		"and try again
+done:	sta	ap|4,*		"store N where 2**N=M
+	short_return
+
+
+	entry	power_of_two2
+"
+power_of_two2:
+    push                " why do we need this????
+
+	lda     0,dl		"init answer
+	ldq     ap|2,*		"get M
+	sbq     1,dl		"get M-1
+	anq     ap|2,*		"form M & (M-1)
+	tnz     done2		"^= 0 means not power of 2
+	ldq     ap|2,*		"restore M
+	qrl     1           "shift right
+	tze     done2		"shift until zero
+	ada     1,dl		"update count
+	tra     -3,ic		"and try again
+done2:	sta	ap|4,*		"store N where 2**N=M
+	return
+
+
+	end

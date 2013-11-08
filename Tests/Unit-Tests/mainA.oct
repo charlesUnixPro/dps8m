@@ -1,0 +1,229 @@
+!SIZE 000334
+!SEGNAME main
+!SEGDEF main 000000
+!LINKAGE 000304 12
+!SEGREF UtilsA ioa 000304
+!SEGREF UtilsA rd_clockA 000306
+!SEGREF lot_ lot_ 000310
+!SEGREF stack_0 stack_0 000312
+!SEGREF power_of_two power_of_two 000314
+!SEGREF power_of_two power_of_two2 000316
+!SEGREF simh_operators_ operator_table 000320
+!SEGREF simh_operators_ operator_table 000322 +632
+!SEGREF simh_operators_ operator_table 000324 +633
+!SEGREF simh_operators_ operator_table 000326 +634
+!SEGREF simh_operators_ operator_table 000330 +635
+!SEGREF simh_operators_ operator_table 000332 +636
+000000 xxxx 000216702000     tsx2    setupFXE
+000001 xxxx 000210237000     ldaq	.two_arg_header
+000002 xxxx 600050757100     staq	arglist
+000003 xxxx 000176351400     epp1	.arg1
+000004 xxxx 600052251500     spri1	arglist+2     " pointer to arg1
+000005 xxxx 000200351400     epp1	.retval
+000006 xxxx 600054251500     spri1	arglist+4     " pointer to retval
+000007 xxxx 600050350100     eppap	arglist
+000010 xxxx 000000235000     LDA     I
+000011 xxxx 400000272120     tsp2	pr4|I, *        " ioa
+000012 xxxx 024110157167     acc     /Howdy world! - It's /
+000013 xxxx 144171040167 
+000014 xxxx 157162154144 
+000015 xxxx 041040055040 
+000016 xxxx 111164047163 
+000017 xxxx 040040040040 
+000020 xxxx 400002272120     tsp2    lp|D,*
+000021 xxxx 000212757000     staq	Date        " MM/DD HH:MM
+000022 xxxx 400000272120     tsp2	ioa
+000023 xxxx 010047136147     acc     /'^g^g'\r\n/
+000024 xxxx 136147047015 
+000025 xxxx 012040040040 
+000026 xxxx 000212011000     nop     Date
+000027 xxxx 000213011000     nop     Date+1
+000030 xxxx 000260235000     lda     =512
+000031 xxxx 000176755000     sta     .arg1
+000032 xxxx 000215540000     sprpap      g
+000033 xxxx 000214544000     sprp4       f
+000034 xxxx 400010352120     short_call  power_of_two
+000035 xxxx 700036670120 
+000036 xxxx 600030370120 
+000037 xxxx 000214764000     lprp4       f
+000040 xxxx 000215760000     lprpap      g
+000041 xxxx 400000272120     tsp2	ioa
+000042 xxxx 027127145040     acc     /We did it!!! 2**^d=^d\r\n/
+000043 xxxx 144151144040 
+000044 xxxx 151164041041 
+000045 xxxx 041040062052 
+000046 xxxx 052136144075 
+000047 xxxx 136144015012 
+000050 xxxx 000200011000     nop     .retval
+000051 xxxx 000176011000     nop     .arg1
+000052 xxxx 000261235000     lda     =2048
+000053 xxxx 000176755000     sta     .arg1
+000054 xxxx 600000254100     call    power_of_two2(ap|0)
+000055 xxxx 600040753100 
+000056 xxxx 000000350100 
+000057 xxxx 400012352120 
+000060 xxxx 700036670120 
+000061 xxxx 600000173100 
+000062 xxxx 600040073100 
+000063 xxxx 400000272120     tsp2	ioa
+000064 xxxx 035127145040     acc     /We did it again!!! 2**^d=^d\r\n/
+000065 xxxx 144151144040 
+000066 xxxx 151164040141 
+000067 xxxx 147141151156 
+000070 xxxx 041041041040 
+000071 xxxx 062052052136 
+000072 xxxx 144075136144 
+000073 xxxx 015012040040 
+000074 xxxx 000200011000     nop     .retval
+000075 xxxx 000176011000     nop     .arg1
+000076 xxxx 003006235007     LDA     1542,DL
+000077 xxxx 000000236007     LDQ     0,DL
+000100 xxxx 017500505007     BCD     8000,DL
+000101 xxxx 014400505007     BCD     6400,DL
+000102 xxxx 012000505007     BCD     5120,DL
+000103 xxxx 010000505007     BCD     4096,DL
+000104 xxxx 000200756000     stq     .retval
+000105 xxxx 400000272120     tsp2    ioa
+000106 xxxx 034121075136     acc     /Q=^n (Should be Q=1050402)\r\n/
+000107 xxxx 156040050123 
+000110 xxxx 150157165154 
+000111 xxxx 144040142145 
+000112 xxxx 040121075061 
+000113 xxxx 060065060064 
+000114 xxxx 060062051015 
+000115 xxxx 012040040040 
+000116 xxxx 000200011000     nop     .retval
+000117 xxxx 000263235000     LDA     =666
+000120 xxxx 000000236007     LDQ     0,DL
+000121 xxxx 000264505000     BCD     =800
+000122 xxxx 000265505000     BCD     =640
+000123 xxxx 000266505000     BCD     =512
+000124 xxxx 000200756000     stq     .retval
+000125 xxxx 400000272120     tsp2    ioa
+000126 xxxx 032121075136     acc     /Q=^n (Should be Q=60606)\r\n/
+000127 xxxx 156040050123 
+000130 xxxx 150157165154 
+000131 xxxx 144040142145 
+000132 xxxx 040121075066 
+000133 xxxx 060066060066 
+000134 xxxx 051015012040 
+000135 xxxx 000200011000     nop     .retval
+000136 xxxx 000267235000     LDA     =0522241
+000137 xxxx 000270236000     ldq     =0
+000140 xxxx 000271505000     bcd     =800000
+000141 xxxx 000272505000     bcd     =640000
+000142 xxxx 000273505000     bcd     =512000
+000143 xxxx 000274505000     bcd     =409600
+000144 xxxx 000275505000     bcd     =327680
+000145 xxxx 000276505000     bcd     =262144
+000146 xxxx 000200756000     stq     .retval
+000147 xxxx 400000272120     tsp2    ioa
+000150 xxxx 041121075136     acc     /Q=^n (Should be Q=010703020107)\r\n/
+000151 xxxx 156040050123 
+000152 xxxx 150157165154 
+000153 xxxx 144040142145 
+000154 xxxx 040121075060 
+000155 xxxx 061060067060 
+000156 xxxx 063060062060 
+000157 xxxx 061060067051 
+000160 xxxx 015012040040 
+000161 xxxx 000200011000     nop     .retval
+000162 xxxx 000000616000 	dis
+000163 xxxx 000000000010     dec     8               " 1-digit
+000164 xxxx 000000000100     dec     64              " 2-digit
+000165 xxxx 000000001000     dec     512             " 3-digit
+000166 xxxx 000000010000     dec     4096            " 4-digit
+000167 xxxx 000000100000     dec     32768           " 5-digit
+000170 xxxx 000001000000     dec     262144          " 6-digit
+000171 xxxx 000010000000     dec     2097152         " 7-digit
+000172 xxxx 000100000000     dec     16777216        " 8-digit
+000173 xxxx 001000000000     dec     134217728       " 9-digit
+000174 xxxx 010000000000     dec     1073741824      " 10-digit
+000175 xxxx 000000011000   	even "(allocating 1 nop)
+000176 xxxx 000000000000     bss     .arg1,2
+000200 xxxx 000000000000     bss     .retval,2
+000202 xxxx 000000000000     bss     .po2_arg_list, 4
+000206 xxxx 000004000004    	vfd	17/2,1/0,18/4
+000207 xxxx 000000000000    	vfd	18/0,18/0
+000210 xxxx 000004000004 	oct     000004000004		" 2 args, inter_seg call
+000211 xxxx 000000000000 	oct     0                   " no descriptors
+000212 xxxx 000000000000 Date:	bss     2
+000214 xxxx 000000000000 f:      bss     1
+000215 xxxx 000000000000 g:      bss     1
+000216 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
+000217 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
+000220 xxxx 400006373520         eppsb   stack_0         " set-up stack base
+000221 xxxx 400006373520     eppsb   stack_0
+000222 xxxx 400006372120     eppsp   stack_0
+000223 xxxx 000100152003     adwpsp  =0100,du
+000224 xxxx 700022652100     sprisp	sb|stack_header.stack_begin_ptr 		" save beginning of 1st stack frame
+000225 xxxx 700024652100     sprisp	sb|stack_header.stack_end_ptr
+000226 xxxx 400004352120 	eppbp	lot_						" set the lot ptrs
+000227 xxxx 700026252100 	spribp	sb|stack_header.lot_ptr
+000230 xxxx 700052252100 	spribp	sb|stack_header.isot_ptr
+000231 xxxx 000300352020 	eppbp	=its(-2,2),*		" signal ptr terminates process
+000232 xxxx 700030252100 	spribp	sb|stack_header.signal_ptr
+000233 xxxx 400014352120 	eppbp	simh_operators_$operator_table  		" Get a ptr to  PL/I operators table.
+000234 xxxx 700034252100 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
+000235 xxxx 400016352120 	eppbp	simh_operators_$operator_table+call_offset,*
+000236 xxxx 700036252100 	spribp	sb|stack_header.call_op_ptr
+000237 xxxx 400020352120 	eppbp	simh_operators_$operator_table+push_offset,*
+000240 xxxx 700040252100 	spribp	sb|stack_header.push_op_ptr
+000241 xxxx 400022352120 	eppbp	simh_operators_$operator_table+return_offset,*
+000242 xxxx 700042252100 	spribp	sb|stack_header.return_op_ptr
+000243 xxxx 400024352120 	eppbp	simh_operators_$operator_table+return_no_pop_offset,*
+000244 xxxx 700044252100 	spribp	sb|stack_header.ret_no_pop_op_ptr
+000245 xxxx 400026352120 	eppbp	simh_operators_$operator_table+entry_offset,*
+000246 xxxx 700046252100 	spribp	sb|stack_header.entry_op_ptr
+000247 xxxx 000302352020 	eppbp	=its(-1,1),*
+000250 xxxx 700070252100 	spribp	sb|stack_header.heap_header_ptr
+000251 xxxx 700046272120     tsp2 pr7|stack_header.entry_op_ptr,*
+000252 xxxx 000064627000     push
+000253 xxxx 700040272120 
+000254 xxxx 000000710012 	tra		0,2				" ... and return to caller
+000255 xxxx 000000011000 	even "(allocating 1 nop)
+000256 xxxx 000000000004 no_args:	zero	0,4
+000257 xxxx 000000000000 	zero	0,0
+000260 xxxx 000000001000 decimal literal (=512)
+000261 xxxx 000000004000 decimal literal (=2048)
+000262 xxxx 000000000000 decimal literal (=0)
+000263 xxxx 000000001232 decimal literal (=666)
+000264 xxxx 000000001440 decimal literal (=800)
+000265 xxxx 000000001200 decimal literal (=640)
+000266 xxxx 000000001000 decimal literal (=512)
+000267 xxxx 000000522241 octal literal (=o522241)
+000270 xxxx 000000000000 decimal literal (=0)
+000271 xxxx 000003032400 decimal literal (=800000)
+000272 xxxx 000002342000 decimal literal (=640000)
+000273 xxxx 000001750000 decimal literal (=512000)
+000274 xxxx 000001440000 decimal literal (=409600)
+000275 xxxx 000001200000 decimal literal (=327680)
+000276 xxxx 000001000000 decimal literal (=262144)
+000300 xxxx 077776000043 its literal (=its(77776,000002,00))
+000301 xxxx 000002000000 
+000302 xxxx 077777000043 its literal (=its(77777,000001,00))
+000303 xxxx 000001000000 
+000304 xxxx 000000000043 link UtilsA$ioa
+000305 xxxx 000000000000 
+000306 xxxx 000000000043 link UtilsA$rd_clockA
+000307 xxxx 000000000000 
+000310 xxxx 000000000043 link lot_$lot_
+000311 xxxx 000000000000 
+000312 xxxx 000000000043 link stack_0$stack_0
+000313 xxxx 000000000000 
+000314 xxxx 000000000043 link power_of_two$power_of_two
+000315 xxxx 000000000000 
+000316 xxxx 000000000043 link power_of_two$power_of_two2
+000317 xxxx 000000000000 
+000320 xxxx 000000000043 link simh_operators_$operator_table
+000321 xxxx 000000000000 
+000322 xxxx 000000000043 link simh_operators_$operator_table+632
+000323 xxxx 001170000000 
+000324 xxxx 000000000043 link simh_operators_$operator_table+633
+000325 xxxx 001171000000 
+000326 xxxx 000000000043 link simh_operators_$operator_table+634
+000327 xxxx 001172000000 
+000330 xxxx 000000000043 link simh_operators_$operator_table+635
+000331 xxxx 001173000000 
+000332 xxxx 000000000043 link simh_operators_$operator_table+636
+000333 xxxx 001174000000 

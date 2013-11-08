@@ -1,0 +1,90 @@
+
+
+     "BEGIN INCLUDE FILE fault_vector.incl.alm
+
+"	Modified February 1981 by J. Bongiovanni to add fault types
+
+"
+"	Structure fv
+"
+	equ	fv_size,384
+
+
+	equ	fv.ipair,0		"LEVEL 2
+
+	equ	fv.ipair.scu,0
+	equ	fv.ipair.tra,1
+	equ	fv.fpair,64		"LEVEL 2
+
+	equ	fv.fpair.scu,64
+	equ	fv.fpair.tra,65
+	equ	fv.i_tra_ptr,128
+	equ	fv.i_scu_ptr,192
+	equ	fv.f_tra_ptr,256
+	equ	fv.f_scu_ptr,320
+
+	equ	FAULT_NO_SDF,0		" Shutdown
+	equ	FAULT_NO_STR,1		" Store
+	equ	FAULT_NO_MME,2		" Master Mode Entry 1
+	equ	FAULT_NO_F1,3		" Fault Tag 1
+	equ	FAULT_NO_TRO,4		" Timer Runout
+	equ	FAULT_NO_CMD,5		" Command
+	equ	FAULT_NO_DRL,6		" Derail
+	equ	FAULT_NO_LUF,7		" Lockup
+	equ	FAULT_NO_CON,8		" Connect
+	equ	FAULT_NO_PAR,9		" Parity
+	equ	FAULT_NO_IPR,10		" Illegal Procedure
+	equ	FAULT_NO_ONC,11		" Operation Not Complete
+	equ	FAULT_NO_SUF,12		" Startup
+	equ	FAULT_NO_OFL,13		" Overflow
+	equ	FAULT_NO_DIV,14		" Divide Check
+	equ	FAULT_NO_EXF,15		" Execute
+	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
+	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
+	equ	FAULT_NO_DF2,18		" Directed Fault 2
+	equ	FAULT_NO_DF3,19		" Directed Fault 3
+	equ	FAULT_NO_ACV,20		" Access Violation
+	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
+	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
+	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
+	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
+	equ	FAULT_NO_F3,25		" Fault Tag 3
+					" Fault No. 26-30 are Undefined
+	equ	FAULT_NO_TRB,31		" Trouble
+
+     "END INCLUDE FILE fault_vector.incl.alm
+"
+"
+"                                          -----------------------------------------------------------
+"
+"
+"
+" Historical Background
+"
+" This edition of the Multics software materials and documentation is provided and donated
+" to Massachusetts Institute of Technology by Group Bull including Bull HN Information Systems Inc. 
+" as a contribution to computer science knowledge.  
+" This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+" Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell Bull Inc., Groupe Bull
+" and Bull HN Information Systems Inc. to the development of this operating system. 
+" Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+" renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+" of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture for
+" managing computer hardware properly and for executing programs. Many subsequent operating systems
+" incorporated Multics principles.
+" Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+" as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+"
+"                                          -----------------------------------------------------------
+"
+" Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+" fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+" and that both the copyright notice and historical background and this permission notice appear in supporting
+" documentation, and that the names of MIT, HIS, Bull or Bull HN not be used in advertising or publicity pertaining
+" to distribution of the programs without specific prior written permission.
+"    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+"    Copyright 2006 by Bull HN Information Systems Inc.
+"    Copyright 2006 by Bull SAS
+"    All Rights Reserved
+"
+"
