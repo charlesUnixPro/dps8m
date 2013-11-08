@@ -598,7 +598,9 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                ;
+                doFault(i, dir_flt0_fault, 0, "!PTW0.F");
+                // XXX what if they ignore the fault? Can it be ignored?
+            
             if (!PTW0.U)
             {
                 appendingUnitCycleType = MDSPTW;
@@ -622,7 +624,9 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
             }
             
             // XXX initiate a directed fault ...
-            ;
+            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
         }
         else
             // load SDWAM .....
@@ -691,7 +695,9 @@ G:;
     
     if (acvFaults)
         // Initiate an access violation fault
-        ;
+        doFault(i, acc_viol_fault, 0, "acvFaults");
+    // XXX what if they ignore the fault? Can it be ignored?
+    
     
     // is segment C(TPR.TSR) paged?
     if (SDW->U)
@@ -706,7 +712,9 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            ;
+            doFault(i, dir_flt0_fault, 0, "PTW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+        
         
         loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
     }
@@ -850,7 +858,9 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                ;
+                doFault(i, dir_flt0_fault, 0, "PTW0.F == 0");
+                // XXX what if they ignore the fault? Can it be ignored?
+            
             if (!PTW0.U)
             {
                 appendingUnitCycleType = MDSPTW;
@@ -874,7 +884,9 @@ A:;
             }
             
             // initiate a directed fault ...
-            ;
+            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
         }
         else
             // load SDWAM .....
@@ -924,7 +936,9 @@ G:;
     
     if (acvFaults)
         // Initiate an access violation fault
-        ;
+        doFault(i, acc_viol_fault, 0, "acvFault");
+        // XXX what if they ignore the fault? Can it be ignored?
+    
     
     // is segment C(TPR.TSR) paged?
     if (SDW->U)
@@ -1049,7 +1063,9 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                ;
+                doFault(i, dir_flt0_fault, 0, "PTW0.F == 0");
+                // XXX what if they ignore the fault? Can it be ignored?
+            
             if (!PTW0.U)
             {
                 appendingUnitCycleType = MDSPTW;
@@ -1072,7 +1088,9 @@ A:;
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):SDW0.F == 0! Initiating directed fault\n");
             }
             // initiate a directed fault ...
-            ;
+            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
         }
         else
             // load SDWAM .....
@@ -1122,7 +1140,9 @@ G:;
     
     if (acvFaults)
         // Initiate an access violation fault
-        ;
+        doFault(i, acc_viol_fault, 0, "acvFault");
+        // XXX what if they ignore the fault? Can it be ignored?
+    
     
     // is segment C(TPR.TSR) paged?
     if (SDW->U)
@@ -1137,7 +1157,9 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            ;
+            doFault(i, dir_flt0_fault, 0, "PTW0.F != 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+        
         
         loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
     }
@@ -1282,9 +1304,10 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
      XXX If either condition is violated, the indirect word TAG field is interpreted as a normal address modifier and the presence of a special address modifier will cause an illegal procedure, illegal modifier, fault.
      */
     //if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
-    if (get_addr_mode() != APPEND_MODE || TPR.CA & 1)
+    if (get_addr_mode() != APPEND_MODE || (TPR.CA & 1))
         // XXX illegal procedure, illegal modifier, fault
-        ;
+        doFault(i, ill_proc, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
+
     
     if (apndTrace)
     {
@@ -1389,7 +1412,8 @@ A:;
             }
             
             // initiate a directed fault ...
-            ;
+            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+
         }
         else
             // load SDWAM .....
@@ -1439,7 +1463,8 @@ G:;
     
     if (acvFaults)
         // Initiate an access violation fault
-        ;
+        doFault(i, acc_viol_fault, 0, "acvFault");
+
     
     // is segment C(TPR.TSR) paged?
     if (SDW->U)
@@ -1454,7 +1479,8 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            ;
+            doFault(i, dir_flt0_fault, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
+
         
         loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
     }

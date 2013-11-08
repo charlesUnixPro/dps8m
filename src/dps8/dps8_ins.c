@@ -204,6 +204,11 @@ t_stat executeInstruction(DCDstruct *ci)
         }
     }
     
+    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
+    if ((iwb->flags & PRIV_INS) && !is_priv_mode())
+        doFault(ci, ill_proc, 0, "Attempted execution of priveledged instruction.");
+        
+    
     if (iwb->ndes == 0)
     {
         if (a && !(iwb->flags & IGN_B29))
@@ -269,6 +274,7 @@ t_stat DoBasicInstruction(DCDstruct *i), DoEISInstruction(DCDstruct *i);    //, 
 
 t_stat doInstruction(DCDstruct *i)
 {
+    
     CLRF(rIR, I_MIIF);
     
     //if (i->e)
@@ -2537,7 +2543,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             /// C(Y)0,17 → C(PPR.IC)
             /// C(Y)18,31 → C(IR)
-            /// XXX Not completely implemented
+            // XXX Not completely implemented
             PPR.IC = GETHI(CY);
             rIR = GETLO(CY) & 0777760;
             
@@ -3372,12 +3378,24 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
         case 001:   ///< mme
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+4. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
+            doFault(i, mme1_fault, 0, "Master Mode Entry (mme)");
+            break;
+            
         case 004:   ///< mme2
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(52)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
+            doFault(i, mme2_fault, 0, "Master Mode Entry 2 (mme2)");
+            break;
+
         case 005:   ///< mme3
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(54)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
+            doFault(i, mme3_fault, 0, "Master Mode Entry 3 (mme3)");
+            break;
+
         case 007:   ///< mme4
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(56)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
+            doFault(i, mme4_fault, 0, "Master Mode Entry 4 (mme4)");
+            break;
+
         case 011:   ///< nop
             break;
 
@@ -3553,7 +3571,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
                     }
 
                     //  e. Go to step a
-                    cpuCycles += 1; // XXX remove later when we can get this into the main loop
+                    cpuCycles += 1; // XXX remove later when/if we can get this into the main loop
 
                 } while (exit == false);
                 
@@ -3741,8 +3759,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
     
     if (i->iwb->flags & STORE_OPERAND)
         writeOperand(i);  // write C(Y) to TPR.CA for any instructions that needs it .....
-    
-    if (i->iwb->flags & STORE_YPAIR)
+    else if (i->iwb->flags & STORE_YPAIR)
         writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
   
     return 0;
@@ -4990,8 +5007,7 @@ t_stat DoEISInstruction(DCDstruct *i)
 
     if (i->iwb->flags & STORE_OPERAND)
         writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
-
-    if (i->iwb->flags & STORE_YPAIR)
+    else if (i->iwb->flags & STORE_YPAIR)
         writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
 
     return 0;
@@ -5009,7 +5025,7 @@ t_stat doXED(word36 *Ypair)
     /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
     /// If the execution of the instruction pair from C(Y-pair) alters C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1. If the even instruction from C(Y-pair) alters C(PPR.IC), then the transfer of control is effective immediately and the odd instruction is not executed.
     
-    /// To execute an instruction pair having an rpd instruction as the odd instruction, the xed instruction must be located at an odd address. The instruction pair repeated is that instruction pair at C PPR.IC)+1, that is, the instruction pair immediately following the xed instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so the the next instruction fetched for execution is from the first word following the repeated instruction pair.
+    /// To execute an instruction pair having an rpd instruction as the odd instruction, the xed instruction must be located at an odd address. The instruction pair repeated is that instruction pair at C(PPR.IC)+1, that is, the instruction pair immediately following the xed instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so the the next instruction fetched for execution is from the first word following the repeated instruction pair.
     /// The instruction pair at C(Y-pair) may cause any of the processor defined fault conditions, but only the directed faults (0,1,2,3) and the access violation fault may be restarted successfully by the hardware. Note that the software induced fault tag (1,2,3) faults cannot be properly restarted.
     ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
     ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.

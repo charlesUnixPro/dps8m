@@ -777,7 +777,7 @@ void freeDCDstruct(DCDstruct *p);
 
 #define NO_DDCSS        (NO_DUDL | NO_CISCSCR)
 
-// None except au, qu, al, ql, xn
+#define ONLY_AU_QU_AL_QL_XN     (1 << 5)    ///< None except au, qu, al, ql, xn
 
 // None except au, qu, al, ql, xn for MF1 and REG
 // None except du, au, qu, al, ql, xn for MF2

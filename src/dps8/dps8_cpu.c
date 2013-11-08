@@ -1543,10 +1543,18 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     
     int is_priv_mode()
     {
-        // ToDo: fix this when time permits
+        // TODO: fix this when time permits
         
-        if (TSTF(rIR, I_ABS))       //IR.abs_mode)
-            return 1;
+        switch (get_addr_mode())
+        {
+            case ABSOLUTE_mode:
+                return 1;
+            default:
+                break;
+        }
+        //if (!TSTF(rIR, I_ABS))       //IR.abs_mode)
+        //    return 1;
+        
 //        SDW_t *SDWp = get_sdw();    // Get SDW for segment TPR.TSR
 //        if (SDWp == NULL) {
 //            if (cpu.apu_state.fhld) {
@@ -1564,7 +1572,12 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 //        if(opt_debug>0)
 //            log_msg(DEBUG_MSG, "APU", "Priv check fails for segment %#o.\n", TPR.TSR);
 //        return 0;
-        return 1;
+        
+        // XXX This is probably too simplistic, but it's a start
+        if (SDW0.P)
+            return 1;
+        
+        return 0;
     }
 
 
