@@ -540,6 +540,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0325:  ///< lcx5
         case 0326:  ///< lcx6
         case 0327:  ///< lcx7
+            // ToDo: Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
+            
             n = opcode & 07;  // get n
             rX[n] = compl18(GETHI(CY), &rIR);
             break;
@@ -709,7 +711,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             break;
 
-        case 0220:  ///< ldx0
+        case 0220:  ///< ldx0Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
         case 0221:  ///< ldx1
         case 0222:  ///< ldx2
         case 0223:  ///< ldx3
