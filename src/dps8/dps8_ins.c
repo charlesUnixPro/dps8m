@@ -172,7 +172,140 @@ PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
 
 //=============================================================================
 
+// illegal modifications for various instructions
 
+/*
+ 
+        00  01  02  03  04  05  06  07
+ 
+ 00     --  au  qu  du  ic  al  ql  dl  R
+ 10     0   1   2   3   4   5   6   7
+ 
+ 20     n*  au* qu* --  ic* al* al* --  RI
+ 30     0*  1*  2*  3*  4*  5*  6*  7*
+ 
+ 40     f1  itp --  its sd  scr f2  f3  IT
+ 50     ci  i   sc  ad  di  dic id  idc
+ 
+ 60     *n  *au *qu --  *ic *al *al --  IR
+ 70     *0  *1  *2  *3  *4  *5  *6  *7
+ 
+ 
+ bool _allowed[] = {
+ // Tm = 0 (register) R
+ // --  au     qu     du     ic     al     ql     dl
+ true,  false, false, false, false, false, false, false,
+ // 0   1      2      3      4      5      6      7
+ false, false, false, false, false, false, false, false,
+ // Tm = 1 (register then indirect) RI
+ // n*  au*    qu*    --     ic*    al*    al*    --
+ false, false, false, true,  false, false, false, true,
+ // 0*  1*     2*     3*     4*     5*     6*     7*
+ false, false, false, false, false, false, false, false,
+ // Tm = 2 (indirect then tally) IT
+ // f1  itp    --     its    sd     scr    f2     f3
+ false, false, true, false, false, false, false, false,
+ // ci  i      sc     ad     di     dic    id     idc
+ false, false, false, false, false, false, false, false,
+ // Tm = 3 (indirect then register) IR
+ // *n  *au    *qu    --     *ic    *al    *al    --
+ false, false, false, true,  false, false, false, true,
+ // *0  *1     *2     *3     *4     *5     *6     *7
+ false, false, false, false, false, false, false, false,
+ };
+
+ */
+// No DUDL
+
+PRIVATE
+bool _nodudl[] = {
+    // Tm = 0 (register) R
+    // --  au     qu     du     ic     al     ql     dl     0      1      2      3      4      5      6      7
+    true, false, false, true,  false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 1 (register then indirect) RI
+    // n*  au*    qu*    --     ic*    al*    al*    --     0*     1*     2*     3*     4*     5*     6*     7*
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 2 (indirect then tally) IT
+    // f1  itp    --     its    sd     scr    f2     f3      ci      i      sc     ad     di     dic   id     idc
+    false, false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false,
+    // Tm = 3 (indirect then register) IR
+    // *n   *au    *qu    --     *ic   *al    *al    --     *0     *1     *2     *3     *4     *5     *6     *7
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+};
+
+// No DU
+// No DL
+
+
+
+// (NO_CI | NO_SC | NO_SCR)
+PRIVATE
+bool _nocss[] = {
+    // Tm = 0 (register) R
+    // *    au     qu     du     ic     al     ql     dl      0      1      2      3      4      5      6      7
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    // Tm = 1 (register then indirect) RI
+    // n*  au*    qu*    --     ic*    al*    al*    --     0*     1*     2*     3*     4*     5*     6*     7*
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 2 (indirect then tally) IT
+    // f1  itp     --     its    sd     scr    f2     f3    ci     i     sc     ad     di    dic    id     idc
+    false, false, true,  false, false, true, false, false, true, false, true, false, false, false, false, false,
+    // Tm = 3 (indirect then register) IR
+    // *n   *au    *qu    --     *ic   *al    *al    --     *0     *1     *2     *3     *4     *5     *6     *7
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+};
+
+// (NO_DUDL | NO_CISCSCR)
+PRIVATE
+bool _noddcss[] = {
+    // Tm = 0 (register) R
+    // *    au     qu     du     ic     al     ql    dl     0      1      2      3      4      5      6      7
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 1 (register then indirect) RI
+    // n*  au*    qu*    --     ic*    al*    al*    --     0*     1*     2*     3*     4*     5*     6*     7*
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 2 (indirect then tally) IT
+    // f1  itp     --     its    sd     scr    f2     f3    ci     i     sc     ad     di    dic    id     idc
+    false, false, true,  false, false, true, false, false, true, false, true, false, false, false, false, false,
+    // Tm = 3 (indirect then register) IR
+    // *n   *au    *qu    --     *ic   *al    *al    --     *0     *1     *2     *3     *4     *5     *6     *7
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+};
+
+// (NO_DUDL | NO_CISCSCR)
+PRIVATE
+bool _nodlcss[] = {
+    // Tm = 0 (register) R
+    // *    au     qu     du      ic     al     ql    dl     0      1      2      3      4      5      6      7
+    false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 1 (register then indirect) RI
+    // n*  au*    qu*    --     ic*    al*    al*    --     0*     1*     2*     3*     4*     5*     6*     7*
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 2 (indirect then tally) IT
+    // f1  itp     --     its    sd     scr    f2     f3    ci     i     sc     ad     di    dic    id     idc
+    false, false, true,  false, false, true, false, false, true, false, true, false, false, false, false, false,
+    // Tm = 3 (indirect then register) IR
+    // *n   *au    *qu    --     *ic   *al    *al    --     *0     *1     *2     *3     *4     *5     *6     *7
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+};
+
+PRIVATE
+bool _illmod[] = {
+    // Tm = 0 (register) R
+    // *    au     qu     du     ic     al     ql     dl     0      1      2      3      4      5      6      7
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    // Tm = 1 (register then indirect) RI
+    // n*  au*    qu*    --     ic*    al*    al*    --     0*     1*     2*     3*     4*     5*     6*     7*
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+    // Tm = 2 (indirect then tally) IT
+    // f1  itp    --     its    sd     scr    f2     f3      ci      i      sc     ad     di     dic   id     idc
+    false, false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false,
+    // Tm = 3 (indirect then register) IR
+    // *n   *au    *qu    --     *ic   *al    *al    --     *0     *1     *2     *3     *4     *5     *6     *7
+    false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
+};
+
+//=============================================================================
 
 t_stat executeInstruction(DCDstruct *ci)
 {
@@ -207,6 +340,28 @@ t_stat executeInstruction(DCDstruct *ci)
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((iwb->flags & PRIV_INS) && !is_priv_mode())
         doFault(ci, ill_proc, 0, "Attempted execution of priveledged instruction.");
+    
+    // check for illegal addressing mode(s) ...
+    
+    // No CI/SC/SCR allowed
+    if (iwb->mods & NO_CSS)
+    {
+        if (_nocss[tag])
+            doFault(ci, ill_proc, 0, "Illegal CI/SC/SCR modification");
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (iwb->mods & NO_DDCSS)
+    {
+        if (_noddcss[tag])
+            doFault(ci, ill_proc, 0, "Illegal DU/DL/CI/SC/SCR modification");
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (iwb->mods & NO_DLCSS)
+    {
+        if (_nodlcss[tag])
+            doFault(ci, ill_proc, 0, "Illegal DL/CI/SC/SCR modification");
+    }
+    
         
     
     if (iwb->ndes == 0)
@@ -224,7 +379,7 @@ t_stat executeInstruction(DCDstruct *ci)
         // do any address modifications (and fetch operand if necessary)
         
         /*
-         * XXX TODO: make read/write all operands automagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR the store automatically after instruction exec ala STORE_OPERAND, etc.....
+         * TODO: make read/write all operands automagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR the store automatically after instruction exec ala STORE_OPERAND, etc.....
          
          */
         
@@ -562,6 +717,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0225:  ///< ldx5
         case 0226:  ///< ldx6
         case 0227:  ///< ldx7
+            // TODO: implement no RPL rules
             n = opcode & 07;  // get n
             rX[n] = GETHI(CY);
             
@@ -5058,6 +5214,26 @@ t_stat doXED(word36 *Ypair)
 
 #include <ctype.h>
 
+void sim_printf( const char * format, ... )
+{
+    char buffer[4096];
+    
+    va_list args;
+    va_start (args, format);
+    vsnprintf (buffer, sizeof(buffer), format, args);
+    
+    for(int i = 0 ; i < sizeof(buffer); i += 1)
+    {
+        if (buffer[i])
+            sim_putchar(buffer[i]);
+        else
+            break;
+    }
+    
+    
+    va_end (args);
+}
+
 /**
  * emulator call instruction. Do whatever address field sez' ....
  */
@@ -5071,16 +5247,18 @@ emCall(DCDstruct *i)
         {
             char c = rA & 0x7f;
             if (c)  // ignore NULL chars. 
-                putc(c, stdout);
+                // putc(c, stdout);
+                sim_putchar(c);
             break; 
         }
         case 100:     ///< putc9 - put 9-bit char in A(0) to stdout
         {
             char c = (rA >> 27) & 0x7f;
             if (isascii(c))  // ignore NULL chars.
-                putc(c, stdout);
+                //putc(c, stdout);
+                sim_putchar(c);
             else
-                printf("\\%03o", c);
+                sim_printf("\\%03o", c);
             break;
         }
         case 2:     ///< putc6 - put 6-bit char in A to stdout
@@ -5089,33 +5267,34 @@ emCall(DCDstruct *i)
             if (c != -1)
             {
                 if (isascii(c))  // ignore NULL chars.
-                    putc(c, stdout);
+                    //putc(c, stdout);
+                    sim_putchar(c);
                 else
-                    printf("\\%3o", c);
+                    sim_printf("\\%3o", c);
             }
             //putc(c, stdout);
             break;
         }
         case 3:     ///< putoct - put octal contents of A to stdout (split)
         {
-            printf("%06o %06o", GETHI(rA), GETLO(rA));
+            sim_printf("%06o %06o", GETHI(rA), GETLO(rA));
             break;
         }
         case 4:     ///< putoctZ - put octal contents of A to stdout (zero-suppressed)
         {
-            printf("%llo", rA);
+            sim_printf("%llo", rA);
             break;
         }
         case 5:     ///< putdec - put decimal contents of A to stdout
         {
             word36 tmp = SIGNEXT36(rA);
-            printf("%lld", tmp);
+            sim_printf("%lld", tmp);
             break;
         }
         case 6:     ///< putEAQ - put float contents of C(EAQ) to stdout
         {
             long double eaq = EAQToIEEElongdouble();
-            printf("%12.8Lg", eaq);
+            sim_printf("%12.8Lg", eaq);
             break;
         }
             

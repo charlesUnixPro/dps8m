@@ -113,6 +113,7 @@ struct _sdw0 SDW0;  ///< a SDW not in SDWAM
 struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEMORY and working PTW
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
 
+_cache_mode_register CMR;
 
 /*
  * register stuff ...
@@ -1536,8 +1537,9 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
      *
      * Report whether or or not the CPU is in privileged mode.
      * True if in absolute mode or if priv bit is on in segment TPR.TSR
-     *
-     * TODO: is_priv_mode() probably belongs in the CPU source file.
+     * The processor executes instructions in privileged mode when forming addresses in absolute mode
+     * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
+     * and the execution ring is equal to zero.
      *
      */
     
@@ -1549,9 +1551,16 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
         {
             case ABSOLUTE_mode:
                 return 1;
+            case APPEND_mode:
+                // XXX This is probably too simplistic, but it's a start
+                
+                if (SDW0.P && PPR.PRR == 0)
+                    return 1;
+                break;
             default:
                 break;
         }
+        
         //if (!TSTF(rIR, I_ABS))       //IR.abs_mode)
         //    return 1;
         
@@ -1572,10 +1581,6 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 //        if(opt_debug>0)
 //            log_msg(DEBUG_MSG, "APU", "Priv check fails for segment %#o.\n", TPR.TSR);
 //        return 0;
-        
-        // XXX This is probably too simplistic, but it's a start
-        if (SDW0.P)
-            return 1;
         
         return 0;
     }

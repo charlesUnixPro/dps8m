@@ -1798,7 +1798,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                     c &= 0xf;   // hack off all but lower 4 bits
                     
                     if (c < 012 || c > 017)
-                        doFault(ins, 0, 0, "loadInputBufferNumric(1): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0, 0, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
                     
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -1829,7 +1829,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(ins, 0,0,"loadInputBufferNumric(2): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0,0,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
                     
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -1842,7 +1842,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(ins, 0,0,"loadInputBufferNumric(3): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, 0,0,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -5288,8 +5288,9 @@ void csl(DCDstruct *ins)
         SETF(rIR, I_TRUNC);
         if (e->T)
         {
-            // XXX enable when things are working
-            doFault(ins, FAULT_OFL, 0, "csl truncation fault");
+            // TODO: enable when things are working
+            // doFault(ins, overflow_fault, 0, "csl truncation fault");
+            sim_printf("fault: 0 0 'csl truncation fault'\n");
         }
     }
 }
@@ -5465,8 +5466,9 @@ void csr(DCDstruct *ins)
         SETF(rIR, I_TRUNC);
         if (e->T)
         {
-            // XXX enable when things are working
-            doFault(ins, FAULT_OFL, 0, "csr truncation fault");
+            // TODO enable when things are working
+            //doFault(ins, FAULT_OFL, 0, "csr truncation fault");
+            sim_printf("fault: 0 0 'csr truncation fault'\n");
         }
     }
 }
@@ -5738,7 +5740,7 @@ void sztr(DCDstruct *ins)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(ins, 0, 0, "sztr truncation fault");
+            doFault(ins, overflow_fault, 0, "sztr truncation fault");
         }
     }
 }

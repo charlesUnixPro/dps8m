@@ -190,10 +190,10 @@ typedef word72      float72;    // double precision float
 #define INST_M_PRN      07
 
 
-#define GET_TAG(x)      ((int32) ( (x)              & INST_M_TAG))
-#define GET_A(x)        ((int32) (((x) >> INST_V_A) & INST_M_A))
-#define GET_I(x)        ((int32) (((x) >> INST_V_I) & INST_M_I))
-#define GET_OP(x)       ((int32) (((x) >> INST_V_OP) & INST_M_OP))
+#define GET_TAG(x)      ((int32) ( (x)              & INST_M_TAG ))
+#define GET_A(x)        ((int32) (((x) >> INST_V_A) & INST_M_A   ))
+#define GET_I(x)        ((int32) (((x) >> INST_V_I) & INST_M_I   ))
+#define GET_OP(x)       ((int32) (((x) >> INST_V_OP) & INST_M_OP ))
 #define GET_OPX(x)      ((bool) (((x) >> INST_V_OPX) & INST_M_OPX))
 
 #define GET_OFFSET(x)   ((word15) (((x) >> INST_V_OFFSET) & INST_M_OFFSET))
@@ -763,6 +763,7 @@ void freeDCDstruct(DCDstruct *p);
 #define IGN_B29         (1 << 13)  ///< Bit-29 has an instruction specific meaning. Ignore.
 #define NO_TAG          (1 << 14)  ///< tag is interpreted differently and for addressing purposes is effectively 0
 #define PRIV_INS        (1 << 15)  ///< priveleged instruction
+#define NO_BAR          (1 << 16)  ///< not alowed in BAR mode
 
 // opcode metadata (disallowed) modifications
 // XXX change to an enum as time permits?
@@ -775,7 +776,8 @@ void freeDCDstruct(DCDstruct *p);
 #define NO_SCR          (1 << 4)    ///< No sequence character reverse modification
 #define NO_CSS          (NO_CI | NO_SC | NO_SCR)
 
-#define NO_DDCSS        (NO_DUDL | NO_CISCSCR)
+#define NO_DLCSS        (NO_DU   | NO_CSS)
+#define NO_DDCSS        (NO_DUDL | NO_CSS)
 
 #define ONLY_AU_QU_AL_QL_XN     (1 << 5)    ///< None except au, qu, al, ql, xn
 
@@ -1521,6 +1523,34 @@ extern enum _processor_operating_mode {
 } processorOperatingMode;
 typedef enum _processor_addressing_mode _processor_addressing_mode;
 
+/* 
+ * Cache Mode Regsiter
+ *
+ * (dont know where else to put this)
+ */
+
+struct _cache_mode_register
+{
+    int     cache_dir_address;  // Probably not used by simulator
+    bool    par_bit;            // "
+    bool    lev_ful;
+    bool    csh1_on;
+    bool    csh2_on;
+    bool    opnd_on;
+    bool    inst_on;
+    bool    csh_reg;
+    bool    str_asd;
+    bool    col_ful;
+    int     rro_AB;
+    int     luf;        // LUF value
+                        // 0   1   2   3
+                        // Lockup time
+                        // 2ms 4ms 8ms 16ms
+                        // The lockup timer is set to 16ms when the processor is initialized.
+};
+typedef struct _cache_mode_register _cache_mode_register;
+extern _cache_mode_register CMR;
+
 //! Appending unit stuff .......
 
 //Once segno and offset are formed in TPR.SNR and TPR.CA, respectively, the process of generating the 24-bit absolute main memory address can involve a number of different and distinct appending unit cycles.
@@ -1638,6 +1668,8 @@ char *getModString(int32 tag);
 
 int strmask(char *str, char *mask);
 char *strlower(char *q);
+
+void sim_printf( const char * format, ... );    // not really simh, by my impl
 
 t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
 

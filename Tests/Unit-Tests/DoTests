@@ -14,7 +14,8 @@ do
 
     TEST="$VARIABLE"."$EPOCH"
 
-	$DPS8  "$VARIABLE" > $TEST
-	diff $TEST "$VARIABLE".out
+    $DPS8  "$VARIABLE" > $TEST
+    diff $TEST "$VARIABLE".out
+    rm $TEST
 done
 

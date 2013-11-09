@@ -231,6 +231,8 @@ t_stat cpu_reset (DEVICE *dptr)
 
     cpuCycles = 0;
     
+    CMR.luf = 3;    // default of 16 mS
+    
     // XXX free up previous deferred segments (if any)
     
     
