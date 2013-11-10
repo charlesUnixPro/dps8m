@@ -753,17 +753,30 @@ void freeDCDstruct(DCDstruct *p);
 #define STORE_YPAIR     (1 << 3)   ///< stores/writes Y-pair operand to memory
 #define READ_YBLOCK8    (1 << 4)   ///< fetches/reads Y-block8 operand (CA) from memory
 #define NO_RPT          (1 << 5)   ///< Repeat instructions not allowed
-#define READ_YBLOCK16   (1 << 6)   ///< fetches/reads Y-block16 operands from memory
-#define STORE_YBLOCK16  (1 << 7)   ///< fetches/reads Y-block16 operands from memory
-#define TRANSFER_INS    (1 << 8)   ///< a transfer instruction
-#define TSPN_INS        (1 << 9)   ///< a TSPn instruction
-#define CALL6_INS       (1 << 10)  ///< a call6 instruction
-#define PREPARE_CA      (1 << 11)  ///< just prepare TPR.CA for instruction
-#define STORE_YBLOCK8   (1 << 12)  ///< stores/writes Y-block8 operand to memory
-#define IGN_B29         (1 << 13)  ///< Bit-29 has an instruction specific meaning. Ignore.
-#define NO_TAG          (1 << 14)  ///< tag is interpreted differently and for addressing purposes is effectively 0
-#define PRIV_INS        (1 << 15)  ///< priveleged instruction
-#define NO_BAR          (1 << 16)  ///< not alowed in BAR mode
+//#define NO_RPD          (1 << 6)
+#define NO_RPL          (1 << 7)
+//#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
+#define READ_YBLOCK16   (1 << 8)   ///< fetches/reads Y-block16 operands from memory
+#define STORE_YBLOCK16  (1 << 9)   ///< fetches/reads Y-block16 operands from memory
+#define TRANSFER_INS    (1 << 10)  ///< a transfer instruction
+#define TSPN_INS        (1 << 11)  ///< a TSPn instruction
+#define CALL6_INS       (1 << 12)  ///< a call6 instruction
+#define PREPARE_CA      (1 << 13)  ///< prepare TPR.CA for instruction
+#define STORE_YBLOCK8   (1 << 14)  ///< stores/writes Y-block8 operand to memory
+#define IGN_B29         (1 << 15)  ///< Bit-29 has an instruction specific meaning. Ignore.
+#define NO_TAG          (1 << 16)  ///< tag is interpreted differently and for addressing purposes is effectively 0
+#define PRIV_INS        (1 << 17)  ///< priveleged instruction
+#define NO_BAR          (1 << 18)  ///< not allowed in BAR mode
+#define NO_XEC          (1 << 19)  ///< can't be executed via xec/xed
+#define NO_XED          (1 << 20)  ///< No execution via XED instruction
+
+// There are three modes of main memory addressing (absolute mode, append mode, and BAR mode),
+// and two modes of instruction execution (normal mode and privileged mode).
+//#define NO_BAR          (1 << 20)    ///< BAR mode not allowed
+//#define NO_NORMAL       (1 << 21)    ///< No NORMAL mode
+//#define NO_BARNORM      (NO_BAR | NO_NORMAL)
+
+
 
 // opcode metadata (disallowed) modifications
 // XXX change to an enum as time permits?
@@ -787,19 +800,7 @@ void freeDCDstruct(DCDstruct *p);
 
 // XXX add these
 
-//#define NO_RPT          (1 << 5)    // defined above
-#define NO_RPD          (1 << 6)
-#define NO_RPL          (1 << 7)
-#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
 
-// There are three modes of main memory addressing (absolute mode, append mode, and BAR mode),
-// and two modes of instruction execution (normal mode and privileged mode).
-
-#define NO_BAR          (1 << 8)    ///< BAR mode not allowed
-#define NO_NORMAL       (1 << 9)    ///< No NORMAL mode
-#define NO_BARNORM      (NO_BAR | NO_NORMAL)
-
-#define NO_XED          (1 << 10)   ///< No execution via XED instruction
 
 extern	word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 extern	word8	tCF;	/*!< character position field [3b] */

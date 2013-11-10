@@ -220,8 +220,8 @@ PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
 PRIVATE
 bool _nodudl[] = {
     // Tm = 0 (register) R
-    // --  au     qu     du     ic     al     ql     dl     0      1      2      3      4      5      6      7
-    true, false, false, true,  false, false, false, true, false, false, false, false, false, false, false, false,
+    // --   au     qu     du     ic     al     ql     dl     0      1      2      3      4      5      6      7
+    false, false, false, true,  false, false, false, true, false, false, false, false, false, false, false, false,
     // Tm = 1 (register then indirect) RI
     // n*  au*    qu*    --     ic*    al*    al*    --     0*     1*     2*     3*     4*     5*     6*     7*
     false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
@@ -344,22 +344,28 @@ t_stat executeInstruction(DCDstruct *ci)
     // check for illegal addressing mode(s) ...
     
     // No CI/SC/SCR allowed
-    if (iwb->mods & NO_CSS)
+    if (iwb->mods == NO_CSS)
     {
         if (_nocss[tag])
             doFault(ci, ill_proc, 0, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
-    else if (iwb->mods & NO_DDCSS)
+    else if (iwb->mods == NO_DDCSS)
     {
         if (_noddcss[tag])
             doFault(ci, ill_proc, 0, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
-    else if (iwb->mods & NO_DLCSS)
+    else if (iwb->mods == NO_DLCSS)
     {
         if (_nodlcss[tag])
             doFault(ci, ill_proc, 0, "Illegal DL/CI/SC/SCR modification");
+    }
+    // No DU/DL allowed
+    else if (iwb->mods == NO_DUDL)
+    {
+        if (_nodudl[tag])
+            doFault(ci, ill_proc, 0, "Illegal DU/DL modification");
     }
     
         
@@ -631,6 +637,8 @@ t_stat DoBasicInstruction(DCDstruct *i)
             
             
         case 0634:  ///< ldi
+            // TODO: Check against AL39
+            
             // C(Y)18,31 → C(IR)
 
             //int tIR = rIR;
@@ -644,7 +652,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             //int mask1 = 0777040;
             //rIR &= mask1 & tmp18;    // set the bits that can always be set
 
-            bool bAbsPriv = get_addr_mode() == ABSOLUTE_mode || is_priv_mode();
+            bool bAbsPriv = (get_addr_mode() == ABSOLUTE_mode) || is_priv_mode();
 
             SCF(tmp18 & I_ZERO,  rIR, I_ZERO);
             SCF(tmp18 & I_NEG,   rIR, I_NEG);
@@ -2708,6 +2716,14 @@ t_stat DoBasicInstruction(DCDstruct *i)
             return CONT_TRA;
             
         case 0610:  ///< rtcd
+            /*
+             TODO: Complete RTCD
+             If an access violation fault occurs when fetching the SDW for the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.
+             If the rtcd instruction is executed with the processor in absolute mode with bit 29 of the instruction word set OFF and without indirection through an ITP or ITS pair, then:
+             appending mode is entered for address preparation for the rtcd operand and is retained if the instruction executes successfully,
+             and the effective segment number generated for the SDW fetch and subsequent loading into C(TPR.TSR) is equal to C(PPR.PSR) and may be undefined in absolute mode, and the effective ring number loaded into C(TPR.TRR) prior to the SDW fetch is equal to C(PPR.PRR) (which is 0 in absolute mode) implying that control is always transferred into ring 0.
+             */
+            
             /// C(Y-pair)3,17 → C(PPR.PSR)
             /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) → C(PPR.PRR)
             /// C(Y-pair)36,53 → C(PPR.IC)
@@ -3782,7 +3798,7 @@ t_stat DoBasicInstruction(DCDstruct *i)
             /// C(A)0 → C(A)0
             /// C(A)i ⊕ C(A)i-1 → C(A)i for i = 1, 2, ..., 35
             
-            /// XXX untested.
+            /// TODO: untested.
             
             tmp1 = rA & SIGN36; // save A0
             
