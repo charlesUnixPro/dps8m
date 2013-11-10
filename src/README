@@ -1,8 +1,9 @@
+Sat Nov  9 18:24:47 PST 2013
+Adding code to detect illegal address modifications
+
 Fri Nov  8 15:37:58 PST 2013
 The new fault processing code broke some of the unit-test stuff. commented out some code until fault-processing
  is completely implelemted. Will then regenerate some unit-test (TestEIS) code.
-
-
 
 Thu Nov  7 14:44:27 PST 2013
 Fixed bug in encoding of dfdi instruction. Added READ_YPAIR to flags.
