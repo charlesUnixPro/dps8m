@@ -116,7 +116,7 @@ static t_uint64 scu_data[8];    // For SCU instruction
 static void scu2words(t_uint64 *words)
 {
     // BUG:  We don't track much of the data that should be tracked
-    
+    // TODO: extracate from MM's infrastructure
     memset(words, 0, 8 * sizeof(*words));
     
     words[0] = setbits36(0, 0, 3, PPR.PRR);
@@ -342,7 +342,30 @@ t_stat executeInstruction(DCDstruct *ci)
         doFault(ci, ill_proc, 0, "Attempted execution of priveledged instruction.");
     
     // check for illegal addressing mode(s) ...
+    if (iwb->mods)
+        switch(iwb->mods)
+        {
+            case NO_CSS:    // No CI/SC/SCR allowed
+                if (_nocss[tag])
+                    doFault(ci, ill_proc, 0, "Illegal CI/SC/SCR modification");
+                break;
+            case NO_DDCSS:  // No DU/DL/CI/SC/SCR allowed
+                if (_noddcss[tag])
+                    doFault(ci, ill_proc, 0, "Illegal DU/DL/CI/SC/SCR modification");
+                break;
+            case NO_DLCSS:  // No DL/CI/SC/SCR allowed
+                if (_nodlcss[tag])
+                    doFault(ci, ill_proc, 0, "Illegal DL/CI/SC/SCR modification");
+                break;
+            case NO_DUDL:  // No DU/DL allowed
+                if (_nodudl[tag])
+                    doFault(ci, ill_proc, 0, "Illegal DU/DL modification");
+                break;
+            default:
+                sim_printf("Unhandled iwb->mods for instruction '%s': %0llo\n", iwb->mne, iwb->mods);
+        }
     
+/*
     // No CI/SC/SCR allowed
     if (iwb->mods == NO_CSS)
     {
@@ -367,7 +390,7 @@ t_stat executeInstruction(DCDstruct *ci)
         if (_nodudl[tag])
             doFault(ci, ill_proc, 0, "Illegal DU/DL modification");
     }
-    
+*/
         
     
     if (iwb->ndes == 0)
@@ -3829,10 +3852,12 @@ t_stat DoBasicInstruction(DCDstruct *i)
         case 0232:  ///< ldbr
         case 0637:  ///< ldt
         case 0257:  ///< lsdp
-        case 0613:  ///< rcu
         case 0452:  ///< scpr
             return STOP_UNIMP;
 
+        case 0613:  ///< rcu
+            break;  // TODO: Make do something proper
+            
         case 0657:  ///< scu
             
             // ToDo: need to decode i into cu.IR
