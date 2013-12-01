@@ -62,7 +62,7 @@ OBJS += \
 ../decNumber/decNumber.o 
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-CFLAGS = -g -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -flto -fwhole-program -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
+CFLAGS = -g -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -flto -fwhole-program -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so -DUSE_INT64  -DUSE_ADDR64
 
 
 # for Linux (Gentoo 4.3.6-r1 p1.0, pie-10.1.5)
@@ -70,7 +70,8 @@ CFLAGS = -g -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 -finline-fu
 #CFLAGS = -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 \
 #  -fgcse-after-reload \
 #  -fno-unsafe-loop-optimizations -fno-strict-overflow  \
-#  -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
+#  -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so \
+#  -DUSE_INT64  -DUSE_ADDR64
 
 # For OS/X
 #LIBS = -lm -lpthread -ldl   -flto -fwhole-program
