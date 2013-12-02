@@ -423,6 +423,109 @@ jmpNext:;
     return reason;
 }
 
+t_stat sim_instr_pair_HWR (void)
+{
+    extern int32 sim_interval;
+    
+    /* Main instruction fetch/decode loop */
+    adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
+    apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
+    unitTrace = (cpu_dev.dctrl & DBG_UNIT) && sim_deb;      // perform UNIT tracing
+    
+    //currentInstruction = &_currentInstruction;
+    currentInstruction->e = &E;
+    
+    int val = setjmp(jmpMain);    // here's our main fault/interrupt return. Back to executing instructions....
+    switch (val)
+    {
+        case 0:
+            reason = 0;
+            cpuCycles = 0;
+            break;
+        case JMP_NEXT:
+            goto jmpNext;
+        case JMP_RETRY:
+            goto jmpRetry;
+        case JMP_TRA:
+            goto jmpTra;
+    }
+    //    if (val)
+    //    {
+    //        // if we're here, we're returning from a fault etc and we want to retry an instruction
+    //        goto retry;
+    //    } else {
+    //        reason = 0;
+    //        cpuCycles = 0;  // XXX This probably needs to be moved so our fault handler won't reset cpuCycles back to 0
+    //    }
+    
+    do {
+    jmpRetry:;
+        /* loop until halted */
+        if (sim_interval <= 0) {                                /* check clock queue */
+            if ((reason = sim_process_event ()))
+                break;
+        }
+        
+        if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
+            reason = STOP_BKPT;                        /* stop simulation */
+            break;
+        }
+        
+        // fetch instruction
+        processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
+        
+        DCDstruct inspair[2];
+        DCDstruct *ci = fetchInstructionPair(rIC, inspair); // fetch next instruction pair into current instruction
+        
+        t_stat ret = executeInstruction(&inspair[0]);
+        
+        if (ret)
+        {
+            if (ret > 0)
+            {
+                reason = ret;
+                break;
+            } else {
+                switch (ret)
+                {
+                    case CONT_TRA:
+                    jmpTra:                 continue;   // don't bump rIC, instruction already did it
+                }
+            }
+        }
+        
+        if (ci->opcode == 0616) { // DIS
+            reason = STOP_DIS;
+            break;
+        }
+        
+    jmpNext:;
+        // doesn't seem to work as advertized
+        if (sim_poll_kbd())
+            reason = STOP_BKPT;
+        
+        // XXX: what if sim stops during XEC/XED? if user wants to re-step
+        // instruc, is this logic OK?
+        if(XECD == 1) {
+            XECD = 2;
+        } else if(XECD == 2) {
+            XECD = 0;
+        } else
+            rIC += 1;
+        
+        // is this a multiword EIS?
+        // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
+        if (ci->iwb->ndes > 0)
+            rIC += ci->iwb->ndes;
+        
+    } while (reason == 0);
+    
+    fprintf(stdout, "\r\ncpuCycles = %lld\n", cpuCycles);
+    
+    return reason;
+}
+
+
 
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
 
@@ -445,6 +548,9 @@ t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acct
         return STOP_BKPT;
     else {
         //*dat = M[addr];
+        
+        // TODO: move these next 2 linses elsewhere. As it makes rY & TPR.CA wrong for Ypair reads, etc.
+        
         rY = addr;
         TPR.CA = addr;  //XXX for APU
         
@@ -1490,6 +1596,25 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
     return decodeInstruction(p->IWB, p);
 }
 
+DCDstruct **fetchInstructionPair(word18 addr, DCDstruct *ipair[2])  // fetch instrcution pair at address
+{
+    
+    DCDstruct *p1 = (ipair[0] == NULL) ? newDCDstruct() : ipair[0];
+    DCDstruct *p2 = (ipair[1] == NULL) ? newDCDstruct() : ipair[1];
+    
+    Read(p1, addr, &p1->IWB, InstructionFetch, 0);
+    cpu.read_addr = addr;
+    
+    Read(p2, addr, &p2->IWB, InstructionFetch, 0);
+    cpu.read_addr = addr;
+    
+    decodeInstruction(p1->IWB, p1);
+    decodeInstruction(p2->IWB, p2);
+    
+    return ipair;
+}
+
+    
 /*
  * instruction decoder .....
  *

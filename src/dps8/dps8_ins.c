@@ -365,33 +365,6 @@ t_stat executeInstruction(DCDstruct *ci)
                 sim_printf("Unhandled iwb->mods for instruction '%s': %0llo\n", iwb->mne, iwb->mods);
         }
     
-/*
-    // No CI/SC/SCR allowed
-    if (iwb->mods == NO_CSS)
-    {
-        if (_nocss[tag])
-            doFault(ci, ill_proc, 0, "Illegal CI/SC/SCR modification");
-    }
-    // No DU/DL/CI/SC/SCR allowed
-    else if (iwb->mods == NO_DDCSS)
-    {
-        if (_noddcss[tag])
-            doFault(ci, ill_proc, 0, "Illegal DU/DL/CI/SC/SCR modification");
-    }
-    // No DL/CI/SC/SCR allowed
-    else if (iwb->mods == NO_DLCSS)
-    {
-        if (_nodlcss[tag])
-            doFault(ci, ill_proc, 0, "Illegal DL/CI/SC/SCR modification");
-    }
-    // No DU/DL allowed
-    else if (iwb->mods == NO_DUDL)
-    {
-        if (_nodudl[tag])
-            doFault(ci, ill_proc, 0, "Illegal DU/DL modification");
-    }
-*/
-        
     
     if (iwb->ndes == 0)
     {
