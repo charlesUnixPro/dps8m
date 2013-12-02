@@ -17,9 +17,8 @@ extern word18 rIC;
 #endif
 #endif
 
-extern bool bPuls2;
 
-void EISWrite(EISaddr *p, word36 data)
+static void EISWrite(EISaddr *p, word36 data)
 {
     if (p->mat == viaPR && get_addr_mode() == APPEND_mode)
     {
@@ -30,7 +29,7 @@ void EISWrite(EISaddr *p, word36 data)
         Write(p->e->ins, p->address, data, OperandWrite, 0); // write data
 }
 
-word36 EISRead(EISaddr *p)
+static word36 EISRead(EISaddr *p)
 {
     word36 data;
     if (p->mat == viaPR && get_addr_mode() == APPEND_mode)
@@ -45,7 +44,7 @@ word36 EISRead(EISaddr *p)
     return data;
 }
 
-void EISReadN(EISaddr *p, int N, word36 *dst)
+static void EISReadN(EISaddr *p, int N, word36 *dst)
 {
     for(int n = 0 ; n < N ; n++)
     {
@@ -163,7 +162,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
             address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
 
             e->addr[k-1].address = address;
-            if (get_addr_mode() == APPEND_MODE)
+            if (get_addr_mode() == APPEND_mode)
             {
                 e->addr[k-1].SNR = PR[n].SNR;
                 e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -209,7 +208,7 @@ void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             e->addr[k-1].SNR = PR[n].SNR;
             e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -324,7 +323,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             e->addr[k-1].SNR = PR[n].SNR;
             e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -424,7 +423,7 @@ void parseBitstringOperandDescriptor(int k, EISstruct *e)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             e->addr[k-1].SNR = PR[n].SNR;
             e->addr[k-1].RNR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -559,11 +558,13 @@ int getSign(word72s n128, EISstruct *e)
 /*!
  * add sign to buffer position p
  */
+#ifndef QUIET_UNUSED
 PRIVATE
 void addSign(word72s n128, EISstruct *e)
 {
     *(e->p++) = getSign(n128, e);
 }
+#endif
 
 /*!
  * load a 9*n bit integer into e->x ...
@@ -712,7 +713,7 @@ int EISget49(EISaddr *p, int *pos, int tn)
         p->data = EISRead(p);    // read it from memory
     }
     
-    int c;
+    int c = 0;
     switch(tn)
     {
         case CTN4:
@@ -733,7 +734,7 @@ int EISget49(EISaddr *p, int *pos, int tn)
  * return a 4-, 6- or 9-bit character at memory "*address" and position "*pos". Increment pos (and address if necesary)
  * NB: must be initialized before use or else unpredictable side-effects may result. Not thread safe!
  */
-int EISget469(EISaddr *p, int *pos, int ta)
+static int EISget469(EISaddr *p, int *pos, int ta)
 {
     if (!p)
     //{
@@ -764,7 +765,7 @@ int EISget469(EISaddr *p, int *pos, int ta)
     }
     p->data = EISRead(p);    // read it from memory
     
-    int c;
+    int c = 0;
     switch(ta)
     {
         case CTA4:
@@ -824,7 +825,7 @@ int EISget469r(EISaddr *p, int *pos, int ta)
     //    p->lastAddress = p->address;
     //}
     
-    int c;
+    int c = 0;
     switch(ta)
     {
         case CTA4:
@@ -872,7 +873,7 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
             p->data = EISRead(p);    // read it from memory
         }
         
-        int c;
+        int c = 0;
         switch(e->TN1)
         {
             case CTN4:
@@ -1281,7 +1282,7 @@ void EISwrite49(EISaddr *p, int *pos, int tn, int c49)
 /*!
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
-void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
+static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
 {
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
@@ -1459,6 +1460,7 @@ void _btd(EISstruct *e)
     }
 }
 
+#ifndef QUIET_UNUSED
 char *_btdOld(EISstruct *e)
 {
     word72s n128 = e->x;    //signExt9(e->x, e->N1);          // adjust for +/-
@@ -1563,6 +1565,7 @@ char *_btdOld(EISstruct *e)
     
     // e->p points to just after last char of converted data
 }
+#endif
 
 void btd(DCDstruct *ins)
 {
@@ -1932,6 +1935,7 @@ void EISloadInputBufferAlphnumeric(EISstruct *e, int k)
 
 ///< MicroOperations ...
 ///< Table 4-9. Micro Operation Code Assignment Map
+#ifndef QUIET_UNUSED
 PRIVATE
 char* mopCodes[040] = {
     //        0       1       2       3       4       5       6       7
@@ -1940,6 +1944,7 @@ char* mopCodes[040] = {
     /* 20 */ "lte",  "cht",   0,      0,      0,      0,      0,      0,
     /* 30 */   0,      0,     0,      0,      0,      0,      0,      0
 };
+#endif
 
 PRIVATE
 MOPstruct mopTab[040] = {
@@ -3085,7 +3090,7 @@ void mlr(DCDstruct *ins)
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
-    bool bOvp;  // true when a negative overpunch character has been found @ N1-1 
+    bool bOvp = false;  // true when a negative overpunch character has been found @ N1-1 
 
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
     
@@ -3308,7 +3313,7 @@ void mrl(DCDstruct *ins)
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
-    bool bOvp;  // true when a negative overpunch character has been found @ N1-1
+    bool bOvp = false;  // true when a negative overpunch character has been found @ N1-1
    
     //get469r(NULL, 0, 0, 0);    // initialize char getter buffer
     
@@ -3482,7 +3487,7 @@ void mvt(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -3815,7 +3820,7 @@ void scm(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -3995,7 +4000,7 @@ void scmr(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
 
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4107,7 +4112,7 @@ void tct(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
 
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4174,7 +4179,7 @@ void tct(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4201,7 +4206,7 @@ void tct(DCDstruct *ins)
         //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
         int c = EISget469(&e->ADDR1, &e->srcCN, e->TA1); // get src char
 
-        int m;
+        int m = 0;
         
         switch (e->srcSZ)
         {
@@ -4309,7 +4314,7 @@ void tctr(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4376,7 +4381,7 @@ void tctr(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4402,7 +4407,7 @@ void tctr(DCDstruct *ins)
         //int c = get469r(e, &newSrcAddr, &newSrcCN, e->TA1); // get src char
         int c = EISget469r(&e->ADDR1, &newSrcCN, e->TA1); // get src char
         
-        int m;
+        int m = 0;
         
         switch (e->srcSZ)
         {
@@ -4607,7 +4612,9 @@ void scd(DCDstruct *ins)
     int c1 = 0;
     int c2 = 0;
     
+#ifndef QUIET_UNUSED
     int ctest = 0;
+#endif
     if (!(e->MF2 & MFkID) && ((e->MF2 & MFkREGMASK) == 3))  // MF2.du
     {
         // per Bull RJ78, p. 5-45
@@ -4682,7 +4689,7 @@ void scd(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4797,7 +4804,9 @@ void scdr(DCDstruct *ins)
     int c1 = 0;
     int c2 = 0;
     
+#ifndef QUIET_UNUSED
     int ctest = 0;
+#endif
     if (!(e->MF2 & MFkID) && ((e->MF2 & MFkREGMASK) == 3))  // MF2.du
     {
         // per Bull RJ78, p. 5-45
@@ -4873,7 +4882,7 @@ void scdr(DCDstruct *ins)
         ARn_CHAR = AR[n].CHAR;
         ARn_BITNO = AR[n].BITNO;
         
-        if (get_addr_mode() == APPEND_MODE)
+        if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
             //TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -4972,6 +4981,7 @@ bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
  * write a bit to memory (in the most ineffecient way possible)
  */
 
+#ifndef QUIET_UNUSED
 PRIVATE
 void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
 {
@@ -4998,6 +5008,7 @@ void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
     
     *bpos += 1;
 }
+#endif
 
 PRIVATE
 bool EISgetBitRW(EISaddr *p)
@@ -5219,7 +5230,7 @@ void csl(DCDstruct *ins)
     SETF(rIR, I_ZERO);      // assume all Y-bit2 == 0
     CLRF(rIR, I_TRUNC);     // assume N1 <= N2
     
-    bool bR; // result bit
+    bool bR = false; // result bit
     
     int i = 0;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
@@ -5373,7 +5384,7 @@ void csr(DCDstruct *ins)
     e->ADDR2.bPos = e->B2;
     
     // get new char/bit offsets
-    int numWords1, numWords2;
+    int numWords1=0, numWords2=0;
     
     getBitOffsets(e->N1, e->C1, e->B1, &numWords1, &e->ADDR1.cPos, &e->ADDR1.bPos);
     e->ADDR1.address += numWords1;
@@ -5397,7 +5408,7 @@ void csr(DCDstruct *ins)
     SETF(rIR, I_ZERO);      // assume all Y-bit2 == 0
     CLRF(rIR, I_TRUNC);     // assume N1 <= N2
     
-    bool bR; // result bit
+    bool bR = false; // result bit
     
     int i = 0;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
@@ -5543,7 +5554,7 @@ void sztl(DCDstruct *ins)
     SETF(rIR, I_ZERO);      // assume all C(BOLR) == 0
     CLRF(rIR, I_TRUNC);     // N1 >= N2
     
-    bool bR; // result bit
+    bool bR = false; // result bit
     
     int i = 0;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
@@ -5659,7 +5670,7 @@ void sztr(DCDstruct *ins)
     e->ADDR2.bPos = e->B2;
     
     // get new char/bit offsets
-    int numWords1, numWords2;
+    int numWords1=0, numWords2=0;
     
     getBitOffsets(e->N1, e->C1, e->B1, &numWords1, &e->ADDR1.cPos, &e->ADDR1.bPos);
     e->ADDR1.address += numWords1;
@@ -5684,7 +5695,7 @@ void sztr(DCDstruct *ins)
     SETF(rIR, I_ZERO);      // assume all Y-bit2 == 0
     CLRF(rIR, I_TRUNC);     // assume N1 <= N2
     
-    bool bR; // result bit
+    bool bR = false; // result bit
     
     int i = 0;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)

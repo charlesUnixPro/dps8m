@@ -13,12 +13,12 @@
  */
 bool apndTrace = false;     ///< when true do appending unit tracing
 
-enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
+static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
 
 word24 finalAddress = 0;    ///< final, 24-bit address that comes out of the APU
 word36 CY = 0;              ///< C(Y) operand data from memory
                             // XXX do we need to make CY part of DCDstruct ?
-word36 CY1 = 0;             ///< C(Y+1) operand data .....
+//word36 CY1 = 0;             ///< C(Y+1) operand data .....
 word36 YPair[2];            ///< Ypair
 
 
@@ -29,7 +29,7 @@ word36 YPair[2];            ///< Ypair
  If bit 29 of the instruction word is set to 1, modification by pointer register is invoked and the preliminary step is executed as follows:
  1. The ADDRESS field of the instruction word is interpreted as shown in Figure 6-7 below.
  2. C(PRn.SNR) → C(TPR.TSR)
- ￼￼￼￼￼￼￼￼￼￼￼￼￼3. maximum of ( C(PRn.RNR), C(TPR.TRR), C(PPR.PRR) ) → C(TPR.TRR)
+ 3. maximum of ( C(PRn.RNR), C(TPR.TRR), C(PPR.PRR) ) → C(TPR.TRR)
  4. C(PRn.WORDNO) + OFFSET → C(TPR.CA) (NOTE: OFFSET is a signed binary number.)
  5. C(PRn.BITNO) → TPR.BITNO
  */
@@ -38,7 +38,9 @@ void doAddrModPtrReg(DCDstruct *i)
 {
     word3 n = GET_PRN(i->IWB);  // get PRn
     word15 offset = GET_OFFSET(i->IWB);
+#ifndef QUIET_UNUSED
     int soffset = SIGNEXT15(GET_OFFSET(i->IWB));
+#endif
     
     TPR.TSR = PR[n].SNR;
     TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
@@ -79,7 +81,7 @@ void doPtrReg(DCDstruct *i)
 /**
  * fetch descriptor segment PTW ...
  */
-_ptw0* fetchDSPTW(word15 segno)
+static _ptw0* fetchDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // XXX: generate access violation, out of segment bounds fault
@@ -102,7 +104,7 @@ _ptw0* fetchDSPTW(word15 segno)
 /**
  * modify descriptor segment PTW (Set U=1) ...
  */
-_ptw0* modifyDSPTW(word15 segno)
+static _ptw0* modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // XXX: generate access violation, out of segment bounds fault
@@ -123,7 +125,7 @@ _ptw0* modifyDSPTW(word15 segno)
 
 
 /// \brief XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
-_sdw* fetchSDWfromSDWAM(word15 segno)
+static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     if (apndTrace)
     {
@@ -170,7 +172,7 @@ _sdw* fetchSDWfromSDWAM(word15 segno)
 /**
  * Fetches an SDW from a paged descriptor segment.
  */
-_sdw0* fetchPSDW(word15 segno)
+static _sdw0* fetchPSDW(word15 segno)
 {
     if (apndTrace)
     {
@@ -212,7 +214,7 @@ _sdw0* fetchPSDW(word15 segno)
 
 /// \brief Nonpaged SDW Fetch
 /// Fetches an SDW from an unpaged descriptor segment.
-_sdw0 *fetchNSDW(word15 segno)
+static _sdw0 *fetchNSDW(word15 segno)
 {
     if (apndTrace)
     {
@@ -292,7 +294,7 @@ char *strSDW(_sdw *SDW)
 /**
  * dump SDWAM...
  */
-t_stat dumpSDWAM()
+t_stat dumpSDWAM (void)
 {
     for(int _n = 0 ; _n < 64 ; _n++)
     {
@@ -309,7 +311,7 @@ t_stat dumpSDWAM()
 /**
  * load the current in-core SDW0 into the SDWAM ...
  */
-void loadSDWAM(word15 segno)
+static void loadSDWAM(word15 segno)
 {
     /* If the SDWAM match logic does not indicate a hit, the SDW is fetched from the descriptor segment in main memory and loaded into the SDWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63?), and the newly loaded register is read out into the address preparation circuitry.
      */
@@ -373,7 +375,7 @@ void loadSDWAM(word15 segno)
     dumpSDWAM();
 }
 
-_ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
+static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
     for(int _n = 0 ; _n < 64 ; _n++)
     {
@@ -397,7 +399,7 @@ _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
     return NULL;    // segment not referenced in SDWAM
 }
 
-_ptw0* fetchPTW(_sdw *sdw, word18 offset)
+static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
 {
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
@@ -415,7 +417,7 @@ _ptw0* fetchPTW(_sdw *sdw, word18 offset)
     return &PTW0;
 }
 
-void loadPTWAM(word15 segno, word18 offset)
+static void loadPTWAM(word15 segno, word18 offset)
 {
     /*
      * If the PTWAM match logic does not indicate a hit, the PTW is fetched from main memory and loaded into the PTWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63), and the newly loaded register is read out into the address preparation circuitry.
@@ -457,7 +459,7 @@ void loadPTWAM(word15 segno, word18 offset)
 /**
  * modify target segment PTW (Set M=1) ...
  */
-_ptw* modifyPTW(_sdw *sdw, word18 offset)
+static _ptw* modifyPTW(_sdw *sdw, word18 offset)
 {
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
@@ -479,20 +481,21 @@ _ptw* modifyPTW(_sdw *sdw, word18 offset)
 /**
  * Is the instruction a SToRage OPeration ?
  */
-bool isSTROP(word36 inst)
+#ifndef QUIET_UNUSED
+static bool isSTROP(word36 inst)
 {
     // XXX: implement
     return false;
 }
 
-bool isAPUDataMovement(word36 inst)
+static bool isAPUDataMovement(word36 inst)
 {
     // XXX: implement - when we figure out what it is
     return false;
 }
+#endif
 
-
-char *strAccessType(MemoryAccessType accessType)
+static char *strAccessType(MemoryAccessType accessType)
 {
     switch (accessType)
     {
@@ -509,7 +512,7 @@ char *strAccessType(MemoryAccessType accessType)
     }
 }
 
-char *strACV(enum enumACV acv)
+static char *strACV(enum enumACV acv)
 {
     switch (acv)
     {
@@ -534,10 +537,11 @@ char *strACV(enum enumACV acv)
         case ACDF2: return "Directed fault 2";
         case ACDF3: return "Directed fault 3";
     }
+  return "unhandled acv in strACV";
 }
 
-word36 acvFaults = 0;   ///< pending ACV faults
-void acvFault(enum enumACV acvfault)
+static word36 acvFaults = 0;   ///< pending ACV faults
+static void acvFault(enum enumACV acvfault)
 {
     
     fprintf(stderr, "group 6 ACV fault %s(%d)\n", strACV(acvfault), acvfault);
@@ -560,10 +564,12 @@ void acvFault(enum enumACV acvfault)
 /**
  * sequential instruction fetch .....
  */
-word36
+static word36
 doAppendInstructionFetch(DCDstruct *i, word36 *readData)
 {
+#ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
+#endif
     
     // either sequential instruction fetch ...
     if (apndTrace)
@@ -633,8 +639,10 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
             loadSDWAM(TPR.TSR);
     }
     
+#ifndef QUIET_UNUSED
     // Yes...
     RSDWH_R1 = SDW->R1;
+#endif
 
     if (apndTrace)
     {
@@ -645,7 +653,9 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
         // Set fault ACV0 = IRO
         acvFault(ACV0);
 
+#ifndef QUIET_UNUSED
 F:; ///< transfer or instruction fetch
+#endif
     
     if (apndTrace)
     {
@@ -771,7 +781,9 @@ L:;
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(L): IC set to %05o:%08o\n", TPR.TSR, TPR.CA);
     }
     
+#ifndef QUIET_UNUSED
 M:;
+#endif
     if (apndTrace)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M)\n");
@@ -794,10 +806,12 @@ M:;
 
 }
 
-word36
+static word36
 doAppendDataRead(DCDstruct *i, word36 *readData, bool bNotOperand)
 {
+#ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
+#endif
     
     if (apndTrace)
     {
@@ -893,10 +907,14 @@ A:;
             loadSDWAM(TPR.TSR);
     }
     
+#ifndef QUIET_UNUSED
     // Yes...
     RSDWH_R1 = SDW->R1;
+#endif
     
+#ifndef QUIET_UNUSED
 B:;
+#endif
     if (apndTrace)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(B)\n");
@@ -1002,10 +1020,12 @@ I:;
     return finalAddress;
 }
 
-word36
+static word36
 doAppendDataWrite(DCDstruct *i, word36 writeData, bool bNotOperand)
 {
+#ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
+#endif
     
     if (apndTrace)
     {
@@ -1097,10 +1117,14 @@ A:;
             loadSDWAM(TPR.TSR);
     }
     
+#ifndef QUIET_UNUSED
     // Yes...
     RSDWH_R1 = SDW->R1;
+#endif
     
+#ifndef QUIET_UNUSED
 B:;
+#endif
     if (apndTrace)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(B)\n");
@@ -1215,11 +1239,9 @@ I:;
     
 }
 
-word18 getCr(word4 Tdes);
-
 bool didITSITP = false; ///< true after an ITS/ITP processing
 
-void doITP(word4 Tag)
+static void doITP(word4 Tag)
 {
     if ((cpu_dev.dctrl & DBG_APPENDING) && sim_deb)
     {
@@ -1248,7 +1270,7 @@ void doITP(word4 Tag)
     return;
 }
 
-void doITS(word4 Tag)
+static void doITS(word4 Tag)
 {
     if ((cpu_dev.dctrl & DBG_APPENDING) && sim_deb)
     {
@@ -1304,7 +1326,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
      XXX If either condition is violated, the indirect word TAG field is interpreted as a normal address modifier and the presence of a special address modifier will cause an illegal procedure, illegal modifier, fault.
      */
     //if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
-    if (get_addr_mode() != APPEND_MODE || (TPR.CA & 1))
+    if (get_addr_mode() != APPEND_mode || (TPR.CA & 1))
         // XXX illegal procedure, illegal modifier, fault
         doFault(i, ill_proc, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
 
@@ -1339,10 +1361,12 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
 }
 
 
-word36
+static word36
 doAppendIndirectRead(DCDstruct *i, word36 *readData, word6 Tag)
 {
+#ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
+#endif
 //    if (apndTrace)
 //    {
 //        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
@@ -1366,7 +1390,9 @@ doAppendIndirectRead(DCDstruct *i, word36 *readData, word6 Tag)
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
     }
     
+#ifndef QUIET_UNUSED
 A:;
+#endif
     if (apndTrace)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A)\n");
@@ -1420,10 +1446,14 @@ A:;
             loadSDWAM(TPR.TSR);
     }
     
+#ifndef QUIET_UNUSED
     // Yes...
     RSDWH_R1 = SDW->R1;
+#endif
     
+#ifndef QUIET_UNUSED
 B:;
+#endif
     if (apndTrace)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(B)\n");

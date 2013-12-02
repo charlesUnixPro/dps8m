@@ -17,7 +17,8 @@
 #define FMT_E   3
 #define FMT_9   9
 
-t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
+static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
+static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
 
 bool bdeferLoad = false;    // defer load to after symbol resolution
 
@@ -769,7 +770,7 @@ t_stat createStack(int n, bool bVerbose)
  */
 t_stat setupFXE()
 {
-    
+    return SCPE_OK;
 }
 
 /*!
@@ -986,7 +987,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
  * "standard" simh/dps8 loader (.oct files) ....
  * Will do real binary files - later.
  */
-t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose)
+static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose)
 {
     /*
      * we'll support the following type of loads
@@ -1107,7 +1108,7 @@ t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool 
 /*!
  * Create sdw0. Create an in-core SDW ...
  */
-_sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, word14 BOUND, word1 R, word1 E, word1 W, word1 P, word1 U, word1 G, word1 C, word14 EB)
+static _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, word14 BOUND, word1 R, word1 E, word1 W, word1 P, word1 U, word1 G, word1 C, word14 EB)
 {
     static _sdw0 SDW0;
     
@@ -1133,7 +1134,7 @@ _sdw0* createSDW0(word24 addr, word3 R1, word3 R2, word3 R3, word1 F, word3 FC, 
     return &SDW0;
 }
 
-void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
+static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
 {
     word36 even, odd;
     
@@ -1149,7 +1150,7 @@ void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
 /*!
  * load an unpaged segment into memory. Assume all R/W/X permissions given.
  */
-t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
+static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))    // segment out of range
     {
@@ -1193,10 +1194,10 @@ t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     return SCPE_OK;
 }
 
+// This is part of the simh interface
 t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
 {
     size_t fmt;
-    extern int32 sim_switches;
     
     int32 segno = -1;
     int32 ldaddr = -1;
@@ -1277,7 +1278,9 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     {
         char s[1024], *end_ptr, sn[1024], def[1024];
         
+#ifndef QUIET_UNUSED
         long n = sscanf(cptr, "%*s %s %s %s", s, sn, def);
+#endif
 
         if (!strmask(s, "seg*"))
         {

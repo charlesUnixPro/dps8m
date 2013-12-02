@@ -456,7 +456,7 @@ int _doVfd(tuple *list, word36 *data)
                 
                 for(int n = 0 ; (n < cnt) && (*p) ; n ++)
                 {
-                    int c6 = ASCIIToGEBcd[*p++];
+                    int c6 = ASCIIToGEBcd[(int)(*p++)];
                     if (c6 == -1)   // invalid GEBCD?
                         c6 = 017;   // a GEBCD ? - probably ought to change
                     v = (v << 9) | (c6 & 077);
@@ -788,7 +788,7 @@ void doBci(char *str, int sz)
         int nPos = 5;
         for(char *p = str; *p; p++)
         {
-            int q = ASCIIToGEBcd[*p];
+            int q = ASCIIToGEBcd[(int)(*p)];
             if (q == -1)
             {
                 fprintf(stderr, "WARNING(bci): ASCII character '%c' (%o) not supported in GEBCD. Ignoring.\n", q, q);
@@ -917,8 +917,9 @@ void doAc4(char *str, int sz)
     }
 }
 
-void doStrop(pseudoOp *p, char *str, int sz)
+void doStrop(pseudoOp *p, char *str, expr *val)
 {
+    int sz = val ? val->value : 0;
     if (strcasecmp(p->name, "acc") == 0)
         return doAcc(str, sz);
     if (strcasecmp(p->name, "aci") == 0)

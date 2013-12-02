@@ -31,11 +31,10 @@ LEX = flex
 
 # rules
 
-
-all: as8 
+all: as8+ 
 
 # Tool invocations
-as8: $(OBJS) y.tab.o lex.yy.o 
+as8+: $(OBJS) y.tab.o lex.yy.o 
 	gcc  -o "as8+" $(OBJS) 
 
 opcodeTable.o: y.tab.h
@@ -57,7 +56,7 @@ lex.yy.c: as8.l
 	
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) y.tab.c y.tab.h lex.yy.c y.output as8
+	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) y.tab.c y.tab.h lex.yy.c y.output as8+
 	-@echo ' '
 
 .PHONY: all clean dependents

@@ -730,7 +730,7 @@ Strtok(char *line, char *sep)
                             p++;				// goto next char
                             continue;
                         } else {
-                            *p++ = (char)NULL;	/* ... iff >0	*/
+                            *p++ = (char)0;	/* ... iff >0	*/
                             while (*p && strchr(sep, *p))	/* skip over seperator(s)*/
                                 p++;
                             return q;	/* return field		*/

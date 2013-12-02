@@ -69,34 +69,7 @@ typedef __int128_t  int128;
 typedef word36      float36;    // single precision float
 typedef word72      float72;    // double precision float
 
-
 #define PRIVATE static
-
-/* general manipulation */
-
-// Abort codes, used to sort out longjmp's back to the main loop.
-// Codes > 0 are simulator stop codes
-// Codes < 0 are internal aborts
-// Code  = 0 stops execution for an interrupt check
-//
-
-//#define STOP_HALT       1                               /*!< halted */
-//#define STOP_IBKPT      2                               /*!< breakpoint */
-//#define STOP_ILLEG      3                               /*!< illegal instr */
-//#define STOP_ILLINT     4                               /*!< illegal intr inst */
-//#define STOP_PAGINT     5                               /*!< page fail in intr */
-//#define STOP_ZERINT     6                               /*!< zero vec in intr */
-//#define STOP_NXMPHY     7                               /*!< nxm on phys ref */
-//#define STOP_IND        8                               /*!< indirection loop */
-//#define STOP_XCT        9                               /*!< XCT loop */
-//#define STOP_ILLIOC     10                              /*!< invalid UBA num */
-//#define STOP_ASTOP      11                              /*!< address stop */
-//#define STOP_UNKNOWN    12                              /*!< unknown stop  */
-//#define PAGE_FAIL       -1                              /*!< page fail */
-//#define INTERRUPT       -2                              /*!< interrupt */
-//#define ABORT(x)        longjmp (save_env, (x))         /*!< abort */
-//#define IORETURN(f,v)   ((f)? (v): SCPE_OK)             /*!< cond error return */
-
 
 /* Architectural constants */
 
@@ -109,10 +82,6 @@ typedef word72      float72;    // double precision float
 #define VASIZE          18                              /*!< virtual addr width */
 #define AMASK           ((1 << VASIZE) - 1)             /*!< virtual addr mask */
 #define SEGSIZE         (1 << VASIZE)                   ///< size of segment in words
-//#define HIMASK          0777777000000LL                   /*!< left mask */
-//#define HISIGN          0400000000000LL                   /*!< left sign */
-//#define LOMASK          0000000777777LL                   /*!< right mask */
-//#define LOSIGN          0000000400000LL                   /*!< right sign */
 #define MAX18POS        0377777                           /*!<  2**17-1 */
 #define MAX18NEG        0400000                           /*!< -2**17 */  
 #define SIGN18          0400000
@@ -330,15 +299,14 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_ADDRMOD     (1 << 9)    ///< follow address modifications
 #define DBG_APPENDING   (1 << 10)   ///< follow appending unit operations
 #define DBG_TRACEEXT    (1 << 11)   ///< extended instruction trace
-#define DBG_UNIT        (1 << 12)   ///< "Unit" debugging
+#define DBG_WARN        (1 << 12)   
+#define DBG_DEBUG       (1 << 13)   
+#define DBG_INFO        (1 << 14)   
+#define DBG_NOTIFY      (1 << 15)   
+#define DBG_ERR         (1 << 16)   
+#define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
 
 /* Global data */
-
-extern t_bool sim_idle_enab;
-
-
-extern a8 saved_PC;
-extern int32 flags;
 
 // h6180 stuff
 /* [map] designates mapping into 36-bit word from DPS-8 proc manual */
@@ -559,6 +527,12 @@ extern struct _ptw0 {
 typedef struct _ptw0 _ptw0;
 
 
+// Abort codes, used to sort out longjmp's back to the main loop.
+// Codes > 0 are simulator stop codes
+// Codes < 0 are internal aborts
+// Code  = 0 stops execution for an interrupt check
+//
+
 #define STOP_UNK    0
 #define STOP_UNIMP  1
 #define STOP_DIS    2
@@ -567,6 +541,7 @@ typedef struct _ptw0 _ptw0;
 #define STOP_5      5
 #define STOP_BUG    6
 #define STOP_WARN   7
+extern const char *sim_stop_messages[];
 
 
 // not really STOP codes, but get returned from instruction loops
@@ -599,6 +574,8 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define MA_RD  2   /* data read */
 #define MA_WR  3   /* data write */
 
+word36 Ypair[2];        ///< 2-words
+
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
@@ -621,16 +598,20 @@ void putChar(word36 *dst, word6 data, int posn);
 t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT *uptr, int32 sw);
 t_stat cpu_dep (t_value val, t_addr addr, UNIT *uptr, int32 sw);
 t_stat cpu_reset (DEVICE *dptr);
+t_stat cpu_boot (int32 unit_num, DEVICE *dptr);
 
 extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 
-extern word36 *M;
-
 extern DEVICE cpu_dev;
+extern DEVICE iom_dev;
+extern DEVICE tape_dev;
+extern DEVICE *sim_devices[];
+extern REG cpu_reg[];
+extern UNIT mt_unit [];
+extern UNIT cpu_unit [];
+extern REG iom_reg[];
 extern FILE *sim_deb;
-//extern void sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...);
 
-extern const char *sim_stop_messages[];
 
 // ******* h6180 stuff *******
 
@@ -740,8 +721,8 @@ typedef struct DCDstruct DCDstruct; // decoded instruction info ......
 
 extern DCDstruct *currentInstruction;
 
-DCDstruct *newDCDstruct();
-void freeDCDstruct(DCDstruct *p);
+//DCDstruct *newDCDstruct(void);
+//void freeDCDstruct(DCDstruct *p);
 
 
 // opcode metadata (flag) ...
@@ -807,7 +788,10 @@ extern	word8	tCF;	/*!< character position field [3b] */
 
 extern word6 Td, Tm;
 //extern word4 CT_HOLD;
+
+// XXX these ought to moved to DCDstruct 
 extern word36 CY;
+extern word36 YPair[2];
 
 /* what about faults? */
 //void addrmodreg();
@@ -859,28 +843,6 @@ enum { OP_1	= 00001,
     OP_X	= 01000
 };
 
-// RAW, core stuff ...
-int core_read(word24 addr, word36 *data);
-int core_write(word24 addr, word36 data);
-int core_read2(word24 addr, word36 *even, d8 *odd);
-int core_write2(word24 addr, word36 even, d8 odd);
-int core_readN(word24 addr, word36 *data, int n);
-int core_writeN(word24 addr, word36 *data, int n);
-int core_read72(word24 addr, word72 *dst);
-
-// Memory ops that use the appending unit (as necessary) ...
-t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag); // needs testing
-t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag);
-
-word18 getBARaddress(word18 addr);
-word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tdes, word36 writeData, word36 *readData);
 
 enum eCAFoper {
     unknown = 0,
@@ -892,16 +854,8 @@ enum eCAFoper {
 };
 typedef enum eCAFoper eCAFoper;
 
-void doComputedAddressFormation(DCDstruct *, eCAFoper action);
-
 word24 doFinalAddressCalculation(DCDstruct *i, MemoryAccessType accessType, word15 segno, word18 offset, word36 *ACVfaults);
 extern bool didITSITP; ///< true after an ITS/ITP processing
-
-//void doAddrModPtrReg(word18 inst);
-void doAddrModPtrReg(DCDstruct *);
-void doPtrReg();        ///< used by EIS stuff
-
-//word36 getOperand();
 
 //
 // EIS stuff ...
@@ -1510,19 +1464,21 @@ extern enum _processor_cycle_type {
     FAULT_CYCLE
 } processorCycle;
 
-extern enum _processor_addressing_mode {
+enum _processor_addressing_mode {
     UNKNOWN_MODE = 0,
     ABSOLUTE_MODE,
     APPEND_MODE,
     BAR_MODE
 };// processorAddressingMode;
 
-extern enum _processor_operating_mode {
+enum _processor_operating_mode {
     UNKNOWN_OPERATING_MODE = 0,
     NORMAL_MODE,
     PRIVILEGED_MODE,
 } processorOperatingMode;
 typedef enum _processor_addressing_mode _processor_addressing_mode;
+
+extern bool bPuls2;
 
 /* 
  * Cache Mode Regsiter
@@ -1620,7 +1576,7 @@ t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val);
 double float36ToIEEEdouble(float36 f36);
 float36 IEEEdoubleTofloat36(double f);
 // double precision stuff ...
-long double EAQToIEEElongdouble();
+long double EAQToIEEElongdouble(void);
 float72 IEEElongdoubleToFloat72(long double f);
 void IEEElongdoubleToEAQ(long double f0);
 
@@ -1672,15 +1628,12 @@ char *strlower(char *q);
 
 void sim_printf( const char * format, ... );    // not really simh, by my impl
 
-t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
-
 extern word24 finalAddress; ///< final 24-bit address for appending unit
 
 extern t_stat loadSpecial(char *buff);
 
 extern bool adrTrace;   ///< when true perform address modification tracing
 extern bool apndTrace;  ///< when true do appending unit tracing
-extern bool unitTrace;  ///< when true do unit level tracing
 
 //extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
 #define cpuCycles sys_stats.total_cycles
@@ -1694,9 +1647,6 @@ extern jmp_buf jmpMain;     ///< This is where we should return to from a fault 
  * Stuff to do with the local loader/binder/linker
  */
 
-extern char *strSDW0(_sdw0 *SDW);
-extern char *strSDW(_sdw *SDW);
-extern char *strDSBR();
 
 int removeSegment(char *seg);
 int removeSegdef(char *seg, char *sym);
@@ -1799,7 +1749,6 @@ enum relocationCodes
 // End loader stuff ...
 
 
-extern t_stat dumpSDWAM();
 /*
  * MMs stuff ...
  */
@@ -1844,16 +1793,9 @@ enum { n_segments = 1 << seg_bits}; // why does c89 treat enums as more constant
 // Devices connected to a SCU
 enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
-// Devices connected to an IOM (I/O multiplexer)
-enum dev_type { DEVT_NONE, DEVT_TAPE, DEVT_CON, DEVT_DISK };
+// Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
+enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC };
 
-// Logging levels. Messages at level "debug" and level "info" may be re-routed
-// to a file via the debug log command (messages at all levels may be
-// re-routed via the console log command. Messages at level debug
-// may be suppressed by turning off debug.
-enum log_level { DEBUG_MSG, INFO_MSG, NOTIFY_MSG, WARN_MSG, ERR_MSG };
-
-void log_msg(enum log_level level, const char* who, const char* format, ...);
 void out_msg(const char* format, ...);
 
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
@@ -1863,16 +1805,12 @@ typedef unsigned flag_t;    // efficient unsigned flag
 
 typedef enum { ABSOLUTE_mode = ABSOLUTE_MODE, APPEND_mode = APPEND_MODE, BAR_mode = BAR_MODE } addr_modes_t;
 
-addr_modes_t get_addr_mode();
-void set_addr_mode(addr_modes_t mode);
 
 
 // The CPU supports a privileged/non-privileged flag (dependent upon
 // addressing mode, ring of operation, and settings of the active
 // segment when in the appending (segmented) address mode.)
 typedef enum { NORMAL_mode, PRIV_mode } instr_modes_t;
-
-int is_priv_mode();
 
 
 // The control unit of the CPU is always in one of several states. We
@@ -2137,10 +2075,10 @@ typedef struct {
     struct {
         flag_t avail; // Not physical. Does mask really exist?
         // Part 1 -- the execute interrupt mask register
-        unsigned exec_intr_mask; // 32 bits, one for each intr or "cell"
+        unsigned int exec_intr_mask; // 32 bits, one for each intr or "cell"
         // Part 2 -- the interrupt mask assignment register -- 9 bits total
         struct {
-            unsigned raw; // 9 bits; raw mask; decoded below
+            unsigned int raw; // 9 bits; raw mask; decoded below
             flag_t unassigned; // is it assigned to a port?
             // We only list one port -- Multics only allowed one port at a time
             // even though the SCU hardware would have allowed all 8 ports
@@ -2151,106 +2089,6 @@ typedef struct {
 
 // I/O Multiplexer
 enum { max_channels = 32 }; // enums are more constant than consts...
-typedef struct {
-    uint iom_num;
-    int ports[8]; // CPU/IOM connectivity; designated a..h; negative to disable
-    int scu_port; // which port on the SCU(s) are we connected to?
-    struct {
-        enum dev_type type;
-        DEVICE* dev; // attached device; points into sim_devices[]
-        // The channel "boards" do *not* point into the UNIT array of the
-        // IOM entry within sim_devices[]. These channel "boards" are used
-        // only for simulation of async operation (that is as arguments for
-        // sim_activate()). Since they carry no state information, they
-        // are dynamically allocated by the IOM as needed.
-        UNIT* board; // represents the channel; See comment just above
-    } channels[max_channels];
-} iom_t;
-
-// Used to communicate between the IOM and devices
-typedef struct {
-    int chan;
-    void* statep; // For use by device specific code
-    int dev_cmd; // 6 bits
-    int dev_code; // 6 bits
-    int chan_data; // 6 bits; often some sort of count
-    flag_t have_status; // set to true by the device when operation is complete
-    int major;
-    int substatus;
-    flag_t is_read;
-    int time; // request by device for queuing via sim_activate()
-} chan_devinfo;
-
-// System-wide info and options not tied to a specific CPU, IOM, or SCU
-typedef struct {
-    int clock_speed;
-    // Instructions rccl and rscr allow access to a hardware clock.
-    // If zero, the hardware clock returns the real time of day.
-    // If non-zero, the clock starts at an arbitrary date and ticks at
-    // a rate approximately equal to the given number of instructions
-    // per second.
-    // Delay times are in cycles; negative for immediate
-    struct {
-        int connect;    // Delay between CIOC instr & connect channel operation
-        int chan_activate;  // Time for a list service to send a DCW
-    } iom_times;
-    struct {
-        int read;
-        int xfer;
-    } mt_times;
-    flag_t warn_uninit; // Warn when reading uninitialized memory
-    flag_t startup_interrupt;
-    // The CPU is supposed to start with a startup fault.  This will cause
-    // a series of trouble faults until the IOM finally writes a DIS from
-    // the tape label onto the troube fault vector location.  In order to
-    // reduce debugging clutter, the emulator allows starting the CPU off
-    // with an interrupt that we know has a DIS instruction trap.  This
-    // interrupt is hinted at in AN70.  This will cause the CPU to start off
-    // waiting for the next interrupt (from the IOM after it loads the first
-    // tape record and sends a terminate interrupt).
-    int tape_chan;  // Which channel of the IOM is the tape drive attached to?
-} sysinfo_t;
-
-// Statistics
-typedef struct {
-    struct {
-        uint nexec;
-        uint nmsec; // FIXME: WARNING: if 32 bits, only good for ~47 days :-)
-    } instr[1024];
-    t_uint64 total_cycles;      // Used for statistics and for simulated clock
-    t_uint64 total_instr;
-    t_uint64 total_msec;
-    uint n_instr;       // Reset to zero on each call to sim_instr()
-} stats_t;
-
-
-
-extern int bootimage_loaded;
-extern sysinfo_t sys_opts;
-
-extern events_t events;
-extern switches_t switches;
-extern cpu_ports_t cpu_ports; // Describes connections to SCUs
-// the following two should probably be combined
-extern cpu_state_t cpu;
-extern ctl_unit_data_t cu;
-extern stats_t sys_stats;
-
-extern scu_t scu; // only one for now
-extern iom_t iom; // only one for now
-
-extern int fault2group[32];
-extern int fault2prio[32];
-
-/* XXX these OUGHT to return fault codes! (and interrupt numbers???) */
-void iom_cioc(word8 conchan);
-void iom_cioc_cow(word18 cowaddr);
-int iom_setup(const char *confname);
-
-extern int console_chan;
-
-void cancel_run(t_stat reason);
-
 
 // Much of this is from AN87 as 43A23985 lacked details of 0..11 and 22..36
 typedef struct pcw_s {
@@ -2321,13 +2159,28 @@ typedef enum {
     chn_err,        // BUG: may not need this state
 } chn_state;
 
-static const char* chn_state_text(chn_state s)
-{
-    static const char* states[] = {
-        "idle", "pcw rcvd", "pcw sent", "pcw done", "cmd sent", "io sent", "need status svc", "err"
-    };
-    return (s >= 0 && s < ARRAY_SIZE(states)) ? states[s] : "unknown";
-}
+// Used to communicate between the IOM and devices
+typedef struct {
+    int iom_unit_num;
+    int chan;
+    void* statep; // For use by device specific code
+    int dev_cmd; // 6 bits
+    // XXX Caution; this is the unit number from the IOM, it is NOT the
+    // same as unit number. E.g.
+    //    dev_code       simh
+    //      0            cardreader[0]
+    //      1            tape[0]
+    //      2            tape[1]
+    //      3            disk[0]
+
+    int dev_code; // 6 bits
+    int chan_data; // 6 bits; often some sort of count
+    flag_t have_status; // set to true by the device when operation is complete
+    int major;
+    int substatus;
+    flag_t is_read;
+    int time; // request by device for queuing via sim_activate()
+} chan_devinfo;
 
 typedef struct {
     uint32 dcw; // bits 0..17
@@ -2344,77 +2197,78 @@ typedef struct {
     uint32 idcw;    // ptr to most recent dcw, idcw, ...
 } lpw_t;
 
+
+// System-wide info and options not tied to a specific CPU, IOM, or SCU
 typedef struct {
-    int chan;
-    // BUG/TODO: represent "masked" state
-    chn_state state;
-    int n_list;     // could be flag for first_list, but counter aids debug
-    flag_t need_indir_svc;  // Note: Currently equivalent to forcing control=2
-    flag_t have_status;         // from device
-    chan_status_t status;
-    UNIT* unitp;    // used for sim_activate() timing; BUG: steal from chn DEV
-    // pcw_t pcw;           // received from the connect channel
-    dcw_t dcw;      // most recent (in progress) dcw
-    int control;    // Indicates next action; mostly from PCW/IDCW ctrl fields
-    int err;        // BUG: temporary hack to replace "ret" auto vars...
-    chan_devinfo *devinfop;
-    lpw_t lpw;
-} channel_t;
+    int clock_speed;
+    // Instructions rccl and rscr allow access to a hardware clock.
+    // If zero, the hardware clock returns the real time of day.
+    // If non-zero, the clock starts at an arbitrary date and ticks at
+    // a rate approximately equal to the given number of instructions
+    // per second.
+    // Delay times are in cycles; negative for immediate
+    struct {
+        int connect;    // Delay between CIOC instr & connect channel operation
+        int chan_activate;  // Time for a list service to send a DCW
+    } iom_times;
+    struct {
+        int read;
+        int xfer;
+    } mt_times;
+    flag_t warn_uninit; // Warn when reading uninitialized memory
+    flag_t startup_interrupt;
+    // The CPU is supposed to start with a startup fault.  This will cause
+    // a series of trouble faults until the IOM finally writes a DIS from
+    // the tape label onto the troube fault vector location.  In order to
+    // reduce debugging clutter, the emulator allows starting the CPU off
+    // with an interrupt that we know has a DIS instruction trap.  This
+    // interrupt is hinted at in AN70.  This will cause the CPU to start off
+    // waiting for the next interrupt (from the IOM after it loads the first
+    // tape record and sends a terminate interrupt).
+} sysinfo_t;
 
-
-void iom_interrupt();
-extern int opt_debug;
-
-/* mt.c */
-extern void mt_init(void);
-extern int mt_iom_cmd(chan_devinfo* devinfop);
-extern int mt_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
-
-/* disk.c */
-extern void disk_init(void);
-extern int disk_iom_cmd(chan_devinfo* devinfop);
-extern int disk_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
-
-/* console.c */
-extern void console_init(void);
-extern int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
-extern int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
-extern int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
-extern int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
-
-extern int scu_set_interrupt(int inum);
-
-extern t_stat channel_svc(UNIT *up);
-extern int iom_show_mbx(FILE *st, UNIT *uptr, int val, void *desc);
-extern char *bin2text(t_uint64 word, int n);
-
-/*
- Provides a library for reading chunks of an arbitrary number
- of bits from a stream.
- */
-/*
- Copyright (c) 2007-2013 Michael Mondy
- 
- This software is made available under the terms of the
- ICU License -- ICU 1.8.1 and later.
- See the LICENSE file at the top-level directory of this distribution and
- at http://example.org/project/LICENSE.
- */
-
+// Statistics
 typedef struct {
-    const unsigned char *p;
-    const unsigned char *head;
-    const char *fname;
-    int used;
-    size_t len;
-    int fd;
-    unsigned char byte;
-} bitstream_t;
+    struct {
+        uint nexec;
+        uint nmsec; // FIXME: WARNING: if 32 bits, only good for ~47 days :-)
+    } instr[1024];
+    t_uint64 total_cycles;      // Used for statistics and for simulated clock
+    t_uint64 total_instr;
+    t_uint64 total_msec;
+    uint n_instr;       // Reset to zero on each call to sim_instr()
+} stats_t;
 
-extern bitstream_t* bitstm_open(const char* fname);
-extern bitstream_t* bitstm_new(const unsigned char* addr, uint32 len);
-extern int bitstm_get(bitstream_t *bp, size_t len, t_uint64 *word);
-extern int bitstm_destroy(bitstream_t *bp);
+
+
+extern sysinfo_t sys_opts;
+
+extern events_t events;
+extern switches_t switches;
+extern cpu_ports_t cpu_ports; // Describes connections to SCUs
+// the following two should probably be combined
+extern cpu_state_t cpu;
+extern ctl_unit_data_t cu;
+extern stats_t sys_stats;
+
+extern scu_t scu; // only one for now
+
+extern int is_eis[];
+
+extern flag_t fault_gen_no_fault;
+
+//extern int fault2group[32];
+//extern int fault2prio[32];
+
+/* XXX these OUGHT to return fault codes! (and interrupt numbers???) */
+void iom_cioc(word8 conchan);
+void iom_cioc_cow(word18 cowaddr);
+int iom_setup(const char *confname);
+
+extern int console_chan;
+
+void cancel_run(t_stat reason);
+
 
 
 // MM's opcode stuff ...
@@ -2977,5 +2831,147 @@ typedef enum {
 	opcode1_lar7   = 0767, // (503 decimal)
 	opcode1_lra    = 0774  // (508 decimal)
 } opcode1_t;
+
+// Function prototypes
+
+/* dps8_addrmods.c */
+
+word18 getCr(word4 Tdes);
+void doComputedAddressFormation(DCDstruct *, eCAFoper action);
+
+/* dps8_append.c */
+
+void doAddrModPtrReg(DCDstruct *);
+void doPtrReg (DCDstruct *);        ///< used by EIS stuff
+char *strSDW0(_sdw0 *SDW);
+char *strSDW(_sdw *SDW);
+char *strDSBR(void);
+t_stat dumpSDWAM (void);
+bool doITSITP(DCDstruct *i, word36 indword, word6 Tag);
+word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tdes, word36 writeData, word36 *readData);
+
+/* dps8_bar.c */
+
+word18 getBARaddress(word18 addr);
+
+/* dps8_clk.c */
+
+extern UNIT TR_clk_unit [];
+extern DEVICE clk_dev;
+
+/* dps8_console.c */
+
+int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
+int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
+int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
+int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
+void console_init(void);
+
+/* dps8_cpu.c */
+
+void init_opcodes (void);
+void encode_instr(const instr_t *ip, t_uint64 *wordp);
+DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst);     // decode instruction into structure
+DCDstruct *fetchInstruction(word18 addr, DCDstruct *dst);      // fetch (+ decode) instrcution at address
+t_stat dpsCmd_Dump (int32 arg, char *buf);
+t_stat dpsCmd_Init (int32 arg, char *buf);
+t_stat dpsCmd_Segment (int32 arg, char *buf);
+t_stat dpsCmd_Segments (int32 arg, char *buf);
+
+// Memory ops that use the appending unit (as necessary) ...
+t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag); // needs testing
+t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag);
+
+// RAW, core stuff ...
+int core_read(word24 addr, word36 *data);
+int core_write(word24 addr, word36 data);
+int core_read2(word24 addr, word36 *even, d8 *odd);
+int core_write2(word24 addr, word36 even, d8 odd);
+int core_readN(word24 addr, word36 *data, int n);
+int core_writeN(word24 addr, word36 *data, int n);
+int core_read72(word24 addr, word72 *dst);
+
+int is_priv_mode(void);
+addr_modes_t get_addr_mode(void);
+void set_addr_mode(addr_modes_t mode);
+
+void ic_history_init(void);
+
+/* dps8_decimal.c */
+
+void parseNumericOperandDescriptor(int k, EISstruct *e);
+
+void EISwrite49(EISaddr *p, int *pos, int tn, int c49);
+void EISloadInputBufferNumeric(DCDstruct *i, int k);
+
+/* dps8_disk.c */
+
+void disk_init(void);
+int disk_iom_cmd(chan_devinfo* devinfop);
+int disk_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
+
+/* dps8_faults.c */
+
+void check_events (void);
+
+/* dps8_ins.c */
+
+void cu_safe_store(void);
+t_stat executeInstruction(DCDstruct *ci);
+t_stat doXED(word36 *Ypair);
+
+/* dps8_iom.c */
+
+DEVICE * get_iom_channel_dev (uint iom_unit_num, int chan, int dev_code, int * unit_num);
+void iom_init(void);
+t_stat iom_boot(int32 unit_num, DEVICE *dptr);
+void iom_interrupt(int iom_unit_num);
+t_stat iom_svc(UNIT* up);
+t_stat iom_reset(DEVICE *dptr);
+t_stat iom_boot(int32 unit_num, DEVICE *dptr);
+t_stat channel_svc(UNIT *up);
+int get_iom_numunits (void);
+t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, int dev_unit_num);
+
+/* dps8_mpc.c */
+
+#if 0
+void mpc_init (void);
+extern DEVICE mpc_dev;
+t_stat cable_to_mpc (int mpc_unit_num, int dev_code, enum dev_type  mpc_dev_type, int mt_unit_num);
+t_stat cable_mpc (int mpc_unit_num, int iom_unit_num, int chan_num);
+#endif
+
+/* dps8_mt.c */
+
+void mt_init(void);
+int mt_iom_cmd(chan_devinfo* devinfop);
+int mt_iom_io(int iom_unit_num, int chan, t_uint64 *wordp, int* majorp, int* subp);
+t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code);
+int get_mt_numunits (void);
+
+/* dps8_scu.c */
+
+extern DEVICE scu_dev;
+t_stat scu_reset (DEVICE *dptr);
+int scu_set_interrupt(int inum);
+
+/* dps8_sys.c */
+
+extern word36 *M;
+
+/* dps8_utils.c */
+
+int bitfieldInsert(int a, int b, int c, int d);
+int bitfieldExtract(int a, int b, int c);
+char *bin2text(t_uint64 word, int n);
+
 
 #endif

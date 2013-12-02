@@ -94,7 +94,7 @@ literal *doStringLiteral(int size, int kind, char *str)
                 int nPos = 5;
                 for(char *p = str; *p; p++)
                 {
-                    int q = ASCIIToGEBcd[*p];
+                    int q = ASCIIToGEBcd[(int)(*p)];
                     if (q == -1)
                         q = 0;  // illegal characters get mappes to 0
                     

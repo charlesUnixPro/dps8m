@@ -7,13 +7,7 @@
 */
 
 #include <stdio.h>
-
 #include "dps8.h"
-
-
-// these ought to be moved to DCDstruct *
-extern word36 CY;
-extern word36 YPair[2];
 
 
 // Computed Address Formation Flowcharts
@@ -22,13 +16,13 @@ word6 Tm = 0;
 word6 Td = 0;
 //word6 CT_HOLD = 0;
 
-bool directOperandFlag = false;
-word36 directOperand = 0;
+static bool directOperandFlag = false;
+static word36 directOperand = 0;
 
 
 bool adrTrace = false;   ///< when true do address modifications traceing
 
-char *strCAFoper(eCAFoper o)
+static char *strCAFoper(eCAFoper o)
 {
     switch (o)
     {
@@ -227,7 +221,9 @@ RI_MOD:;
     rTAG = GET_TAG(indword);
     
     rY = TPR.CA;
+#ifndef QUIET_UNUSED
 RI_MOD2:;
+#endif
     if (adrTrace)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: indword=%012o TPR.CA=%06o rTAG=%02o\n", indword, TPR.CA, rTAG);
@@ -258,7 +254,9 @@ IR_MOD_1:
     rY = TPR.CA;
     Td = GET_TAG(GET_TD(indword));
     Tm = GET_TAG(GET_TM(indword));
+#ifndef QUIET_UNUSED
 IR_MOD_2:;
+#endif
     if (adrTrace)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD1: indword=%012o TPR.CA=%06o Tm=%o Td=%02o (%s)\n", indword, TPR.CA, Tm, Td, getModString(GET_TAG(indword)));

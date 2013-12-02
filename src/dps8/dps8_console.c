@@ -10,6 +10,9 @@
 
 #include "dps8.h"
 
+// XXX This used were we assume that only one unit exists
+#define ASSUME0 0
+
 /*
  console.c -- operator's console
  
@@ -20,6 +23,54 @@
  See manual AN87.  See also mtb628.
  
  */
+
+MTAB opcon_mod[] = {
+    { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
+        0, NULL, "AUTOINPUT",
+        opcon_autoinput_set, opcon_autoinput_show, NULL },
+    { 0 }
+};
+
+
+static DEBTAB opcon_dt [] =
+  {
+    { "NOTIFY", DBG_NOTIFY },
+    { "INFO", DBG_INFO },
+    { "ERR", DBG_ERR },
+    { "DEBUG", DBG_DEBUG },
+    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
+    { NULL, 0 }
+  };
+
+
+#define N_OPCON_UNITS 1
+UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0) }};
+
+DEVICE opcon_dev = {
+    "OPCON",       /* name */
+    opcon_unit,    /* units */
+    NULL,          /* registers */
+    opcon_mod,     /* modifiers */
+    N_OPCON_UNITS, /* #units */
+    10,            /* address radix */
+    8,             /* address width */
+    1,             /* address increment */
+    8,             /* address width */
+    8,             /* data width */
+    NULL,          /* examine routine */
+    NULL,          /* deposit routine */
+    NULL,          /* reset routine */
+    NULL,          /* boot routine */
+    NULL,          /* attach routine */
+    NULL,          /* detach routine */
+    NULL,          /* context */
+    DEV_DEBUG,     /* flags */
+    0,             /* debug control flags */
+    opcon_dt,      /* debug flag names */
+    NULL,          /* memory size change */
+    NULL           /* logical name */
+};
+
 /*
  Copyright (c) 2007-2013 Michael Mondy
  
@@ -33,9 +84,6 @@
 #include <time.h>
 #include <unistd.h>
 //#include "hw6180.h"
-
-extern iom_t iom;
-extern DEVICE *sim_devices[];
 
 typedef struct s_console_state {
     // Hangs off the device structure
@@ -62,40 +110,39 @@ void console_init()
 
 static DEVICE* find_opcon()
 {
-    const char* moi = "opcon";
-    
     DEVICE *devp = NULL;
     for (DEVICE **devpp = sim_devices; *devpp != NULL; ++devpp) {
         if (strcmp((*devpp)->name, "OPCON") == 0) {
             if (devp == NULL)
                 devp = *devpp;
             else {
-                log_msg(ERR_MSG, moi, "Multiple OPCON devices found.\n");
+                sim_debug (DBG_ERR, & opcon_dev, "find_opcon: Multiple OPCON devices found.\n");
                 return NULL;
             }
         }
     }
     
     if (devp == NULL) {
-        log_msg(ERR_MSG, moi, "No OPCON devices found.\n");
+        sim_debug (DBG_ERR, & opcon_dev, "find_opcon: No OPCON devices found.\n");
         return NULL;
     }
     chan_devinfo* devinfop = devp->ctxt;
     if (devinfop == NULL) {
-        // log_msg(ERR_MSG, moi, "Internal error, no context info for OPCON.\n");
+        // sim_debug (DBG_ERR, & opcon_dev, "find_opcon: Internal error, no context info for OPCON.\n");
         // return NULL;
-        log_msg(INFO_MSG, moi, "Creating OPCON devinfo.\n");
+        sim_debug (DBG_INFO, & opcon_dev, "find_opcon: Creating OPCON devinfo.\n");
         devinfop = malloc(sizeof(*devinfop));
         if (devinfop == NULL)
             return NULL;
-        devinfop->chan = -1;
+        devinfop->iom_unit_num = ASSUME0;
+        devinfop->chan = -1; // XXX Magic value marks this devinfo as the OPCON
         devinfop->statep = NULL;
         devp->ctxt = devinfop;
     }
     struct s_console_state *con_statep = devinfop->statep;
     if (con_statep == NULL) {
         if ((con_statep = malloc(sizeof(struct s_console_state))) == NULL) {
-            log_msg(ERR_MSG, moi, "Internal error, malloc failed.\n");
+            sim_debug (DBG_ERR, & opcon_dev, "find_opcon: Internal error, malloc failed.\n");
             return NULL;
         }
         devinfop->statep = con_statep;
@@ -119,15 +166,15 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
     chan_devinfo* devinfop = devp->ctxt;
     struct s_console_state *con_statep = devinfop->statep;
     if (con_statep->auto_input) {
-        log_msg(NOTIFY_MSG, "opcon", "Discarding prior auto-input.\n");
+        sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_set: Discarding prior auto-input.\n");
         free(con_statep->auto_input);
     }
     if (cptr) {
         con_statep->auto_input = strdup(cptr);
-        log_msg(NOTIFY_MSG, "opcon", "Auto-input now: %s\n", cptr);
+        sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_set: Auto-input now: %s\n", cptr);
     } else {
         con_statep->auto_input = NULL;
-        log_msg(NOTIFY_MSG, "opcon", "Auto-input disabled.\n");
+        sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_set: Auto-input disabled.\n");
     }
     con_statep->autop = con_statep->auto_input;
     return 0;
@@ -137,7 +184,7 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
 
 int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 {
-    log_msg(NOTIFY_MSG, "opcon_autoinput_show", "FILE=%p, uptr=%p, val=%d,desc=%p\n",
+    sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_show: FILE=%p, uptr=%p, val=%d,desc=%p\n",
             st, uptr, val, desc);
     
     DEVICE *devp = find_opcon();
@@ -146,9 +193,9 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
     chan_devinfo* devinfop = devp->ctxt;
     struct s_console_state *con_statep = devinfop->statep;
     if (con_statep->auto_input == NULL)
-        log_msg(NOTIFY_MSG, "opcon", "No auto-input exists.\n");
+        sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_show: No auto-input exists.\n");
     else
-        log_msg(NOTIFY_MSG, "opcon", "Auto-input is/was: %s\n", con_statep->auto_input);
+        sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_show: Auto-input is/was: %s\n", con_statep->auto_input);
     
     return 0;
 }
@@ -164,26 +211,26 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 static int con_check_args(const char* moi, int chan, int dev_code, int* majorp, int* subp, DEVICE **devpp, con_state_t **statepp)
 {
     
-    if (chan < 0 || chan >= ARRAY_SIZE(iom.channels)) {
+    if (chan < 0 || chan >= max_channels) {
         *majorp = 05;   // Real HW could not be on bad channel
         *subp = 1;
-        log_msg(ERR_MSG, moi, "Bad channel %d\n", chan);
+        sim_debug (DBG_ERR, & opcon_dev, "%s: Bad channel %d\n", moi, chan);
         return 1;
     }
     
-    *devpp = iom.channels[chan].dev;
+    *devpp = get_iom_channel_dev (ASSUME0, chan, ASSUME0, NULL);
     DEVICE *devp = *devpp;
     if (devpp == NULL) {
         *majorp = 05;
         *subp = 1;
-        log_msg(ERR_MSG, moi, "Internal error, no device for channel 0%o\n", chan);
+        sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, no device for channel 0%o\n", chan);
         return 1;
     }
     chan_devinfo* devinfop = devp->ctxt;
     if (devinfop == NULL) {
         *majorp = 05;
         *subp = 1;
-        log_msg(ERR_MSG, moi, "Internal error, no device info for channel 0%o\n", chan);
+        sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, no device info for channel 0%o\n", chan);
         return 1;
     }
     struct s_console_state *con_statep = devinfop->statep;
@@ -191,12 +238,12 @@ static int con_check_args(const char* moi, int chan, int dev_code, int* majorp, 
         // Consoles don't have units
         *majorp = 05;
         *subp = 1;
-        log_msg(ERR_MSG, moi, "Bad dev unit-num 0%o (%d decimal)\n", dev_code, dev_code);
+        sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Bad dev unit-num 0%o (%d decimal)\n", dev_code, dev_code);
         return 1;
     }
     if (con_statep == NULL) {
         if ((con_statep = malloc(sizeof(struct s_console_state))) == NULL) {
-            log_msg(ERR_MSG, moi, "Internal error, malloc failed.\n");
+            sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, malloc failed.\n");
             return 1;
         }
         devinfop->statep = con_statep;
@@ -224,7 +271,7 @@ static int con_check_args(const char* moi, int chan, int dev_code, int* majorp, 
 
 int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
 {
-    log_msg(DEBUG_MSG, "CON::iom_cmd", "Chan 0%o, dev-cmd 0%o, dev-code 0%o\n", chan, dev_cmd, dev_code);
+    sim_debug (DBG_DEBUG, & opcon_dev, "con_iom_cmd: Chan 0%o, dev-cmd 0%o, dev-code 0%o\n", chan, dev_cmd, dev_code);
     
     // FIXME: Should Major be added to 040? and left shifted 6? Ans: it's 4 bits
     
@@ -237,16 +284,18 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
     
     switch(dev_cmd) {
         case 0: {               // CMD 00 Request status
-            log_msg(NOTIFY_MSG, "CON::iom_cmd", "Status request cmd received");
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Status request cmd received");
             *majorp = 0;
             *subp = 0;
             return 0;
         }
         case 023:               // Read ASCII
             con_statep->io_mode = read_mode;
-            log_msg(NOTIFY_MSG, "CON::iom_cmd", "Read ASCII command received\n");
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Read ASCII command received\n");
             if (con_statep->tailp != con_statep->buf)
-                log_msg(WARN_MSG, "CON::iom_cmd", "Discarding previously buffered input.\n");
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Discarding previously buffered input.\n");
+              }
             // TODO: discard any buffered chars from SIMH?
             con_statep->tailp = con_statep->buf;
             con_statep->readp = con_statep->buf;
@@ -255,18 +304,20 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
             *subp = 0;
             // breakpoint not helpful as cmd is probably in a list with an IO
             // cancel_run(STOP_IBKPT);
-            // log_msg(NOTIFY_MSG, "CON::iom_cmd", "Auto-breakpoint for read.\n");
+            // sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Auto-breakpoint for read.\n");
             return 0;
         case 033:               // Write ASCII
             con_statep->io_mode = write_mode;
-            log_msg(NOTIFY_MSG, "CON::iom_cmd", "Write ASCII cmd received\n");
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Write ASCII cmd received\n");
             if (con_statep->tailp != con_statep->buf)
-                log_msg(WARN_MSG, "CON::iom_cmd", "Might be discarding previously buffered input.\n");
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Might be discarding previously buffered input.\n");
+              }
             *majorp = 00;
             *subp = 0;
             return 0;
         case 040:               // Reset
-            log_msg(NOTIFY_MSG, "CON::iom_cmd", "Reset cmd received\n");
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Reset cmd received\n");
             con_statep->io_mode = no_mode;
             *majorp = 0;
             *subp = 0;
@@ -274,21 +325,21 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
         case 051:               // Write Alert -- Ring Bell
             // AN70-1 says only console channels respond to this command
             out_msg("CONSOLE: ALERT\n");
-            log_msg(NOTIFY_MSG, "CON::iom_cmd", "Write Alert cmd received\n");
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Write Alert cmd received\n");
             sim_putchar('\a');
             *majorp = 0;
             *subp = 0;
             return 0;
         case 057:               // Read ID (according to AN70-1)
             // FIXME: No support for Read ID; appropriate values are not known
-            log_msg(ERR_MSG, "CON::iom_cmd", "Read ID unimplemented\n");
+            sim_debug (DBG_ERR, & opcon_dev, "con_iom_cmd: Read ID unimplemented\n");
             *majorp = 05;
             *subp = 1;
             return 1;
         default: {
             *majorp = 05;   // command reject
             *subp = 1;      // invalid instruction code
-            log_msg(ERR_MSG, "CON::iom_cmd", "Unknown command 0%o\n", dev_cmd);
+            sim_debug (DBG_ERR, & opcon_dev, "con_iom_cmd: Unknown command 0%o\n", dev_cmd);
             cancel_run(STOP_BUG);
             return 1;
         }
@@ -306,8 +357,7 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
 
 int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
 {
-    const char *moi = "CON::iom_io";
-    log_msg(DEBUG_MSG, "CON::iom_io", "Chan 0%o\n", chan);
+    sim_debug (DBG_DEBUG, & opcon_dev, "con_iom_io: Chan 0%o\n", chan);
     
     DEVICE* devp;
     con_state_t* con_statep;
@@ -319,7 +369,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
     
     switch (con_statep->io_mode) {
         case no_mode:
-            log_msg(ERR_MSG, "CON::iom_io", "Console is uninitialized\n");
+            sim_debug (DBG_ERR, & opcon_dev, "con_iom_io: Console is uninitialized\n");
             *majorp = 05;       // 05 -- Command Reject
             *subp = 1;          // 01 Invalid Instruction Code
             return 1;
@@ -330,7 +380,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
             if (! con_statep->have_eol) {
                 // We won't return anything to the IOM until the operator
                 // has finished entering a full line and pressed ENTER.
-                log_msg(NOTIFY_MSG, moi, "Starting input loop for channel %d (%#o)\n", chan, chan);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Starting input loop for channel %d (%#o)\n", chan, chan);
                 time_t now = time(NULL);
                 while (time(NULL) < now + 30 && ! con_statep->have_eol) {
                     check_keyboard(chan);
@@ -340,19 +390,19 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
                 if (con_statep->tailp >= con_statep->buf + sizeof(con_statep->buf)) {
                     *majorp = 03;       // 03 -- Data Alert
                     *subp = 040;        // 10 -- Message length alert
-                    log_msg(NOTIFY_MSG, "CON::iom_io", "buffer overflow\n");
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
                     cancel_run(STOP_BKPT);
                     return 1;
                 }
                 if (! con_statep->have_eol) {
                     *majorp = 03;       // 03 -- Data Alert
                     *subp = 010;        // 10 -- Operator distracted (30 sec timeout)
-                    log_msg(NOTIFY_MSG, "CON::iom_io", "Operator distracted (30 second timeout\n");
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout\n");
                     cancel_run(STOP_BKPT);
                 }
             }
             // We have an EOL from the operator
-            log_msg(NOTIFY_MSG, moi, "Transfer for channel %d (%#o)\n", chan, chan);
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Transfer for channel %d (%#o)\n", chan, chan);
             // bce_command_processor_ expects multiples chars per word
             for (int charno = 0; charno < 4; ++charno) {
                 if (con_statep->readp >= con_statep->tailp)
@@ -370,22 +420,22 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
                         sprintf(msg+charno*4, "\\%03o", c);
                 }
                 msg[16] = 0;
-                log_msg(NOTIFY_MSG, moi, "Returning word %012llo: %s\n", *wordp, msg);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Returning word %012llo: %s\n", *wordp, msg);
             }
             int ret;
             if (con_statep->readp == con_statep->tailp) {
                 con_statep->readp = con_statep->buf;
                 con_statep->tailp = con_statep->buf;
                 // con_statep->have_eol = 0;
-                log_msg(WARN_MSG, moi, "Entire line now transferred.\n");
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Entire line now transferred.\n");
                 ret = 1;    // FIXME: out of band request to return
             } else {
-                log_msg(WARN_MSG, moi, "%d chars remain to be transfered.\n", con_statep->tailp - con_statep->readp);
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: %d chars remain to be transfered.\n", con_statep->tailp - con_statep->readp);
                 ret = 0;
             }
             *majorp = 0;
             *subp = 0;
-            log_msg(WARN_MSG, moi, "Auto breakpoint.\n");
+            sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Auto breakpoint.\n");
             cancel_run(STOP_BKPT);
             return ret;
         }
@@ -396,7 +446,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
             *buf = 0;
             t_uint64 word = *wordp;
             if ((word >> 36) != 0) {
-                log_msg(ERR_MSG, "CON::iom_io", "Word %012llo has more than 36 bits.\n", word);
+                sim_debug (DBG_ERR, & opcon_dev, "con_iom_io: Word %012llo has more than 36 bits.\n", word);
                 cancel_run(STOP_BUG);
                 word &= MASK36;
             }
@@ -417,7 +467,9 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
                 }
             }
             if (err)
-                log_msg(WARN_MSG, "CON::iom_io", "Error writing to CONSOLE\n");
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Error writing to CONSOLE\n");
+              }
             out_msg("CONSOLE: %s\n", buf);
             
             *majorp = 0;
@@ -427,7 +479,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
         }
             
         default:
-            log_msg(ERR_MSG, "CON::iom_io", "Console is in unknown mode %d\n", con_statep->io_mode);
+            sim_debug (DBG_ERR, & opcon_dev, "con_iom_io: Console is in unknown mode %d\n", con_statep->io_mode);
             *majorp = 05;
             *subp = 1;
             return 1;
@@ -450,32 +502,30 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
 
 static void check_keyboard(int chan)
 {
-    const char* moi = "CON::input";
-    
-    if (chan < 0 || chan >= ARRAY_SIZE(iom.channels)) {
-        log_msg(WARN_MSG, moi, "Bad channel\n");
+    if (chan < 0 || chan >= max_channels) {
+        sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: Bad channel\n");
         return;
     }
-    DEVICE* devp = iom.channels[chan].dev;
+    DEVICE* devp = get_iom_channel_dev (ASSUME0, chan, ASSUME0, NULL);
     if (devp == NULL) {
-        log_msg(WARN_MSG, moi, "No device\n");
+        sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device\n");
         return;
     }
     chan_devinfo* devinfop = devp->ctxt;
     if (devinfop == NULL) {
-        log_msg(WARN_MSG, moi, "No device info\n");
+        sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device info\n");
         return;
     }
     struct s_console_state *con_statep = devinfop->statep;
     if (con_statep == NULL) {
-        log_msg(WARN_MSG, moi, "No state\n");
+        sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No state\n");
         return;
     }
     
     int announce = 1;
     for (;;) {
         if (con_statep->tailp >= con_statep->buf + sizeof(con_statep->buf)) {
-            log_msg(WARN_MSG, moi, "Buffer full; ignoring keyboard.\n");
+            sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: Buffer full; ignoring keyboard.\n");
             return;
         }
         if (con_statep->have_eol)
@@ -494,32 +544,32 @@ static void check_keyboard(int chan)
                 free(con_statep->auto_input);
                 con_statep->auto_input = NULL;
                 con_statep->autop = NULL;
-                log_msg(NOTIFY_MSG, moi, "Got auto-input EOL for channel %d (%#o)\n", chan, chan);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got auto-input EOL for channel %d (%#o)\n", chan, chan);
                 return;
             }
             ++ con_statep->autop;
             if (isprint(c))
-                log_msg(NOTIFY_MSG, moi, "Used auto-input char '%c'\n", c);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Used auto-input char '%c'\n", c);
             else
-                log_msg(NOTIFY_MSG, moi, "Used auto-input char '\\%03o'\n", c);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Used auto-input char '\\%03o'\n", c);
         } else {
             c = sim_poll_kbd();
             if (c == SCPE_OK)
                 return; // no input
             if (c == SCPE_STOP) {
-                log_msg(NOTIFY_MSG, moi, "Got <sim stop>\n");
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got <sim stop>\n");
                 return; // User typed ^E to stop simulation
             }
             if (c < SCPE_KFLAG) {
-                log_msg(NOTIFY_MSG, moi, "Bad char\n");
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Bad char\n");
                 return; // Should be impossible
             }
             c -= SCPE_KFLAG;    // translate to ascii
             
             if (isprint(c))
-                log_msg(NOTIFY_MSG, moi, "Got char '%c'\n", c);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got char '%c'\n", c);
             else
-                log_msg(NOTIFY_MSG, moi, "Got char '\\%03o'\n", c);
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got char '\\%03o'\n", c);
             
             // FIXME: We don't allow user to set editing characters
             if (c == '\177' || c == '\010') {
@@ -546,7 +596,7 @@ static void check_keyboard(int chan)
             sim_putchar('\r');
             sim_putchar('\n');
             con_statep->have_eol = 1;
-            log_msg(NOTIFY_MSG, moi, "Got EOL for channel %d (%#o)\n", chan, chan);
+            sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got EOL for channel %d (%#o)\n", chan, chan);
             return;
         } else {
             *con_statep->tailp++ = c;

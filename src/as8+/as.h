@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <assert.h>
@@ -26,12 +27,16 @@
 #include <stdarg.h>
 #include <libgen.h>     // for basename
 
+// Not defined under C99; adding -D_GNU_SOURCE fixes
+char *strdup(const char *s);
+int fileno(FILE *stream);
+int asprintf(char **strp, const char *fmt, ...);
+
 //#include "dps8.h"
 //#include "sim_defs.h"                                   /* simulator defns */
 
 #include "uthash.h"
 #include "utlist.h"
-
 
 typedef signed char     int8;
 typedef signed short    int16;
@@ -103,6 +108,7 @@ typedef uint32      word24;
 typedef uint32      word27;
 typedef t_uint64    word36;
 typedef t_int64     word36s;
+
 typedef __uint128_t word72;
 typedef __int128_t  word72s;
 
@@ -777,7 +783,7 @@ void doDescriptor(pseudoOp *p, word36 address, word36 offset, word36 length, wor
 void doDescriptor2(pseudoOp *p, list *);
 //void doBoolEqu(char *sym, word36 val);          // process BOOL/Equate pseudoop
 void doBoolEqu(char *sym, expr *val);          // process BOOL/Equate pseudoop
-void doStrop(pseudoOp *op, char *str, int sz);  // process acc/aci/bci/ac4 pseudoop
+void doStrop(pseudoOp *op, char *str, expr *val);  // process acc/aci/bci/ac4 pseudoop
 void doOct(list*);                              // process oct pseudoop
 void doDec(list*);                              // process dec pseudoop
 void doBss(char *, word36);                        // process BSS ( and BFS eventually)

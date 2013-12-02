@@ -425,8 +425,8 @@ pop
 
     | PSEUDOOPD2     symlist
 
-    | STROP          STRING                  { doStrop($1, $2, 0);       }
-    | STROP          STRING  ',' expr        { doStrop($1, $2, (int)$4); }
+    | STROP          STRING                  { doStrop($1, $2, NULL);    }
+    | STROP          STRING  ',' expr        { doStrop($1, $2, $4); }
 
     | VFD            vfdArgs                 { doVfd($2);                }
 

@@ -15,12 +15,12 @@
 
 //! floating-point stuff ....
 //! quad to octal
-char *Qtoo(__uint128_t n128);
+//char *Qtoo(__uint128_t n128);
 
 /*!
  * convert floating point quantity in C(EAQ) to a IEEE long double ...
  */
-long double EAQToIEEElongdouble()
+long double EAQToIEEElongdouble(void)
 {
     word8 E = rE;    ///< exponent
     word72 M = ((word72)(rA & DMASK) << 36) | ((word72) rQ & DMASK);   ///< mantissa
@@ -117,7 +117,7 @@ float72 IEEElongdoubleToFloat72(long double f0)
 }
 
 
-long double
+static long double
 MYfrexpl(long double x, int *exp)
 {
     long double exponents[20], *next;
@@ -1275,8 +1275,6 @@ void ExpMantToYpair(word72 mant, int8 exp, word36 *yPair)
     yPair[1] = (mant >> 8) & 0777777777777LL;   //400LL;
 }
 
-
-extern word36 Ypair[2];
 
 /*!
  * unnormalized floating double-precision add

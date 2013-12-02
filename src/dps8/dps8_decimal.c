@@ -27,11 +27,6 @@
 
 //void write49(EISstruct *e, word18 *dstAddr, int *pos, int tn, int c49);
 //void loadInputBufferNumeric(EISstruct *e, int k);
-void parseNumericOperandDescriptor(int k, EISstruct *e);
-
-void EISwrite49(EISaddr *p, int *pos, int tn, int c49);
-void EISloadInputBufferNumeric(DCDstruct *i, int k);
-
 
 //void printBCD(decNumber *a, decContext *set, int width);
 //decNumber *decBCDToNumber(const uint8_t *bcd, int length, const int scale, decNumber *dn);
@@ -61,7 +56,8 @@ void EISloadInputBufferNumeric(DCDstruct *i, int k);
 /* no error is possible unless the adjusted exponent is out of range. */
 /* In these error cases, NULL is returned and the decNumber will be 0.*/
 /* ------------------------------------------------------------------ */
-decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale, decNumber *dn)
+#ifndef QUIET_UNUSED
+static decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale, decNumber *dn)
 {
     const uByte *last=bcd+length-1;  // -> last byte
     const uByte *first;              // -> first non-zero byte
@@ -133,8 +129,9 @@ decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale, decNum
     
     return dn;
 } // decBCDToNumber
+#endif
 
-decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn)
+static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNumber *dn)
 {
     const word9 *last=bcd+length-1;  // -> last byte
     const word9 *first;              // -> first non-zero byte
@@ -231,7 +228,7 @@ decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale, decNu
 /* returned and the bcd and scale results are unchanged.  Otherwise   */
 /* bcd is returned.                                                   */
 /* ------------------------------------------------------------------ */
-uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn) {
+static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn) {
     const Unit *up=dn->lsu;     // Unit array pointer
     uByte obyte, *out;          // current output byte, and where it goes
     Int indigs=dn->digits;      // digits processed
@@ -296,7 +293,8 @@ uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber
 } // decBCDFromNumber
 
 
-void printBCD(decNumber *a, decContext *set, int width)
+#ifndef QUIET_UNUSED
+static void printBCD(decNumber *a, decContext *set, int width)
 {
     uint8_t bcd[256];
     memset(bcd, 0, sizeof(bcd));
@@ -308,8 +306,10 @@ void printBCD(decNumber *a, decContext *set, int width)
         fprintf(stderr, "%d", bcd[n]);
     fprintf(stderr, "  scale=%d\n", -(a->exponent));
 }
+#endif
 
-char *getBCD(decNumber *a)
+#ifndef QUIET_UNUSED
+static char *getBCD(decNumber *a)
 {
     static uint8_t bcd[256];
     memset(bcd, 0, sizeof(bcd));
@@ -319,13 +319,15 @@ char *getBCD(decNumber *a)
     for(int i = 0 ; i < a->digits ; i += 1 )
         bcd[i] += '0';
     
-    return bcd;
+    return (char *) bcd;
     
     
 }
+#endif
 
 
-int calcOD(int lengthOfDividend,
+#ifndef QUIET_UNUSED
+static int calcOD(int lengthOfDividend,
            int leadingZerosInDividend,
            int lengthOfDivisor,
            int leadingZerosInDivisor,
@@ -345,11 +347,14 @@ int calcOD(int lengthOfDividend,
     //  EQ   = scale factor for quotient
     return (lengthOfDividend-leadingZerosInDividend+1)-(lengthOfDivisor-leadingZerosInDivisor)+(expoonentOfDividend-exppnentOfDivisor-scaleFactorForQuotient);
 }
+#endif
 
-char *CS[] = {"CSFL", "CSLS", "CSTS", "CSNS"};
-char *CTN[] = {"CTN9", "CTN4"};
+#ifndef QUIET_UNUSED
+static char *CS[] = {"CSFL", "CSLS", "CSTS", "CSNS"};
+static char *CTN[] = {"CTN9", "CTN4"};
+#endif
 
-int calcSF(int sf1, int sf2, int sf3)
+static int calcSF(int sf1, int sf2, int sf3)
 {
     //If the result is given by a fixed-point, operations are performed by justifying the scaling factors (SF1, SF2, and SF3) of the operands 1, 2, and 3:
     //If SF1 > SF2
@@ -385,7 +390,7 @@ int calcSF(int sf1, int sf2, int sf3)
     return sf3;
 }
 
-char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
+static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf, bool R, bool *OVR, bool *TRUNC)
 {
     
     if (s == CSFL)
@@ -438,7 +443,9 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     {
         decNumberTrim(r);   // clean up any trailing 0's
         
+#ifndef QUIET_UNUSED
         int scale;
+#endif
         //char out[256], out2[256];
         //bzero(out, sizeof(out));
         //bzero(out2, sizeof(out2));
@@ -539,8 +546,8 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
                 
                 // HWR 24 Oct 2013
                 char temp[256];
-                strcpy(temp, out+set->digits-adjLen);
-                strcpy(out, temp);
+                strcpy(temp, (char *) out+set->digits-adjLen);
+                strcpy((char *) out, temp);
                 //strcpy(out, out+set->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
                 
                 //fprintf(stderr, "R OVR\n");
@@ -645,8 +652,8 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
                     
                     // HWR 24 Oct 2013
                     char temp[256];
-                    strcpy(temp, out+r->digits-adjLen);
-                    strcpy(out, temp);
+                    strcpy(temp, (char *) out+r->digits-adjLen);
+                    strcpy((char *) out, temp);
                     //strcpy(out, out+r->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
                     
                     //fprintf(stderr, "OVR\n");
@@ -662,7 +669,7 @@ char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, int sf,
     *TRUNC = trunc;
     
     decNumberCopy(r, r2);
-    return out;
+    return (char *) out;
 }
 
 /*
@@ -726,7 +733,7 @@ void ad2d(DCDstruct *i)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, sc1, sc2;
+    int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(i, 1);   // according to MF1
     
@@ -985,7 +992,7 @@ void ad3d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, n3, sc1, sc2;
+    int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -1256,7 +1263,7 @@ void sb2d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, sc1, sc2;
+    int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -1512,7 +1519,7 @@ void sb3d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, n3, sc1, sc2;
+    int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -1783,7 +1790,7 @@ void mp2d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, sc1, sc2;
+    int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -2037,7 +2044,7 @@ void mp3d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, n3, sc1, sc2;
+    int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -2298,7 +2305,7 @@ void dv2d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, sc1, sc2;
+    int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -2542,7 +2549,7 @@ void dv3d(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, n3, sc1, sc2;
+    int n1 = 0, n2 = 0, n3 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -2800,7 +2807,7 @@ void cmpn(DCDstruct *ins)
     
     decNumber _1, _2, _3;
     
-    int n1, n2, sc1, sc2;
+    int n1 = 0, n2 = 0, sc1 = 0, sc2 = 0;
     
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
