@@ -250,17 +250,17 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
         return SCPE_ARG;
       }
 
-    // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_TAPE, mt_unit_num);
-    if (rc)
-      return rc;
-
     if (cables_from_ioms [mt_unit_num] . iom_unit_num != -1)
       {
         sim_debug (DBG_ERR, & tape_dev, "cable_mt: socket in use\n");
         out_msg ("cable_mt: socket in use\n");
         return SCPE_ARG;
       }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_TAPE, mt_unit_num);
+    if (rc)
+      return rc;
 
     cables_from_ioms [mt_unit_num] . iom_unit_num = iom_unit_num;
     cables_from_ioms [mt_unit_num] . chan_num = chan_num;

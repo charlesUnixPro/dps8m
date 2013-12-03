@@ -134,6 +134,10 @@ static t_stat sys_cable (int32 arg, char * buf)
       {
         rc = cable_mt (n1, n2, n3, n4);
       }
+    else if (strcasecmp (name, "OPCON") == 0)
+      {
+        rc = cable_opcon (n1, n2, n3, n4);
+      }
     else
       {
         sim_debug (DBG_ERR, & iom_dev, "sys_cable: Invalid switch name <%s>\n", name);

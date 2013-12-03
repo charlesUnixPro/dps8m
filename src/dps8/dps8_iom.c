@@ -551,31 +551,43 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
         return SCPE_ARG;
       }
 
+    DEVICE * devp = NULL;
+    UNIT * unitp = NULL;
     // XXX add other devices
-    if (dev_type != DEVT_TAPE)
+    if (dev_type == DEVT_TAPE)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: only understand TAPE\n");
-        out_msg ("cable_to_iom: only understand TAPE\n");
+        devp = & tape_dev;
+        unitp = & mt_unit [dev_unit_num];
+      }
+    else if (dev_type == DEVT_CON)
+      {
+        devp = & opcon_dev;
+        unitp = & opcon_unit [dev_unit_num];
+      }
+    else
+      {
+        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: didn't grok dev_type %d\n", dev_type);
+        out_msg ("cable_to_iom: didn't grok dev_type %d\n", dev_type);
         return SCPE_ARG;
       }
 
-    // XXX add other devices XXX_dev based on dev_type
-    mt_unit [dev_unit_num] . u3 = chan_num;
-    mt_unit [dev_unit_num] . u4 = dev_code;
-    mt_unit [dev_unit_num] . u5 = iom_unit_num;
-
     iom [iom_unit_num] . channels [chan_num] [dev_code] . type = dev_type;
     iom [iom_unit_num] . channels [chan_num] [dev_code] . dev_unit_num = dev_unit_num;
-    // XXX add other devices XXX_dev based on dev_type
-    iom [iom_unit_num] . channels [chan_num] [dev_code] . dev = & tape_dev;
-    iom [iom_unit_num] . channels [chan_num] [dev_code] . board  = & mt_unit [dev_unit_num];
+
+    iom [iom_unit_num] . channels [chan_num] [dev_code] . dev = devp;
+    iom [iom_unit_num] . channels [chan_num] [dev_code] . board  = unitp;
+
+    unitp -> u3 = chan_num;
+    unitp -> u4 = dev_code;
+    unitp -> u5 = iom_unit_num;
+
     channel_t* chanp = get_chan (iom_unit_num, chan_num, dev_code);
     if (chanp != NULL)
       {
-        chanp -> unitp = iom [iom_unit_num] . channels [chan_num] [dev_code] . board;
+        chanp -> unitp = unitp;
       }
     else
-out_msg ("?????\n");
+out_msg ("?????\n"); // XXX
 
     return SCPE_OK;
   }

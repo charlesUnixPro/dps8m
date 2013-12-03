@@ -2866,6 +2866,9 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
 int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
 void console_init(void);
+t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan_num);
+extern DEVICE opcon_dev;
+extern UNIT opcon_unit [];
 
 /* dps8_cpu.c */
 

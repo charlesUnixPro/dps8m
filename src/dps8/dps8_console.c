@@ -98,17 +98,63 @@ typedef struct s_console_state {
     char *autop;
 } con_state_t;
 
+#define N_LINES 4
+
+static struct
+  {
+    int iom_unit_num;
+    int chan_num;
+    int line_num;
+  } cables_from_ioms [N_OPCON_UNITS] [N_LINES];
+
 static void check_keyboard(int chan);
 
 // ============================================================================
 
 void console_init()
 {
+    for (int i = 0; i < N_OPCON_UNITS; i ++)
+      for (int l = 0; l < N_LINES; l ++)
+      cables_from_ioms [i] [l] . iom_unit_num = -1;
 }
+
+t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan_num)
+  {
+    if (opcon_unit_num < 0 || opcon_unit_num >= opcon_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & iom_dev, "cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
+        out_msg ("cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (line_num < 0 || line_num >= N_LINES)
+      {
+        sim_debug (DBG_ERR, & iom_dev, "cable_opcon: line_num out of range <%d>\n", line_num);
+        out_msg ("cable_opcon: line_num out of range <%d>\n", line_num);
+        return SCPE_ARG;
+      }
+
+    if (cables_from_ioms [opcon_unit_num] [line_num] . iom_unit_num != -1)
+      {
+        sim_debug (DBG_ERR, & tape_dev, "cable_opcon: socket in use\n");
+        out_msg ("cable_opcon: socket in use\n");
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, opcon_unit_num);
+    if (rc)
+      return rc;
+
+    cables_from_ioms [opcon_unit_num] [line_num] . iom_unit_num = iom_unit_num;
+    cables_from_ioms [opcon_unit_num] [line_num] . chan_num = chan_num;
+
+    return SCPE_OK;
+  }
 
 // ============================================================================
 
-static DEVICE* find_opcon()
+static DEVICE* find_opcon (void)
 {
     DEVICE *devp = NULL;
     for (DEVICE **devpp = sim_devices; *devpp != NULL; ++devpp) {
