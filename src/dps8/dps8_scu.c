@@ -215,6 +215,57 @@ control board in the
  SCUs have 8 ports, 0..7.
  
  
+Level 68 6000 SCU Configuration Panel
+   system control and monitor (cont&mon/mon/ofF)
+   system boot control (on/off)
+   alarm (disable/normal)
+   maintainance panel mode (test/normal)
+   store a
+      mode (offline/maint/online)
+      size (32k, 64k, 128k, 256k)
+   store b
+      mode (offline/maint/online)
+      size (32k, 64k, 128k, 256k)
+   execute interrupt mask assigment
+      (A through D; off/1/2/3/4/5/6/7/m)
+   address control
+      lower store (a/b)
+      offset (off, 16k, 32k, 64k)
+      interlace (on/off)
+   cycle port priority (on/off)
+   port control (8 toogles) (enabled/prog cont/disable)
+
+ The EXECUTE INTERRUPT MASK ASSIGMENT (EIMA) rotary switches
+ determine where interrupts sent to memory are directed. The four EIMA rotary
+ switches, one for each program interrupt register, are used to assign mask registers to
+  system ports. The normal settings assign one mask regisyer to each CPU configured.
+ 
+  Assignment of a mask register to a sustem port designates the port as a control 
+  port, and that port receives interrupt present signales. Up to four system ports can be
+  designated as control ports. The normal settings assign one mask register to each cpu configured.
+
+
+
+Configuration rules for Multics:
+
+   1. Each CPU in the system must be connected to each SCU in the system
+
+   2. Each IOM in the system must be connected to eacm SCU in the system
+
+   3. Each SCU in the system must be connected to every CPU and IOM in the system.
+
+   4. Corresponding ports on all CPUs and IOMs must be connected to the same
+      SCU. For example, port A on every CPU and IOM must be connected to the
+      same SCU or not connected to any SCU.
+
+   5. Corresponding ports on all SCUs must be connected to the same active device
+      (CPU or IOM). For example, if port 0 on any SCU is connected to IOM A,
+      then port 0 on all SCUs must be connected to IOM A.
+
+   6. IOMs should be connected to lower-number SCU ports the CPUs.
+
+
+  
  */
 
 // ============================================================================
@@ -225,6 +276,8 @@ control board in the
 
 #define N_SCU_UNITS 1
 UNIT scu_unit [N_SCU_UNITS] = {{ UDATA(NULL, 0, 0) }};
+
+static t_stat scu_reset (DEVICE *dptr);
 
 static DEBTAB scu_dt [] =
   {
@@ -281,7 +334,8 @@ scu_t scu =  // only one for now BUG: we'll need more than one for max memory.  
       { 0, 0, { 0, 1, 0 }}  /* D: avail, exec_intr_mask, { raw, unassigned, port } */
     }
   };
-t_stat scu_reset (DEVICE *dptr)
+
+static t_stat scu_reset (DEVICE *dptr)
   {
     memset (& scu, 0, sizeof (scu));
 
@@ -322,22 +376,34 @@ t_stat scu_reset (DEVICE *dptr)
   }
 
 
-stats_t sys_stats;
+// Physical ports on the CPU
+typedef struct {
+    // The ports[] array should indicate which SCU each of the CPU's 8
+    // ports are connected to.
+    int ports[8]; // SCU connectivity; designated a..h
+    int scu_port; // What port num are we connected to (same for all SCUs)
+} cpu_ports_t;
 
-cpu_ports_t cpu_ports;
+#ifndef QUIET_UNUSED
+static cpu_ports_t cpu_ports;
 static int pima_parse_raw(int pima, const char *moi);
-int scu_get_mask(t_uint64 addr, int port);
+static int scu_get_mask(t_uint64 addr, int port);
+#endif
+
 
 // ============================================================================
 
-const char* adev2text(enum active_dev type)
+#ifndef QUIET_UNUSED
+static const char* adev2text(enum active_dev type)
 {
     static char* types[] = { "", "CPU", "IOM" };
     return (type >= ARRAY_SIZE(types)) ? "" : types[type];
 }
+#endif
 
 // ============================================================================
 
+#ifndef QUIET_UNUSED
 static int scu_hw_arg_check(const char *tag, t_uint64 addr, int port)
 {
     // Sanity check args
@@ -376,10 +442,12 @@ static int scu_hw_arg_check(const char *tag, t_uint64 addr, int port)
     return 0;
 #endif
 }
+#endif
 
 // =============================================================================
 
-int scu_set_mask(t_uint64 addr, int port)
+#ifndef QUIET_UNUSED
+static int scu_set_mask(t_uint64 addr, int port)
 {
     // BUG: addr should determine which SCU is selected
     // Implements part of the sscr instruction -- functions y00[0-7]2x
@@ -452,10 +520,12 @@ int scu_set_mask(t_uint64 addr, int port)
     //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, port_pima + 'A', bin2text(scu.interrupts[port_pima].exec_intr_mask, 32));
     return 0;
 }
+#endif
 
 // =============================================================================
 
-int scu_set_cpu_mask(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_set_cpu_mask(t_uint64 addr)
 {
     // BUG: addr should determine which SCU is selected
     
@@ -467,11 +537,14 @@ int scu_set_cpu_mask(t_uint64 addr)
     
     return scu_set_mask(addr, rcv_port);
 }
+#endif
+
 
 
 // =============================================================================
 
-int scu_get_cpu_mask(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_get_cpu_mask(t_uint64 addr)
 {
     // BUG: addr should determine which SCU is selected
     
@@ -487,10 +560,12 @@ int scu_get_cpu_mask(t_uint64 addr)
     reg_Q = 0;
     return scu_get_mask(addr, rcv_port);
 }
+#endif
 
 // =============================================================================
 
-int scu_get_mode_register(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_get_mode_register(t_uint64 addr)
 {
     // Implements part of the rscr instruction -- function  y0000x
     // BUG: addr should determine which SCU is selected
@@ -528,10 +603,12 @@ int scu_get_mode_register(t_uint64 addr)
     
     return 0;
 }
+#endif
 
 // =============================================================================
 
-int scu_get_config_switches(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_get_config_switches(t_uint64 addr)
 {
     // Implements part of the rscr instruction -- function y0001x
     // Returns info appropriate to a 4MW SCU
@@ -598,10 +675,12 @@ int scu_get_config_switches(t_uint64 addr)
     
     return 0;
 }
+#endif
 
 // =============================================================================
 
-int scu_set_config_switches(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_set_config_switches(t_uint64 addr)
 {
     // Implements part of the sscr instruction, function y0001x
     // Only valid for a 4MW SCU
@@ -742,10 +821,12 @@ int scu_set_config_switches(t_uint64 addr)
       }
     return ret;
   }
+#endif
 
 // =============================================================================
 
-int scu_get_mask(t_uint64 addr, int port)
+#ifndef QUIET_UNUSED
+static int scu_get_mask(t_uint64 addr, int port)
 {
     // BUG: addr should determine which SCU is selected
     // Implements part of the rscr instruction, function y00[0-7]2x
@@ -823,10 +904,12 @@ int scu_get_mask(t_uint64 addr, int port)
     
     return 0;
 }
+#endif
 
 // =============================================================================
 
-int scu_get_calendar(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_get_calendar(t_uint64 addr)
 {
     // 52 bit clock
     // microseconds since 0000 GMT, Jan 1, 1901 // not 1900 which was a per century exception to leap years
@@ -868,10 +951,12 @@ int scu_get_calendar(t_uint64 addr)
     
     return 0;
 }
+#endif
 
 // =============================================================================
 
-int scu_cioc(t_uint64 addr)
+#ifndef QUIET_UNUSED
+static int scu_cioc(t_uint64 addr)
 {
     // BUG: addr should determine which SCU is selected
     
@@ -928,9 +1013,11 @@ int scu_cioc(t_uint64 addr)
     
     return ret;
 }
+#endif
 
 // =============================================================================
 
+#ifndef QUIET_UNUSED
 static int pima_parse_raw(int pima, const char *moi)
 {
     char pima_name = (pima == 0) ? 'A' : 'B';
@@ -962,6 +1049,7 @@ static int pima_parse_raw(int pima, const char *moi)
         return found != 1;
     }
 }
+#endif
 
 // =============================================================================
 

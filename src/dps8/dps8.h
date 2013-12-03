@@ -2019,14 +2019,6 @@ typedef struct {
     int cpu_num;  // zero for CPU 'A', one for 'B' etc.
 } switches_t;
 
-// Physical ports on the CPU
-typedef struct {
-    // The ports[] array should indicate which SCU each of the CPU's 8
-    // ports are connected to.
-    int ports[8]; // SCU connectivity; designated a..h
-    int scu_port; // What port num are we connected to (same for all SCUs)
-} cpu_ports_t;
-
 // System Controller
 typedef struct {
     // Note that SCUs had no switches to designate SCU 'A' or 'B', etc.
@@ -2245,7 +2237,6 @@ extern sysinfo_t sys_opts;
 
 extern events_t events;
 extern switches_t switches;
-extern cpu_ports_t cpu_ports; // Describes connections to SCUs
 // the following two should probably be combined
 extern cpu_state_t cpu;
 extern ctl_unit_data_t cu;
@@ -2963,7 +2954,6 @@ int get_mt_numunits (void);
 /* dps8_scu.c */
 
 extern DEVICE scu_dev;
-t_stat scu_reset (DEVICE *dptr);
 int scu_set_interrupt(int inum);
 
 /* dps8_sys.c */

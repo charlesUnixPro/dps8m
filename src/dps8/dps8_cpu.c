@@ -724,9 +724,6 @@ static DCDstruct *newDCDstruct(void);
 
 static t_stat reason;
 
-//t_uint64 cpuCycles = 0; ///< # of instructions executed in this run...
-#define cpuCycles sys_stats.total_cycles
-
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
 static DCDstruct _currentInstruction;
@@ -737,11 +734,9 @@ static EISstruct E;
 
 events_t events;
 switches_t switches;
-cpu_ports_t cpu_ports; // Describes connections to SCUs
 // the following two should probably be combined
 cpu_state_t cpu;
 ctl_unit_data_t cu;
-stats_t sys_stats;
 
 
 // This is an out-of-band flag for the APU. User commands to

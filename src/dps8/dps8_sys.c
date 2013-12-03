@@ -26,6 +26,9 @@ int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 
+
+stats_t sys_stats;
+
 static t_stat sys_cable (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
