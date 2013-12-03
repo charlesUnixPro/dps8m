@@ -69,7 +69,7 @@
 %type <c> AH Ta Th To
 %type <r> SINGLE DOUBLE SGLLIT DBLLIT
 %type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
-%type <lst> symlist exprlist lexprlist optexplist optarglist optintlist opterrlist decs declist
+%type <lst> symlist exprlist lexprlist optarglist optintlist opterrlist decs declist
 %type <lit> literal
 %type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option external external0
 %type <e> expr lexpr operand optarg arg2 entry extoffset
@@ -336,11 +336,6 @@ declist
     | declist ',' decs  { $$ = $1;   DL_APPEND($$, $3);  }
     ;
 
-/* add literal to optexplist */
-optexplist: /* empty */     { $$ = NULL; }
-    | exprlist              { $$ = $1;   }
-    ;
-
 optarglist: /* empty */     { $$ = NULL;    }
     |                arg    { $$ = NULL; list *n = newList(); n->i36 = $1; DL_APPEND($$, n);  }
     | optarglist ',' arg    { $$ = $1;   list *n = newList(); n->i36 = $3; DL_APPEND($1, n);  }
@@ -363,7 +358,7 @@ literal
     | ITSLIT '(' expr ',' expr ',' modifier ')'     { $$ = doITSITPLiteral(043, $3->value, $5->value, $7); }
     | VFDLIT '(' vfdArgs ')'                        { $$ = doVFDLiteral($3); popAndReset();  }
     | DECLIT2                                       { $$ = doNumericLiteral72($1);           }
-    | '=' instr                                     { /* rfu for instruction literal */      }
+/*    | '=' instr                                     {  rfu for instruction literal       } */
     ;
 
 
