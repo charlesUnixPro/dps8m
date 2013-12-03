@@ -12,12 +12,6 @@
 // XXX Use this when we assume there is only a single unit
 #define ASSUME0 0
 
-/*
- * simh interface
- */
-
-REG *sim_PC = &cpu_reg[0];
-
 /* CPU data structures
  
  cpu_dev      CPU device descriptor
@@ -57,32 +51,6 @@ static DEBTAB cpu_dt[] = {
     { NULL,         0               }
 };
 
-/*! CPU device descriptor */
-DEVICE cpu_dev = {
-    "CPU",          /*!< name */
-    cpu_unit,       /*!< units */
-    cpu_reg,        /*!< registers */
-    cpu_mod,        /*!< modifiers */
-    N_CPU_UNITS,    /*!< #units */
-    8,              /*!< address radix */
-    PASIZE,         /*!< address width */
-    1,              /*!< addr increment */
-    8,              /*!< data radix */
-    36,             /*!< data width */
-    &cpu_ex,        /*!< examine routine */
-    &cpu_dep,       /*!< deposit routine */
-    &cpu_reset,     /*!< reset routine */
-    &cpu_boot,           /*!< boot routine */
-    NULL,           /*!< attach routine */
-    NULL,           /*!< detach routine */
-    NULL,           /*!< context */
-    DEV_DEBUG,      /*!< device flags */
-    0,              /*!< debug control flags */
-    cpu_dt,         /*!< debug flag names */
-    NULL,           /*!< memory size change */
-    NULL            /*!< logical name */
-};
-
 // This is part of the simh interface
 const char *sim_stop_messages[] = {
     "Unknown error",           // STOP_UNK
@@ -96,6 +64,33 @@ const char *sim_stop_messages[] = {
 };
 
 /* End of simh interface */
+
+/* Processor configuration switches 
+ *
+ * From AM81-04 Multics System Maintainance Procedures
+ *
+ * "A level 68 IOM system may containa maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memort
+ * [CAC: but AN87 says multics only supports two IOMs
+ * 
+ * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
+ * to the port. The base address (in KW) is the product of this number and the value
+ * defined by the STORE SIZE patch plug for the port.
+ *
+ * ADDRESS RANGE: toggle FULL/HALF. Determines the size of the SCU as full or half
+ * of the STORE SIZE patch.
+ *
+ * PORT ENABLE: (4? toggles)
+ *
+ * INITIALIZE ENABLE: (4? toggles) These switches enable the receipt of an 
+ * initialize signal from the SCU connected to the ports. This signal is used
+ * during the first part of bootload to set all CPUs to a known (idle) state.
+ * The switch for each port connected to an SCU should be ON, otherwise off.
+ *
+ * INTERLACE: ... All INTERLACE switches should be OFF for Multics operation.
+ *
+
+ */
+
 
 //t_stat spec_disp (FILE *st, UNIT *uptr, int value, void *desc)
 //{
@@ -607,7 +602,7 @@ static BITFIELD dps8_IR_bits[] = {
     ENDBITS
 };
 
-REG cpu_reg[] = {
+static REG cpu_reg[] = {
     { ORDATA (IC, rIC, VASIZE) },
     //{ ORDATA (IR, rIR, 18) },
     { ORDATADF (IR, rIR, 18, "Indicator Register", dps8_IR_bits) },
@@ -706,6 +701,38 @@ REG cpu_reg[] = {
      */
     
     { NULL }
+};
+
+/*
+ * simh interface
+ */
+
+REG *sim_PC = &cpu_reg[0];
+
+/*! CPU device descriptor */
+DEVICE cpu_dev = {
+    "CPU",          /*!< name */
+    cpu_unit,       /*!< units */
+    cpu_reg,        /*!< registers */
+    cpu_mod,        /*!< modifiers */
+    N_CPU_UNITS,    /*!< #units */
+    8,              /*!< address radix */
+    PASIZE,         /*!< address width */
+    1,              /*!< addr increment */
+    8,              /*!< data radix */
+    36,             /*!< data width */
+    &cpu_ex,        /*!< examine routine */
+    &cpu_dep,       /*!< deposit routine */
+    &cpu_reset,     /*!< reset routine */
+    &cpu_boot,           /*!< boot routine */
+    NULL,           /*!< attach routine */
+    NULL,           /*!< detach routine */
+    NULL,           /*!< context */
+    DEV_DEBUG,      /*!< device flags */
+    0,              /*!< debug control flags */
+    cpu_dt,         /*!< debug flag names */
+    NULL,           /*!< memory size change */
+    NULL            /*!< logical name */
 };
 
 //word36 IWB;         ///< instruction working buffer

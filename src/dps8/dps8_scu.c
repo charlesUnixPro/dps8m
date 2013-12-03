@@ -264,8 +264,73 @@ Configuration rules for Multics:
 
    6. IOMs should be connected to lower-number SCU ports the CPUs.
 
+   These rules are illustrated in Figure 3-5, where the port numbers for a small Multics
+   system of 2 CPUS, 3 SCUs and 2 IOMs have deen indicated
 
-  
+       
+
+
+                    -----------------                      -----------------
+                    |               |                      |               |
+                    |     CPU A     |                      |     CPU B     |
+                    |               |                      |               |
+                    -----------------                      -----------------
+                    | A | B | C | D |                      | A | B | C | D |
+                    -----------------                      -----------------
+                      |   |   |                              |   |   |
+                      |   |   |                              |   |   -----------------
+                      |   |   |                              |   |                   |
+                      |   |   -------------------------------)---)----------------   |
+                      |   |                                  |   |               |   |
+   --------------------   -----------------                  |   |               |   |
+   |                                      |                  |   |               |   |
+   |   -----------------------------------)-------------------   |               |   |
+   |   |                                  |                      |               |   |
+   |   |                                  |   --------------------               |   |
+   |   |                                  |   |                                  |   |
+ -----------------                      -----------------                      -----------------
+ | 7 | 6 | 5 | 4 |                      | 7 | 6 | 5 | 4 |                      | 7 | 6 | 5 | 4 |
+ -----------------                      -----------------                      -----------------
+ |               |                      |               |                      |               |
+ |     SCU C     |                      |     SCU B     |                      |     SCU A     |
+ |               |                      |               |                      |               |
+ -----------------                      -----------------                      -----------------
+ | 3 | 2 | 1 | 0 |                      | 3 | 2 | 1 | 0 |                      | 3 | 2 | 1 | 0 |
+ -----------------                      -----------------                      -----------------
+           |   |                                  |   |                                  |   |
+           |   |                                  |   -----------                        |   |
+           |   |                                  |             |                        |   |
+           |   -----------------------------------)---------    |                        |   |
+           |                                      |        |    |                        |   |
+           ----------    --------------------------        |    |                        |   |
+                    |    |                                 |    |                        |   |
+                    |    |   ------------------------------)----)-------------------------   |
+                    |    |   |                             |    |                            |
+                    |    |   |                             |    |  ---------------------------
+                    |    |   |                             |    |  |
+                   -----------------                      -----------------
+                   | A | B | C | D |                      | A | B | C | D |
+                   -----------------                      -----------------
+                   |               |                      |               |
+                   |     IOM A     |                      |     IOM B     |
+                   |               |                      |               |
+                   -----------------                      -----------------
+
+ 
+Abstracted from the addressing rules... Interesting.. A Multics system can support up to 16 MW of
+memory. The memory is divided across the SCUs. One and only one SCU can have a base addres of 0. This
+SCU is called the bootload SCU.
+
+"During bootload, Multics requires a contiguous section of memory beginning at
+ absolute address 0 and sufficently large to contain all routines and data
+ structures used durng the first phase of Multics initialiation (i.e. collection 1).
+ The size of the section required varies among Multics release, and it also
+ depends on the size of the SST segment, which is dependent on the parameters
+ specified by the tite on the sst config card. ... However
+ 512 KW is adequate for all circumstancces. There can be no "holes" in memory
+ within this region. Beyond this region, "holes" can exist in memory."
+
+
  */
 
 // ============================================================================

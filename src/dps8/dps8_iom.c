@@ -5,122 +5,120 @@
  *  Adapted by Harry Reed on 9/21/12.
  *  27Nov13 CAC - Reference document is
  *    431239854 600B IOM Spec Jul75
- *    This is a 600B IOM emulator. For now, only support one IOM
+ *    This is a 600B IOM emulator. 
  */
 
 /*
- iom.c -- emulation of an I/O Multiplexer
- 
- See: Document 43A239854 -- 6000B I/O Multiplexer
- (43A239854_600B_IOM_Spec_Jul75.pdf)
- 
- See AN87 which specifies some details of portions of PCWs that are
- interpreted by the channel boards and not the IOM itself.
- 
- See also: http://www.multicians.org/fjcc5.html -- Communications
- and Input/Output Switching in a Multiplex Computing System
- 
- See also: Patents: 4092715, 4173783, 1593312
- 
- Changes needed to support multiple IOMs:
- Hang an iom_t off of a DEVICE instead of using global "iom".
- Remove assumptions re IOM "A" (perhaps just IOM_A_xxx #defines).
- Move the few non extern globals into iom_t.  This includes the
- one hidden in get_chan().
- */
-/*
- Copyright (c) 2007-2013 Michael Mondy
- 
- This software is made available under the terms of the
- ICU License -- ICU 1.8.1 and later.
- See the LICENSE file at the top-level directory of this distribution and
- at http://example.org/project/LICENSE.
+ * iom.c -- emulation of an I/O Multiplexer
+ * 
+ * See: Document 43A239854 -- 6000B I/O Multiplexer
+ * (43A239854_600B_IOM_Spec_Jul75.pdf)
+ * 
+ * See AN87 which specifies some details of portions of PCWs that are
+ * interpreted by the channel boards and not the IOM itself.
+ * 
+ * See also: http://www.multicians.org/fjcc5.html -- Communications
+ * and Input/Output Switching in a Multiplex Computing System
+ * 
+ * See also: Patents: 4092715, 4173783, 1593312
+ * 
+ * Changes needed to support multiple IOMs:
+ * Hang an iom_t off of a DEVICE instead of using global "iom".
+ * Remove assumptions re IOM "A" (perhaps just IOM_A_xxx #defines).
+ * Move the few non extern globals into iom_t.  This includes the
+ * one hidden in get_chan().
  */
 
 /*
- 
- 3.10 some more physical switches
- 
- Config switch: 3 positions -- Standard GCOS, Extended GCOS, Multics
- 
- Note that all Mem[addr] references are absolute (The IOM has no access to
- the CPU's appending hardware.)
+ * Copyright (c) 2007-2013 Michael Mondy
+ * 
+ * This software is made available under the terms of the
+ * ICU License -- ICU 1.8.1 and later.
+ * See the LICENSE file at the top-level directory of this distribution and
+ * at http://example.org/project/LICENSE.
  */
 
 /*
- AN87 Sect. 3, IOM MAILBOX LAYOUT
-    "Multics currently allows tow IOs and requires that the INTERRUPT BASE
-     for both be set to 1200(8). The IOM BASE settings required are 1400(8)
-     for IOM A and 2000(8) for IMB B."
+ * 
+ * 3.10 some more physical switches
+ * 
+ * Config switch: 3 positions -- Standard GCOS, Extended GCOS, Multics
+ * 
+ * Note that all Mem[addr] references are absolute (The IOM has no access to
+ * the CPU's appending hardware.)
+ */
 
-  43A239854 600B IOM Spec: 3.12.3 Base Addresses
-    "Channel Mailbox Base Address - Twelve switches on the IOM configuration
-     panel provide bits 6-17 of the channel mailbox base address. The address 
-     extension, bits 0-5, and bits 18-23 of this base address are zero.
-
-     "Interrupt Multiplex Base Address - Bits 0-11 of the Interrupt Multiplex
-      Base Address are the same as Bits 0-11 of the Channel Mailbox Address and
-      are controlled by the same set of switches. Nine switches on the IOM
-      configuration panel provide bits 12-18, 22, and 23 of the Interrupt
-      Multiplex Base Address. Bits 19-21 of the base address are zero."
-
-     According to 43A239854, section 3.5: the two low bits of the interrupt 
-     base address are the IOM ID; but AN87 says that they should be zero for
-     both unit A and unit B.
-
-  43A239854 600B IOM Spec: 3.5.1 Channel Mailbox Base Addresses Switches
-     "The channel mailbox base address switches are ORed with the channel
-      number. Therefore to avoid ambiguity when channel numbers greater
-      than 15 are used, some of the low oreder bits of the channel mailbox
-      may be required to be zero."
-
-     
+/*
+ * AN87 Sect. 3, IOM MAILBOX LAYOUT
+ *    "Multics currently allows two IOs and requires that the INTERRUPT BASE
+ *     for both be set to 1200(8). The IOM BASE settings required are 1400(8)
+ *     for IOM A and 2000(8) for IMB B."
+ *
+ *  43A239854 600B IOM Spec: 3.12.3 Base Addresses
+ *    "Channel Mailbox Base Address - Twelve switches on the IOM configuration
+ *     panel provide bits 6-17 of the channel mailbox base address. The address 
+ *     extension, bits 0-5, and bits 18-23 of this base address are zero.
+ *
+ *     "Interrupt Multiplex Base Address - Bits 0-11 of the Interrupt Multiplex
+ *      Base Address are the same as Bits 0-11 of the Channel Mailbox Address and
+ *      are controlled by the same set of switches. Nine switches on the IOM
+ *      configuration panel provide bits 12-18, 22, and 23 of the Interrupt
+ *      Multiplex Base Address. Bits 19-21 of the base address are zero."
+ *
+ *     According to 43A239854, section 3.5: the two low bits of the interrupt 
+ *     base address are the IOM ID; but AN87 says that they should be zero for
+ *     both unit A and unit B.
+ *
+ *  43A239854 600B IOM Spec: 3.5.1 Channel Mailbox Base Addresses Switches
+ *     "The channel mailbox base address switches are ORed with the channel
+ *      number. Therefore to avoid ambiguity when channel numbers greater
+ *      than 15 are used, some of the low oreder bits of the channel mailbox
+ *      may be required to be zero."
+ *
+ *     
 */
 
 /* CAC: Notes on channel numbers
-     43A239854 3.4 CHANNEL NUMBERING
-
-       The channel number is a 9-bit binary number... Only the low-order
-       6 bits are used. [max_channels = 64]
-
-       Channel numbers are used for followin purposes in the IOM:
-
-       o A channel reognizes that a PCW is intended for it on the basis
-         of channel number;
-
-       o The IOM Central uses the channel number supplied by the channel
-         to determive the location of control word mailboxes in core
-         store or in scratchpad;
-
-       o The IOM Central places the channel number in the system fault
-         word when a system fault is detected and indicated so that the
-         software will know which channel was affected.
-
-       o The IOM Central uses the channel number to set a bit in the IMW.
-
-       Channel numbers 010(8) - 077(8) may be assigned to payload channels,
-       and channel numbers 000(8) - 007(8) are reserved for assignment
-       to overhead channels:
-
-           Channel No.      Overhead Channel Assigned
-           -----------      -------------------------
-
-              0             Illegal use - not assigned
-              1             Fault Channel
-              2             Connect Channel
-              3             Snapshot Channel
-              4             Wraparound Channel
-              5             Bootload Channel
-              6             Special Status Channel
-              7             Scratchpad Access Channel
+ *     43A239854 3.4 CHANNEL NUMBERING
+ *
+ *       The channel number is a 9-bit binary number... Only the low-order
+ *       6 bits are used. [max_channels = 64]
+ *
+ *       Channel numbers are used for followin purposes in the IOM:
+ *
+ *       o A channel reognizes that a PCW is intended for it on the basis
+ *         of channel number;
+ *
+ *       o The IOM Central uses the channel number supplied by the channel
+ *         to determive the location of control word mailboxes in core
+ *         store or in scratchpad;
+ *
+ *       o The IOM Central places the channel number in the system fault
+ *         word when a system fault is detected and indicated so that the
+ *         software will know which channel was affected.
+ *
+ *       o The IOM Central uses the channel number to set a bit in the IMW.
+ *
+ *       Channel numbers 010(8) - 077(8) may be assigned to payload channels,
+ *       and channel numbers 000(8) - 007(8) are reserved for assignment
+ *       to overhead channels:
+ *
+ *           Channel No.      Overhead Channel Assigned
+ *           -----------      -------------------------
+ *
+ *              0             Illegal use - not assigned
+ *              1             Fault Channel
+ *              2             Connect Channel
+ *              3             Snapshot Channel
+ *              4             Wraparound Channel
+ *              5             Bootload Channel
+ *              6             Special Status Channel
+ *              7             Scratchpad Access Channel
 */
+
 #include <stdio.h>
 
 #include "dps8.h"
-
-// XXX This marks places in the code where it is assumed that only one
-// IOM exists
-#define ASSUME0 0
 
 static t_stat iom_show_mbx (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat iom_show_config (FILE *st, UNIT *uptr, int val, void *desc);
@@ -143,7 +141,7 @@ UNIT iom_unit [N_IOM_UNITS_MAX] =
 
 #define UNIT_NUM(uptr) ((uptr) - iom_unit)
 
-MTAB iom_mod [] =
+static MTAB iom_mod [] =
   {
     {
        MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_NC, /* mask */
@@ -185,6 +183,12 @@ static DEBTAB iom_dt [] =
     { "DEBUG", DBG_DEBUG },
     { "ALL", DBG_ALL }, // don't move as it messes up DBG message
     { NULL, 0 }
+  };
+
+static REG iom_reg [] =
+  {
+//     { DRDATA (OS, config_sw_os, 1) },
+    { 0 }
   };
 
 DEVICE iom_dev = {
@@ -235,34 +239,32 @@ static void store_abs_pair(word24 addr, word36 even, word36 odd)
 
 
 /*
-  Interrupt base 1400(8)  (IOM Base Address)
-                      001 100 000 000     < Multics value
-sw:           xxx xxx xxx xxx
-                   11 111 111 112 222
-      012 345 678 901 234 567 890 123
+ *  Interrupt base 1400(8)  (IOM Base Address)
+ *                      001 100 000 000     < Multics value
+ *sw:           xxx xxx xxx xxx
+ *                   11 111 111 112 222
+ *      012 345 678 901 234 567 890 123
+ *
+ *    Switch setting for multics: 14(8)
+ * #define CONFIG_SW_MULTICS_IOM_BASE_ADDRESS 014
+ */
 
-    Switch setting for multics: 14(8)
-*/
-
-#define CONFIG_SW_MULTICS_IOM_BASE_ADDRESS 014
 
 
 
 /*
-  Mailbox base (unit A) 1400(8) (Address of Interrupt Multiplex Word)
-                      001 100 000 000
-sw:                   xxx xxx x    xx
-                   11 111 111 112 222
-      012 345 678 901 234 567 890 123
-
-    Switch setting for multics: 001 100 000
-*/
-
-#define CONFIG_SW_MULTICS_MULTIPLEX_BASE_ADDRESS 0140
-
+ *  Mailbox base (unit A) 1400(8) (Address of Interrupt Multiplex Word)
+ *                      001 100 000 000
+ *sw:                   xxx xxx x    xx
+ *                   11 111 111 112 222
+ *      012 345 678 901 234 567 890 123
+ *
+ *    Switch setting for multics: 001 100 000
+ * #define CONFIG_SW_MULTICS_MULTIPLEX_BASE_ADDRESS 0140
+ */
 
 
-// FIXME: Allow two IOMs; place data in UNIT structure
+
 
 enum config_sw_os_ { CONFIG_SW_STD_GCOS, CONFIG_SW_EXT_GCOS, CONFIG_SW_MULTICS };
 
@@ -275,11 +277,11 @@ struct unit_data
     // Configuration switches
     
     // Interrupt multiplex base address: 12 toggles
-    uint config_sw_iom_base_address; // = CONFIG_SW_MULTICS_IOM_BASE_ADDRESS
+    uint config_sw_iom_base_address;
 
     // Mailbox base aka IOM base address: 9 toggles
     // Note: The IOM number is encoded in the lower two bits
-    uint config_sw_multiplex_base_address; //  = CONFIG_SW_MULTICS_MULTIPLEX_BASE_ADDRESS;
+    uint config_sw_multiplex_base_address;
 
     // OS: Three position switch: GCOS, EXT GCOS, Multics
     enum config_sw_os_ config_sw_os; // = CONFIG_SW_MULTICS;
@@ -318,18 +320,9 @@ struct unit_data
 
     // Port half-size: 1 toggle/port // XXX what is this
     uint config_sw_port_halfsize [IOM_NPORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-
-
   };
 
 static struct unit_data unit_data [N_IOM_UNITS_MAX];
-
-REG iom_reg [] =
-  {
-//     { DRDATA (OS, config_sw_os, 1) },
-    { 0 }
-  };
 
 // other switches:
 //   alarm disable
@@ -672,7 +665,7 @@ static void init_memory_iom (uint unit_num)
     // template_slt_$iom_mailbox_absloc
 
     uint pi_base = unit_data [unit_num] . config_sw_multiplex_base_address & ~3;
-    uint iom = unit_data [unit_num] . config_sw_multiplex_base_address & 3; // 2 bits; only IOM 0 would use vector 030
+    uint iom_num = unit_data [unit_num] . config_sw_multiplex_base_address & 3; // 2 bits; only IOM 0 would use vector 030
     t_uint64 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
     uint dev = 0;            // 6 bits: drive number
     
@@ -704,25 +697,25 @@ static void init_memory_iom (uint unit_num)
     // system fault vector; DIS 0 instruction (imu bit not mentioned by 
     // 43A239854)
 
-    Mem [010 + 2 * iom] = (imu << 34) | dis0;
+    Mem [010 + 2 * iom_num] = (imu << 34) | dis0;
     sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      010 + 2 * iom, (imu << 34) | dis0);
+      010 + 2 * iom_num, (imu << 34) | dis0);
 
     // Zero other 1/2 of y-pair to avoid msgs re reading uninitialized
     // memory (if we have that turned on)
 
-    Mem [010 + 2 * iom + 1] = 0;
+    Mem [010 + 2 * iom_num + 1] = 0;
     sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      010 + 2 * iom + 1, 0);
+      010 + 2 * iom_num + 1, 0);
     
 
     // 2
 
     // terminate interrupt vector (overwritten by bootload)
 
-    Mem [030 + 2 * iom] = dis0;
+    Mem [030 + 2 * iom_num] = dis0;
     sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      030 + 2 * iom, dis0);
+      030 + 2 * iom_num, dis0);
 
 
     // 3
@@ -814,9 +807,9 @@ static void init_memory_iom (uint unit_num)
 
    // word after PCW (used by program)
 
-    Mem [2] = ((t_uint64) base_addr << 18) | (pi_base << 3) | iom;
+    Mem [2] = ((t_uint64) base_addr << 18) | (pi_base << 3) | iom_num;
     sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012o\n",
-      2,  ((t_uint64) base_addr << 18) | (pi_base << 3) | iom);
+      2,  ((t_uint64) base_addr << 18) | (pi_base << 3) | iom_num);
     
 
     // 11
@@ -2171,11 +2164,9 @@ static int dev_send_idcw(int iom_unit_num, int chan, int dev_code, pcw_t *p)
             cancel_run(STOP_WARN);
             return 1;
         case DEVT_TAPE:
-// ASSUME0 ???
             ret = mt_iom_cmd(devinfop);
             break;
         case DEVT_CON: {
-// ASSUME0 ???
             int ret = con_iom_cmd(p->chan, p->dev_cmd, p->dev_code, &chanp->status.major, &chanp->status.substatus);
             chanp->state = chn_cmd_sent;
             chanp->have_status = 1;     // FIXME: con_iom_cmd should set this
@@ -2184,7 +2175,6 @@ static int dev_send_idcw(int iom_unit_num, int chan, int dev_code, pcw_t *p)
             return ret; // caller must choose between our return and the chan_status.{major,substatus}
         }
         case DEVT_DISK:
-// ASSUME0 ???
             ret = disk_iom_cmd(devinfop);
             sim_debug (DBG_INFO, &iom_dev, "dev_send_idcw: DISK returns major code 0%o substatus 0%o\n", chanp->status.major, chanp->status.substatus);
             break;
@@ -2278,7 +2268,7 @@ static int dev_io(int iom_unit_num, int chan, int dev_code, t_uint64 *wordp)
             cancel_run(STOP_WARN);
             return 1;
         case DEVT_TAPE: {
-            int ret = mt_iom_io(iom_unit_num, chan, wordp, &chanp->status.major, &chanp->status.substatus);
+            int ret = mt_iom_io(iom_unit_num, chan, dev_code, wordp, &chanp->status.major, &chanp->status.substatus);
             if (ret != 0 || chanp->status.major != 0)
               {
                 sim_debug (DBG_DEBUG, &iom_dev, "dev_io: MT returns major code 0%o substatus 0%o\n", chanp->status.major, chanp->status.substatus);
@@ -2294,7 +2284,6 @@ static int dev_io(int iom_unit_num, int chan, int dev_code, t_uint64 *wordp)
             return ret; // caller must choose between our return and the status.{major,substatus}
         }
         case DEVT_DISK: {
-// XXX ASSUME0
             int ret = disk_iom_io(chan, wordp, &chanp->status.major, &chanp->status.substatus);
             // TODO: uncomment & switch to DEBUG: if (ret != 0 || chanp->status.major != 0)
             sim_debug (DBG_INFO, &iom_dev, "dev_io: DISK returns major code 0%o substatus 0%o\n", chanp->status.major, chanp->status.substatus);

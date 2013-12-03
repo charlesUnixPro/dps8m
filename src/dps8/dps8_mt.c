@@ -10,9 +10,6 @@
 #include <stdio.h>
 #include "dps8.h"
 
-// XXX Use this where we assume only a single unit
-#define ASSUME0 0
-
 /*
  mt.c -- mag tape
  See manual AN87
@@ -530,7 +527,7 @@ static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_pro
     return 0;
   }
 
-int mt_iom_io(int iom_unit_num, int chan, t_uint64 *wordp, int* majorp, int* subp)
+int mt_iom_io(int iom_unit_num, int chan, int dev_code, t_uint64 *wordp, int* majorp, int* subp)
 {
     // sim_debug (DBG_DEBUG, &iom_dev, "mt_iom_io: Chan 0%o\n", chan);
     
@@ -542,7 +539,7 @@ int mt_iom_io(int iom_unit_num, int chan, t_uint64 *wordp, int* majorp, int* sub
     }
     
     int dev_unit_num;
-    DEVICE* devp = get_iom_channel_dev (iom_unit_num, chan, ASSUME0, & dev_unit_num);
+    DEVICE* devp = get_iom_channel_dev (iom_unit_num, chan, dev_code, & dev_unit_num);
     if (devp == NULL || devp->units == NULL) {
         *majorp = 05;
         *subp = 2;

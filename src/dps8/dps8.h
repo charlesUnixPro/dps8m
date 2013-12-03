@@ -606,10 +606,8 @@ extern DEVICE cpu_dev;
 extern DEVICE iom_dev;
 extern DEVICE tape_dev;
 extern DEVICE *sim_devices[];
-extern REG cpu_reg[];
 extern UNIT mt_unit [];
 extern UNIT cpu_unit [];
-extern REG iom_reg[];
 extern FILE *sim_deb;
 
 
@@ -2947,7 +2945,7 @@ t_stat cable_mpc (int mpc_unit_num, int iom_unit_num, int chan_num);
 
 void mt_init(void);
 int mt_iom_cmd(chan_devinfo* devinfop);
-int mt_iom_io(int iom_unit_num, int chan, t_uint64 *wordp, int* majorp, int* subp);
+int mt_iom_io(int iom_unit_num, int chan, int dev_code, t_uint64 *wordp, int* majorp, int* subp);
 t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code);
 int get_mt_numunits (void);
 

@@ -24,6 +24,11 @@
  
  */
 
+/* config switch -- The bootload console has a 30-second timer mechanism. When
+reading from the console, if no character is typed within 30 seconds, the read
+operation is terminated. The timer is controlled by an enable switch, must be
+set to enabled during Multics and BCE */
+
 MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
         0, NULL, "AUTOINPUT",
