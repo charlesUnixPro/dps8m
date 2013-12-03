@@ -1,4 +1,4 @@
-C_SRCS += \
+C_SRCS = \
 scp.c \
 sim_console.c \
 sim_disk.c \
@@ -11,7 +11,7 @@ sim_timer.c \
 sim_tmxr.c
 
 
-OBJS += \
+OBJS = \
 scp.o \
 sim_console.o \
 sim_disk.o \

@@ -1,9 +1,9 @@
-C_SRCS += \
+C_SRCS = \
 decContext.c \
 decNumber.c 
 
 
-OBJS += \
+OBJS = \
 decContext.o \
 decNumber.o 
 

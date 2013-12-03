@@ -1,4 +1,4 @@
-C_SRCS += \
+C_SRCS = \
 ./dps8_addrmods.c \
 ./dps8_append.c \
 ./dps8_bar.c \
@@ -22,7 +22,7 @@ C_SRCS += \
 ./dps8_faults.c 
 
 
-OBJS += \
+OBJS = \
 ./dps8_addrmods.o \
 ./dps8_append.o \
 ./dps8_bar.o \
@@ -46,7 +46,15 @@ OBJS += \
 ./dps8_faults.o 
 
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-CFLAGS = -g -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O0 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so -Wall -DUSE_INT64
+CFLAGS  = -g -O0
+CFLAGS += -I../decNumber -I../simh 
+CFLAGS += -std=c99 -U__STRICT_ANSI__  
+CFLAGS += -O0 
+# CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
+# CFLAGS += -I . 
+CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
+CFLAGS += -Wall 
+CFLAGS += -DUSE_INT64
 
 # Dese make debugging hard; also, I don't belive that -fwhole-program is appropriate
 # CFLAGS += -flto -fwhole-program
@@ -64,18 +72,25 @@ CFLAGS += -DQUIET_UNUSED
 # For OS/X
 #LIBS = -lm -lpthread -ldl   -flto -fwhole-program
 
-LIBS = -lm -lrt -lpthread -ldl   ../simh/simh.a ../decNumber/decNumber.a
+LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
-all: dps8
+LIBS = $(LOCALLIBS)  -lm -lrt -lpthread -ldl -lefence 
 
-# Tool invocations
-dps8: $(OBJS) 
+all: locallibs
+
+dps8 : $(OBJS) $(LOCALLIBS) 
 	gcc  -o "dps8" $(OBJS) $(CFLAGS) $(LIBS)
 	
+locallibs :
+	(cd ../simh; $(MAKE))
+	(cd ../decNumber; $(MAKE))
+	$(MAKE) dps8
+
 # Other Targets
 clean:
 	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) dps8
-	-@echo ' '
+	#(cd ../simh; $(MAKE) clean)
+	#(cd ../decNumber; $(MAKE) clean)
 
 dps8.h :  ../simh/sim_defs.h ../simh/sim_tape.h
 dps8_utils.o :  ../simh/sim_defs.h
@@ -83,6 +98,5 @@ dps8_decimal.o : ../decNumber/decNumber.h ../decNumber/decNumberLocal.h
 dps8_loader.o : utlist.h
 $(OBJS) : dps8.h
 
-.PHONY: all clean dependents
 .SECONDARY:
 
