@@ -406,9 +406,9 @@ t_stat cpu_reset_mm (DEVICE *dptr)
 #endif
     cpu.cycle = FETCH_cycle;
 
-#if FEAT_INSTR_STATS
+//#if FEAT_INSTR_STATS
     memset(&sys_stats, 0, sizeof(sys_stats));
-#endif
+//#endif
     
     return 0;
 }
