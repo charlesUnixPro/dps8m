@@ -1199,7 +1199,7 @@ inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
 static void crnl_out(FILE *stream, const char *format, va_list ap)
 {
     // SIMH does something odd with the terminal, so output CRNL
-    int len =strlen(format);
+    int len = (int)strlen(format);
     int nl = *(format + len - 1) == '\n';
     if (nl) {
         char *f = malloc(len + 2);
