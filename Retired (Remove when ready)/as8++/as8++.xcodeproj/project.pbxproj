@@ -6,18 +6,15 @@
 	objectVersion = 46;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		7CADE55817372A8A00F67C82 /* as.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE54B17372A8A00F67C82 /* as.cpp */; };
-		7CADE55917372A8A00F67C82 /* as8.lpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE54D17372A8A00F67C82 /* as8.lpp */; };
-		7CADE55A17372A8A00F67C82 /* as8.ypp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE54E17372A8A00F67C82 /* as8.ypp */; };
-		7CADE55B17372A8A00F67C82 /* asMisc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE54F17372A8A00F67C82 /* asMisc.cpp */; };
-		7CADE55C17372A8A00F67C82 /* asUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE55017372A8A00F67C82 /* asUtils.cpp */; };
-		7CADE55D17372A8A00F67C82 /* literals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE55117372A8A00F67C82 /* literals.cpp */; };
-		7CADE55E17372A8A00F67C82 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE55217372A8A00F67C82 /* main.cpp */; };
-		7CADE55F17372A8A00F67C82 /* opCodes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE55317372A8A00F67C82 /* opCodes.cpp */; };
-		7CADE56017372A8A00F67C82 /* opcodeTable.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE55417372A8A00F67C82 /* opcodeTable.cpp */; };
-		7CADE56117372A8A00F67C82 /* pseudoOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CADE55517372A8A00F67C82 /* pseudoOps.cpp */; };
-/* End PBXBuildFile section */
+/* Begin PBXContainerItemProxy section */
+		7C87C074184E7D4E000A1D26 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7C87C070184E7D4D000A1D26 /* as8+.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7C87C064184E7D4D000A1D26;
+			remoteInfo = "as8+";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		7CADE53D17372A1300F67C82 /* CopyFiles */ = {
@@ -32,23 +29,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		7CADE53F17372A1300F67C82 /* as8++ */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "as8++"; sourceTree = BUILT_PRODUCTS_DIR; };
-		7CADE54B17372A8A00F67C82 /* as.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = as.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE54C17372A8A00F67C82 /* as.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = as.h; sourceTree = SOURCE_ROOT; };
-		7CADE54D17372A8A00F67C82 /* as8.lpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.lex; path = as8.lpp; sourceTree = SOURCE_ROOT; };
-		7CADE54E17372A8A00F67C82 /* as8.ypp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.yacc; path = as8.ypp; sourceTree = SOURCE_ROOT; };
-		7CADE54F17372A8A00F67C82 /* asMisc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = asMisc.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55017372A8A00F67C82 /* asUtils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = asUtils.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55117372A8A00F67C82 /* literals.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = literals.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55217372A8A00F67C82 /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55317372A8A00F67C82 /* opCodes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = opCodes.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55417372A8A00F67C82 /* opcodeTable.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = opcodeTable.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55517372A8A00F67C82 /* pseudoOps.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = pseudoOps.cpp; sourceTree = SOURCE_ROOT; };
-		7CADE55617372A8A00F67C82 /* uthash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = uthash.h; sourceTree = SOURCE_ROOT; };
-		7CADE55717372A8A00F67C82 /* utlist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = utlist.h; sourceTree = SOURCE_ROOT; };
-		7CADE56B17375ED900F67C82 /* y.output */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = y.output; path = "../../../Stuff/dps8m/Private/DerivedData/Build/Intermediates/as8++.build/Debug/as8++.build/DerivedSources/y.output"; sourceTree = "<group>"; };
-		7CADE56C1738601F00F67C82 /* TestFP.as8 */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = TestFP.as8; path = ../../Tests/TestFP.as8; sourceTree = "<group>"; };
-		7CADE56D1738601F00F67C82 /* TestFP.oct */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = TestFP.oct; path = ../../Tests/TestFP.oct; sourceTree = "<group>"; };
+		7C87C070184E7D4D000A1D26 /* as8+.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = "as8+.xcodeproj"; path = "../../XCode/as8+/as8+.xcodeproj"; sourceTree = "<group>"; };
+		7CADE53F17372A1300F67C82 /* as8++ */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; name = "as8++"; path = "/Users/doon/Documents/dps8m (New)/code/Retired (Remove when ready)/as8++/build/Debug/as8++"; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,43 +44,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		7CADE53617372A1300F67C82 = {
+		7C87C071184E7D4D000A1D26 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				7CADE56C1738601F00F67C82 /* TestFP.as8 */,
-				7CADE56D1738601F00F67C82 /* TestFP.oct */,
-				7CADE56B17375ED900F67C82 /* y.output */,
-				7CADE54117372A1300F67C82 /* as8++ */,
-				7CADE54017372A1300F67C82 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		7CADE54017372A1300F67C82 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				7CADE53F17372A1300F67C82 /* as8++ */,
+				7C87C075184E7D4E000A1D26 /* as8+ */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		7CADE54117372A1300F67C82 /* as8++ */ = {
+		7CADE53617372A1300F67C82 = {
 			isa = PBXGroup;
 			children = (
-				7CADE54C17372A8A00F67C82 /* as.h */,
-				7CADE54B17372A8A00F67C82 /* as.cpp */,
-				7CADE54D17372A8A00F67C82 /* as8.lpp */,
-				7CADE54E17372A8A00F67C82 /* as8.ypp */,
-				7CADE54F17372A8A00F67C82 /* asMisc.cpp */,
-				7CADE55017372A8A00F67C82 /* asUtils.cpp */,
-				7CADE55117372A8A00F67C82 /* literals.cpp */,
-				7CADE55217372A8A00F67C82 /* main.cpp */,
-				7CADE55317372A8A00F67C82 /* opCodes.cpp */,
-				7CADE55417372A8A00F67C82 /* opcodeTable.cpp */,
-				7CADE55517372A8A00F67C82 /* pseudoOps.cpp */,
-				7CADE55617372A8A00F67C82 /* uthash.h */,
-				7CADE55717372A8A00F67C82 /* utlist.h */,
+				7C87C070184E7D4D000A1D26 /* as8+.xcodeproj */,
 			);
-			path = "as8++";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -138,8 +96,14 @@
 				en,
 			);
 			mainGroup = 7CADE53617372A1300F67C82;
-			productRefGroup = 7CADE54017372A1300F67C82 /* Products */;
+			productRefGroup = 7CADE53617372A1300F67C82;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 7C87C071184E7D4D000A1D26 /* Products */;
+					ProjectRef = 7C87C070184E7D4D000A1D26 /* as8+.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				7CADE53E17372A1300F67C82 /* as8++ */,
@@ -147,21 +111,21 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXReferenceProxy section */
+		7C87C075184E7D4E000A1D26 /* as8+ */ = {
+			isa = PBXReferenceProxy;
+			fileType = "compiled.mach-o.executable";
+			path = "as8+";
+			remoteRef = 7C87C074184E7D4E000A1D26 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
+
 /* Begin PBXSourcesBuildPhase section */
 		7CADE53B17372A1300F67C82 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7CADE55817372A8A00F67C82 /* as.cpp in Sources */,
-				7CADE55917372A8A00F67C82 /* as8.lpp in Sources */,
-				7CADE55A17372A8A00F67C82 /* as8.ypp in Sources */,
-				7CADE55B17372A8A00F67C82 /* asMisc.cpp in Sources */,
-				7CADE55C17372A8A00F67C82 /* asUtils.cpp in Sources */,
-				7CADE55D17372A8A00F67C82 /* literals.cpp in Sources */,
-				7CADE55E17372A8A00F67C82 /* main.cpp in Sources */,
-				7CADE55F17372A8A00F67C82 /* opCodes.cpp in Sources */,
-				7CADE56017372A8A00F67C82 /* opcodeTable.cpp in Sources */,
-				7CADE56117372A8A00F67C82 /* pseudoOps.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
