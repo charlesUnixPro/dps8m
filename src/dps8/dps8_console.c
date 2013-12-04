@@ -481,7 +481,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Entire line now transferred.\n");
                 ret = 1;    // FIXME: out of band request to return
             } else {
-                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: %d chars remain to be transfered.\n", con_statep->tailp - con_statep->readp);
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: %ld chars remain to be transfered.\n", con_statep->tailp - con_statep->readp);
                 ret = 0;
             }
             *majorp = 0;
