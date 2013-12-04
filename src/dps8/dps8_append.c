@@ -551,7 +551,7 @@ static void acvFault(enum enumACV acvfault)
 
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%d) acvFaults=%d\n", strACV(acvfault), acvFault, acvFaults);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%d) acvFaults=%llu\n", strACV(acvfault), (int)acvFault, acvFaults);
     }
 }
 
@@ -995,7 +995,7 @@ H:; ///< Final address nonpaged
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(H:FANP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
     }
     return finalAddress;
     
@@ -1015,7 +1015,7 @@ I:;
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I:FAP) Read: finalAddress=%08o readData=%012o\n", finalAddress, *readData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
     }
     return finalAddress;
 }
@@ -1206,7 +1206,7 @@ H:; ///< Final address nonpaged
     core_write(finalAddress, writeData);  // I think now is the time to do it ...
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(H:FANP) Write: finalAddress=%08o writeData=%012o\n", finalAddress, writeData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(H:FANP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
     }
     return finalAddress;
     
@@ -1233,7 +1233,7 @@ I:;
     core_write(finalAddress, writeData);  // I think now is the time to do it ...
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(I:FAP) Write: finalAddress=%08o writeData=%012o\n", finalAddress, writeData);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(I:FAP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
     }
     return finalAddress;
     
@@ -1304,7 +1304,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: indword:%012o Tag:%o\n", indword, Tag);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: indword:%012llo Tag:%o\n", indword, Tag);
     }
     
     if (!((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword))))
@@ -1344,7 +1344,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012lo %012lo\n", YPair[0], YPair[1]);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012llo %012llo\n", YPair[0], YPair[1]);
     }
     
     if (ISITS(indTag))
