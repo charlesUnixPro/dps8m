@@ -1,4 +1,8 @@
 *.o
 *.a
 .DS_Store
+.cproject
+.project
+.settings/
+./Makefile
 

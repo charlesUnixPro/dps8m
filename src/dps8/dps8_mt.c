@@ -156,6 +156,8 @@ static MTAB mt_mod [] =
     { 0 }
   };
 
+#define UNIT_NUM(uptr) ((uptr) - mt_unit)
+
 static t_stat mt_reset (DEVICE * dptr);
 
 DEVICE tape_dev = {
@@ -363,7 +365,7 @@ int mt_iom_cmd(chan_devinfo* devinfop)
                 ret = sim_tape_rdrecf(unitp, tape_statep->bufp, &tbc, bufsz);
                 // XXX put unit number in here...
                 if (unitp->flags & UNIT_WATCH)
-                  sim_printf ("Tape reads a record\n");
+                  sim_printf ("Tape %ld reads a record\n", UNIT_NUM (unitp));
               }
             if (ret != 0) {
                 if (ret == MTSE_TMK || ret == MTSE_EOM) {
@@ -418,7 +420,7 @@ int mt_iom_cmd(chan_devinfo* devinfop)
                 sim_debug (DBG_NOTIFY, &iom_dev, "mt_iom_cmd: Backspace one record\n");
                 // XXX put unit number in here...
                 if (unitp->flags & UNIT_WATCH)
-                  sim_printf ("Tape backspaces one record\n");
+                  sim_printf ("Tape %ld backspaces a record\n", UNIT_NUM (unitp));
 
                 devinfop->have_status = 1;  // TODO: queue
                 *majorp = 0;
