@@ -148,7 +148,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
 {
     if (DSBR.U == 0)
     {
-        printf("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
+        sim_printf("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
         return SCPE_OK;    // need a better return value
     }
     
@@ -170,7 +170,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
         segno += 1; // onto next segment SDW
     }
     
-    if (!sim_quiet) printf("zero-initialized segments 0 .. %d\n", segno - 1);
+    if (!sim_quiet) sim_printf("zero-initialized segments 0 .. %d\n", segno - 1);
     return SCPE_OK;
 }
 
@@ -178,7 +178,7 @@ t_stat dpsCmd_InitSDWAM ()
 {
     memset(SDWAM, 0, sizeof(SDWAM));
     
-    if (!sim_quiet) printf("zero-initialized SDWAM\n");
+    if (!sim_quiet) sim_printf("zero-initialized SDWAM\n");
     return SCPE_OK;
 }
 
@@ -223,9 +223,9 @@ char *strDSBR(void)
 }
 
 PRIVATE
-void printDSBR(FILE *f)
+void printDSBR()
 {
-    fprintf(f, "%s\n", strDSBR());
+    sim_printf("%s\n", strDSBR());
 }
 
 
@@ -244,21 +244,21 @@ char *strSDW0(_sdw0 *SDW)
 }
 
 PRIVATE
-void printSDW0(FILE *f, _sdw0 *SDW)
+void printSDW0(_sdw0 *SDW)
 {
-    fprintf(f, "%s\n", strSDW0(SDW));
+    sim_printf("%s\n", strSDW0(SDW));
 }
 
 t_stat dpsCmd_DumpSegmentTable()
 {
-    printf("*** Descriptor Segment Base Register (DSBR) ***\n");
-    printDSBR(stdout);
-    printf("*** Descriptor Segment Table ***\n");
+    sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
+    printDSBR();
+    sim_printf("*** Descriptor Segment Table ***\n");
     for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
     {
-        printf("Seg %d - ", segno);
+        sim_printf("Seg %d - ", segno);
         _sdw0 *s = fetchSDW(segno);
-        printSDW0(stdout, s);
+        printSDW0(s);
         
         //free(s); no longer needed
     }
@@ -897,7 +897,7 @@ jmpNext:;
         
     } while (reason == 0);
     
-    fprintf(stdout, "\r\ncpuCycles = %lld\n", cpuCycles);
+    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
     
     return reason;
 }
@@ -959,7 +959,7 @@ APPEND_MODE:;
                 core_read(rY, dat);
                 return SCPE_OK;
             default:
-                fprintf(stderr, "Read(): acctyp\n");
+                sim_printf("Read(): acctyp\n");
                 break;
         }
         
@@ -1007,7 +1007,7 @@ APPEND_MODE:;
                 core_write(rY, dat);
                 return SCPE_OK;
             default:
-                fprintf(stderr, "Write(): acctyp\n");
+                sim_printf("Write(): acctyp\n");
                 break;
         }
         

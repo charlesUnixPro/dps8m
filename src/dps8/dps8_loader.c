@@ -135,7 +135,7 @@ int removeSegment(char *seg)
     {
         DL_FOREACH_SAFE(segments, el, tmp)
         {
-            printf("Removing segment '%s'...\n", el->name);
+            sim_printf("Removing segment '%s'...\n", el->name);
             freeSegment(el);
             DL_DELETE(segments, el);
         }
@@ -146,7 +146,7 @@ int removeSegment(char *seg)
         DL_FOREACH_SAFE(segments, el, tmp)
             if (strcmp(seg, el->name) == 0)
             {
-                printf("Removing segment '%s'...\n", el->name);
+                sim_printf("Removing segment '%s'...\n", el->name);
                 freeSegment(el);
                 DL_DELETE(segments, el);
                 return SCPE_OK;
@@ -170,7 +170,7 @@ int removeSegdef(char *seg, char *sym)
             {
                 DL_FOREACH_SAFE(sel->defs, del, dtmp)
                 {
-                    printf("Removing segdef '%s$%s'...\n", sel->name, del->symbol);
+                    sim_printf("Removing segdef '%s$%s'...\n", sel->name, del->symbol);
 
                     freeSegdef(del);
                     DL_DELETE(sel->defs, del);
@@ -183,7 +183,7 @@ int removeSegdef(char *seg, char *sym)
                 {
                     if (strcmp(del->symbol, sym) == 0)
                     {
-                        printf("Removing segdef '%s$%s'...\n", sel->name, del->symbol);
+                        sim_printf("Removing segdef '%s$%s'...\n", sel->name, del->symbol);
 
                         freeSegdef(del);
                         DL_DELETE(sel->defs, del);
@@ -210,7 +210,7 @@ int removeSegref(char *seg, char *sym)
             {
                 DL_FOREACH_SAFE(sel->refs, del, dtmp)
                 {
-                    printf("Removing segref '%s$%s'...\n", sel->name, del->symbol);
+                    sim_printf("Removing segref '%s$%s'...\n", sel->name, del->symbol);
 
                     freeSegref(del);
                     DL_DELETE(sel->refs, del);
@@ -223,7 +223,7 @@ int removeSegref(char *seg, char *sym)
                 {
                     if (strcmp(del->symbol, sym) == 0)
                     {
-                        printf("Removing serdef '%s$%s'...\n", sel->name, del->symbol);
+                        sim_printf("Removing serdef '%s$%s'...\n", sel->name, del->symbol);
    
                         freeSegref(del);
                         DL_DELETE(sel->refs, del);
@@ -433,7 +433,7 @@ int resolveLinks(bool bVerbose)
 {
     int segno = StartingSegment - 1;//-1;     // current segment number
     
-    if (bVerbose) printf("Examining segments ... ");
+    if (bVerbose) sim_printf("Examining segments ... ");
 
     // determine maximum segment no 
     segment *sg1;
@@ -441,11 +441,11 @@ int resolveLinks(bool bVerbose)
         segno = max(segno, sg1->segno);
     segno += 1; // ... and one more. This will be our starting segment number.
     
-    if (bVerbose) printf("segment numbering begins at: %d\n", segno);
+    if (bVerbose) sim_printf("segment numbering begins at: %d\n", segno);
     
     DL_FOREACH(segments, sg1)
     {
-        if (bVerbose) printf("    Processing segment %s...\n", sg1->name);
+        if (bVerbose) sim_printf("    Processing segment %s...\n", sg1->name);
 
         if (sg1->segno == -1)
             sg1->segno = segno ++;  // assign segment # to segment
@@ -455,7 +455,7 @@ int resolveLinks(bool bVerbose)
         segref *sr;
         DL_FOREACH(sg1->refs, sr)
         {
-            if (bVerbose) printf("        Resolving segref %s$%s...", sr->segname, sr->symbol);
+            if (bVerbose) sim_printf("        Resolving segref %s$%s...", sr->segname, sr->symbol);
             
             // now loop through all segrefs trying to find the segdef needed
             
@@ -481,18 +481,18 @@ int resolveLinks(bool bVerbose)
                         if (bVerbose)
                         {
                         if (sr->offset)
-                            printf("found %s%+d (%06o)\n", sr->symbol, sr->offset, sr->value);
+                            sim_printf("found %s%+d (%06o)\n", sr->symbol, sr->offset, sr->value);
                         else
-                            printf("found %s (%06o)\n", sr->symbol, sr->value);
+                            sim_printf("found %s (%06o)\n", sr->symbol, sr->value);
                         }
                         word36 *Ypair = &sg1->M[sr->value];
                         makeITS(sg2->segno, sd->value, 0, Ypair);   // "snap" link for segref in sg1
-                        if (bVerbose) printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
+                        if (bVerbose) sim_printf("            ITS Pair: [even:%012llo, odd:%012llo]\n", Ypair[0], Ypair[1]);
                     }
                 }
             }
             if (bVerbose && bFound == false)
-                printf("not found\n");
+                sim_printf("not found\n");
         }
     }
     
@@ -502,7 +502,7 @@ int resolveLinks(bool bVerbose)
 PRIVATE
 int loadDeferredSegment(segment *sg, int addr24)
 {
-    if (!sim_quiet) printf("    loading %s as segment# %d\n", sg->name, sg->segno);
+    if (!sim_quiet) sim_printf("    loading %s as segment# %d\n", sg->name, sg->segno);
         
     int segno = sg->segno;
         
@@ -514,11 +514,11 @@ int loadDeferredSegment(segment *sg, int addr24)
     
     if (loadUnpagedSegment(segno, addr24, segwords) == SCPE_OK)
     {
-        if (!sim_quiet) printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
+        if (!sim_quiet) sim_printf("      %d (%06o) words loaded into segment %d (%o) at address %06o\n", segwords, segwords, segno, segno, addr24);
     }
     else
     {
-        if (!sim_quiet) printf("      Error loading segment %d (%o)\n", segno, segno);
+        if (!sim_quiet) sim_printf("      Error loading segment %d (%o)\n", segno, segno);
     }
     // update in-code SDW to reflect segment info
     // Done in loadUnpagedSegment()
@@ -549,7 +549,7 @@ int loadDeferredSegments(bool bVerbose)
         if (!get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
             return -1;
 
-    if (bVerbose) printf("Loading deferred segments ...\n");
+    if (bVerbose) sim_printf("Loading deferred segments ...\n");
     
     int ldaddr = DSBR.ADDR + 65536;     // load segments *after* SDW table
     if (ldaddr % 16)
@@ -580,7 +580,7 @@ int loadDeferredSegments(bool bVerbose)
             PR[4].SNR = segno;
             PR[4].WORDNO = 0;
             int n = 4;
-            if (bVerbose) printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
         }
         
         // bump next load address to a 16-word boundary
@@ -659,7 +659,7 @@ t_stat createLOT(bool bVerbose)
 
     DL_APPEND(segments, lot);
     
-    if (!sim_quiet) printf("%s segment created with %d sparse entries.\n", LOT, numSeg);
+    if (!sim_quiet) sim_printf("%s segment created with %d sparse entries.\n", LOT, numSeg);
     
     return SCPE_OK;
 }
@@ -679,7 +679,7 @@ t_stat snapLOT(bool bVerbose)
     }
     if (!bFound)
     {
-        printf("snapLOT(): segment '%s' not found!\n", LOT);
+        sim_printf("snapLOT(): segment '%s' not found!\n", LOT);
         return SCPE_UNK;
     }
     
@@ -687,7 +687,7 @@ t_stat snapLOT(bool bVerbose)
         
     // Now go through each segment getting the linkage address and filling in the LOT table with the address (in sprn/lprn packed pointer format)
     
-    if (bVerbose) printf("snapping %s links", LOT);
+    if (bVerbose) sim_printf("snapping %s links", LOT);
     
     DL_FOREACH(segments, s)
     {
@@ -709,10 +709,10 @@ t_stat snapLOT(bool bVerbose)
 
             if (bVerbose)
                 //printf("%o %o %012llo.", lot->ldaddr, s->segno, pp);
-                printf(".");
+                sim_printf(".");
         }
     }
-    if (bVerbose) printf("\n");
+    if (bVerbose) sim_printf("\n");
     
     return SCPE_OK;
 }
@@ -760,7 +760,7 @@ t_stat createStack(int n, bool bVerbose)
     
     DL_APPEND(segments, stk);
     
-    if (bVerbose) printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, DSBR.STACK);
+    if (bVerbose) sim_printf("%s segment created as segment# %d (%o) [DSBR.STACK=%04o]\n", name, stk->segno, stk->segno, DSBR.STACK);
     
     return SCPE_OK;
 }
@@ -836,7 +836,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
                 
                 if (elt)
                 {
-                    printf("segment '%s' already loaded. Use 'segment remove'\n", elt->name);
+                    sim_printf("segment '%s' already loaded. Use 'segment remove'\n", elt->name);
                     freeSegment(s);
                     continue;
                 }
@@ -845,7 +845,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             DL_APPEND(segments, s);
             currSegment = s;
             
-            if (!sim_quiet) printf("segment created for '%s'\n", s->name);
+            if (!sim_quiet) sim_printf("segment created for '%s'\n", s->name);
         }
         
         else
@@ -885,14 +885,14 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
                 
                 if (elt)
                 {
-                    printf("symbol '%s' already loaded for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
+                    sim_printf("symbol '%s' already loaded for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
                     freeSegdef(s);
                     continue;
                 }
             }
             DL_APPEND(currSegment->defs, s);
             
-            if (!sim_quiet) printf("segdef created for segment %s, symbol '%s', addr:%06o\n", currSegment->name, symbol, value);
+            if (!sim_quiet) sim_printf("segdef created for segment %s, symbol '%s', addr:%06o\n", currSegment->name, symbol, value);
         }
 
         //else if (bDeferred && !strcasecmp(args[0], "!entry"))
@@ -915,14 +915,14 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
                 
                 if (elt)
                 {
-                    printf("segdef/entrypoint '%s' already found for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
+                    sim_printf("segdef/entrypoint '%s' already found for segment '%s'. Use 'segment segdef remove'\n", elt->symbol, currSegment->name);
                     freeSegdef(s);
                     continue;
                 }
             }
             DL_APPEND(currSegment->defs, s);
             
-            if (!sim_quiet) printf("entrypoint created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
+            if (!sim_quiet) sim_printf("entrypoint created for segment %s, symbol '%s', addr:%06o\n", segments->name, symbol, value);
         }
         
         else
@@ -960,9 +960,9 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             if (!sim_quiet)
             {
                 if (offset)
-                    printf("segref created for segment '%s' symbol:%s%+d, addr:%06o\n", segment, symbol, offset, addr);
+                    sim_printf("segref created for segment '%s' symbol:%s%+d, addr:%06o\n", segment, symbol, offset, addr);
                 else
-                    printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
+                    sim_printf("segref created for segment '%s' symbol:%s, addr:%06o\n", segment, symbol, addr);
             }
         }
         
@@ -1012,7 +1012,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
             {
                 if (maddr > currSegment->size)
                 {
-                    printf("ERROR: load_oct(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
+                    sim_printf("ERROR: load_oct(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
                     return SCPE_NXM;
                 }
                 else
@@ -1028,7 +1028,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
         else
             strcpy(buff, "");
         
-        if (!sim_quiet) printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
+        if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
     }
     else
     if (segno == -1)// just do an absolute load
@@ -1054,7 +1054,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
                 words++;
             }
         }
-        if (!sim_quiet) printf("%d (%06o) words loaded\n", words, words);
+        if (!sim_quiet) sim_printf("%d (%06o) words loaded\n", words, words);
     }
     else
     {
@@ -1090,11 +1090,11 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
         //fprintf(stderr, "segwords:%d maxaddr:%d\n", segwords, maxaddr);
         if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
         {
-            if (!sim_quiet) printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
+            if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
         }
         else
         {
-            if (!sim_quiet) printf("Error loading segment %d (%o)\n", segno, segno);
+            if (!sim_quiet) sim_printf("Error loading segment %d (%o)\n", segno, segno);
         }
     }
     
@@ -1187,7 +1187,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     writeSDW0toYPair(s, yPair);
     
     word24 sdwaddress = DSBR.ADDR + (2 * segno);
-    if (!sim_quiet) printf("Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
+    if (!sim_quiet) sim_printf("Writing SDW to address %08o (DSBR.ADDR+2*%d offset) \n", sdwaddress, segno);
     // write sdw to segment table
     core_write2(sdwaddress, yPair[0], yPair[1]);
     
@@ -1247,14 +1247,14 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         long n = sscanf(cptr, "%*s %s %s %s %s", s, w, s2, sDef);
         if (!strmask(w, "addr*"))
         {
-            fprintf(stderr, "sim_load(): No/illegal destination specifier was found\n");
+            sim_printf("sim_load(): No/illegal destination specifier was found\n");
             return SCPE_FMT;
         }
         segno = (int32)strtol(s, &end_ptr, 0); // allows for octal, decimal and hex
         
         if (end_ptr == s)
         {
-            fprintf(stderr, "sim_load(): No segment # was found\n");
+            sim_printf("sim_load(): No segment # was found\n");
             return SCPE_FMT;
         }
         
@@ -1262,7 +1262,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         
         if (end_ptr == s2)
         {
-            fprintf(stderr, "sim_load(): No load address was found\n");
+            sim_printf("sim_load(): No load address was found\n");
             return SCPE_FMT;
         }
         if (n == 4 && strmask(strlower(sDef), "def*"))
@@ -1284,14 +1284,14 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
 
         if (!strmask(s, "seg*"))
         {
-            fprintf(stderr, "sim_load(): segment keyword not found\n");
+            sim_printf("sim_load(): segment keyword not found\n");
             return SCPE_ARG;
         }
         
         segno = (int32)strtol(sn, &end_ptr, 0); // allows for octal, decimal and hex
         if (end_ptr == sn)
         {
-            fprintf(stderr, "sim_load(): No segment # was found\n");
+            sim_printf("sim_load(): No segment # was found\n");
             return SCPE_ARG;
         }
         
@@ -1299,7 +1299,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
             bDeferred = true;
         else
         {
-            fprintf(stderr, "sim_load(): deferred keyword not found\n");
+            sim_printf("sim_load(): deferred keyword not found\n");
             return SCPE_ARG;
         }
         
@@ -1309,7 +1309,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         {
             if (sg->segno == segno)
             {
-                fprintf(stderr, "sim_load(): segment %d already loaded\n", segno);
+                sim_printf("sim_load(): segment %d already loaded\n", segno);
                 return SCPE_ARG;
             }
         }
@@ -1330,7 +1330,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
             //    break;
     }
     
-    printf ("Can't determine load file format\n");
+    sim_printf ("Can't determine load file format\n");
     return SCPE_FMT;
 }
 

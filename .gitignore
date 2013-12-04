@@ -1,3 +1,4 @@
 *.o
-dps8
+*.a
 .DS_Store
+
