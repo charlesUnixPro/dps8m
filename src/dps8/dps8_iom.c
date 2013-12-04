@@ -1489,7 +1489,9 @@ static const char* chn_state_text(chn_state s)
     static const char* states[] = {
         "idle", "pcw rcvd", "pcw sent", "pcw done", "cmd sent", "io sent", "need status svc", "err"
     };
-    return (s >= 0 && s < ARRAY_SIZE(states)) ? states[s] : "unknown";
+    // enum is known to be valid
+    // return (s >= 0 && s < ARRAY_SIZE(states)) ? states[s] : "unknown";
+    return states [s];
 }
 
 // ============================================================================
@@ -3268,7 +3270,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             else
               {
                 // all of the remaining assume a valid value in port_num
-                if (port_num < 0 || port_num > 7)
+                if (/* port_num < 0 || */ port_num > 7)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: cached PORT value out of range: %d\n", port_num);
                     sim_printf ("error: iom_set_config: cached PORT value out of range: %d\n", port_num);
