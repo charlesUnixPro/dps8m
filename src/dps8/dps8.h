@@ -611,7 +611,10 @@ extern UNIT cpu_unit [];
 extern FILE *sim_deb;
 
 void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
-  __attribute__ ((format (printf, 3, 4)));
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 3, 4)))
+#endif
+;
 
 
 // ******* h6180 stuff *******
@@ -1628,7 +1631,10 @@ int strmask(char *str, char *mask);
 char *strlower(char *q);
 
 void sim_printf( const char * format, ... )    // not really simh, by my impl
-  __attribute__ ((format (printf, 1, 2)));
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
 
 extern word24 finalAddress; ///< final 24-bit address for appending unit
 
