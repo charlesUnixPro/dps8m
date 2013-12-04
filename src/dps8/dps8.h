@@ -610,6 +610,12 @@ extern UNIT mt_unit [];
 extern UNIT cpu_unit [];
 extern FILE *sim_deb;
 
+void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 3, 4)))
+#endif
+;
+
 
 // ******* h6180 stuff *******
 
@@ -1624,7 +1630,11 @@ char *getModString(int32 tag);
 int strmask(char *str, char *mask);
 char *strlower(char *q);
 
-void sim_printf( const char * format, ... );    // not really simh, by my impl
+void sim_printf( const char * format, ... )    // not really simh, by my impl
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
 
 extern word24 finalAddress; ///< final 24-bit address for appending unit
 
@@ -1793,8 +1803,6 @@ enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
 // Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
 enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC };
-
-void out_msg(const char* format, ...);
 
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 typedef unsigned flag_t;    // efficient unsigned flag
