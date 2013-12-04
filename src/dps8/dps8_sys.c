@@ -203,7 +203,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         int params = sscanf(addspec, "%s %s", seg, off);
         if (params != 2)
         {
-            printf("parse_addr(): illegal number of parameters\n");
+            sim_printf("parse_addr(): illegal number of parameters\n");
             *optr = cptr;   // signal error
             return 0;
         }
@@ -235,7 +235,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
                 segment *s = findSegmentNoCase(seg);
                 if (s == NULL)
                 {
-                    printf("parse_addr(): segment '%s' not found\n", seg);
+                    sim_printf("parse_addr(): segment '%s' not found\n", seg);
                     *optr = cptr;   // signal error
                     
                     return 0;
@@ -252,7 +252,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
             segdef *s = findSegdefNoCase(seg, off);
             if (s == NULL)
             {
-                printf("parse_addr(): entrypoint '%s' not found in segment '%s'", off, seg);
+                sim_printf("parse_addr(): entrypoint '%s' not found in segment '%s'", off, seg);
                 *optr = cptr;   // signal error
 
                 return 0;
