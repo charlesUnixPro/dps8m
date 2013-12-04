@@ -141,7 +141,7 @@ datedit:        vfd	9/lte+1,o9/20,9/mvzb+2,9/insp,o9/61,9/mvc+2,9/insm+1,9/mvc+2
 
 rdc.days:       aci	'Sun Mon Tue Wed ThurFri Sat '
 
-rdc.months: 	aci	'Jan Feb Mar Apr May Jun Jul Aug SeptOct Nov Nec '
+rdc.months: 	aci	'Jan Feb Mar Apr May Jun Jul Aug SeptOct Nov Dec '
 
 " End of include file ...... rdclock.incl.alm
 
