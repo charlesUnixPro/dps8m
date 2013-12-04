@@ -243,14 +243,14 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
     if (mt_unit_num < 0 || mt_unit_num >= tape_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
-        out_msg ("cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
+        sim_printf ("cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
         return SCPE_ARG;
       }
 
     if (cables_from_ioms [mt_unit_num] . iom_unit_num != -1)
       {
         sim_debug (DBG_ERR, & tape_dev, "cable_mt: socket in use\n");
-        out_msg ("cable_mt: socket in use\n");
+        sim_printf ("cable_mt: socket in use\n");
         return SCPE_ARG;
       }
 
@@ -363,7 +363,7 @@ int mt_iom_cmd(chan_devinfo* devinfop)
                 ret = sim_tape_rdrecf(unitp, tape_statep->bufp, &tbc, bufsz);
                 // XXX put unit number in here...
                 if (unitp->flags & UNIT_WATCH)
-                  out_msg ("Tape reads a record\n");
+                  sim_printf ("Tape reads a record\n");
               }
             if (ret != 0) {
                 if (ret == MTSE_TMK || ret == MTSE_EOM) {
@@ -418,7 +418,7 @@ int mt_iom_cmd(chan_devinfo* devinfop)
                 sim_debug (DBG_NOTIFY, &iom_dev, "mt_iom_cmd: Backspace one record\n");
                 // XXX put unit number in here...
                 if (unitp->flags & UNIT_WATCH)
-                  out_msg ("Tape backspaces one record\n");
+                  sim_printf ("Tape backspaces one record\n");
 
                 devinfop->have_status = 1;  // TODO: queue
                 *majorp = 0;
@@ -644,7 +644,7 @@ static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc)
 
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc)
   {
-    out_msg("Number of TAPE units in system is %d\n", tape_dev . numunits);
+    sim_printf("Number of TAPE units in system is %d\n", tape_dev . numunits);
     return SCPE_OK;
   }
 

@@ -128,21 +128,21 @@ t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan
     if (opcon_unit_num < 0 || opcon_unit_num >= opcon_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
-        out_msg ("cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
+        sim_printf ("cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
         return SCPE_ARG;
       }
 
     if (line_num < 0 || line_num >= N_LINES)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_opcon: line_num out of range <%d>\n", line_num);
-        out_msg ("cable_opcon: line_num out of range <%d>\n", line_num);
+        sim_printf ("cable_opcon: line_num out of range <%d>\n", line_num);
         return SCPE_ARG;
       }
 
     if (cables_from_ioms [opcon_unit_num] [line_num] . iom_unit_num != -1)
       {
         sim_debug (DBG_ERR, & tape_dev, "cable_opcon: socket in use\n");
-        out_msg ("cable_opcon: socket in use\n");
+        sim_printf ("cable_opcon: socket in use\n");
         return SCPE_ARG;
       }
 
@@ -375,7 +375,7 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
             return 0;
         case 051:               // Write Alert -- Ring Bell
             // AN70-1 says only console channels respond to this command
-            out_msg("CONSOLE: ALERT\n");
+            sim_printf("CONSOLE: ALERT\n");
             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Write Alert cmd received\n");
             sim_putchar('\a');
             *majorp = 0;
@@ -521,7 +521,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
               {
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Error writing to CONSOLE\n");
               }
-            out_msg("CONSOLE: %s\n", buf);
+            sim_printf("CONSOLE: %s\n", buf);
             
             *majorp = 0;
             *subp = 0;

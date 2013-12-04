@@ -519,28 +519,28 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
     if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
-        out_msg ("cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
+        sim_printf ("cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         return SCPE_ARG;
       }
 
     if (chan_num < 0 || chan_num >= max_channels)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: chan_num out of range <%d>\n", chan_num);
-        out_msg ("cable_to_iom: chan_num out of range <%d>\n", chan_num);
+        sim_printf ("cable_to_iom: chan_num out of range <%d>\n", chan_num);
         return SCPE_ARG;
       }
 
     if (dev_code < 0 || dev_code >= N_DEV_CODES)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: dev_code out of range <%d>\n", dev_code);
-        out_msg ("cable_to_iom: dev_code out of range <%d>\n", dev_code);
+        sim_printf ("cable_to_iom: dev_code out of range <%d>\n", dev_code);
         return SCPE_ARG;
       }
 
     if (iom [iom_unit_num] . channels [chan_num] [dev_code] . type != DEVT_NONE)
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: socket in use\n");
-        out_msg ("cable_to_iom: socket in use\n");
+        sim_printf ("cable_to_iom: socket in use\n");
         return SCPE_ARG;
       }
 
@@ -560,7 +560,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
     else
       {
         sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: didn't grok dev_type %d\n", dev_type);
-        out_msg ("cable_to_iom: didn't grok dev_type %d\n", dev_type);
+        sim_printf ("cable_to_iom: didn't grok dev_type %d\n", dev_type);
         return SCPE_ARG;
       }
 
@@ -580,7 +580,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
         chanp -> unitp = unitp;
       }
     else
-out_msg ("?????\n"); // XXX
+sim_printf ("?????\n"); // XXX
 
     return SCPE_OK;
   }
@@ -982,7 +982,7 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
 // XXX
 // Since interrupts aren't working yet....
 PPR.IC = 0330;
-out_msg ("Faking interrupt\n");
+sim_printf ("Faking interrupt\n");
 
     return SCPE_OK;
   }
@@ -2951,20 +2951,20 @@ static int iom_show_mbx(FILE *st, UNIT *uptr, int val, void *desc)
     int chan = IOM_CONNECT_CHAN;
     //int chanloc = IOM_A_MBX + chan * 4;
     uint chanloc = mbx_loc (iom_unit_num, chan);
-    out_msg("Connect channel is channel %d at %#06o\n", chan, chanloc);
+    sim_printf("Connect channel is channel %d at %#06o\n", chan, chanloc);
     lpw_t lpw;
     parse_lpw(&lpw, chanloc, chan == IOM_CONNECT_CHAN);
     lpw.hrel = lpw.srel;
-    out_msg("LPW at %#06o: %s\n", chanloc, lpw2text(&lpw, chan == IOM_CONNECT_CHAN));
+    sim_printf("LPW at %#06o: %s\n", chanloc, lpw2text(&lpw, chan == IOM_CONNECT_CHAN));
     
     int addr = lpw.dcw;
     pcw_t pcw;
     t_uint64 word0, word1;
     (void) fetch_abs_pair(addr, &word0, &word1);
     decode_idcw(iom_unit_num, &pcw, 1, word0, word1);
-    out_msg("PCW at %#06o: %s\n", addr, pcw2text(&pcw));
+    sim_printf("PCW at %#06o: %s\n", addr, pcw2text(&pcw));
     chan = pcw.chan;
-    out_msg("Channel %#o (%d):\n", chan, chan);
+    sim_printf("Channel %#o (%d):\n", chan, chan);
     addr += 2;  // skip PCW
     
     // This isn't quite right, but sufficient for debugging
@@ -2975,22 +2975,22 @@ static int iom_show_mbx(FILE *st, UNIT *uptr, int val, void *desc)
         parse_dcw(iom_unit_num, chan, 0, &dcw, addr, 1);
         if (dcw.type == idcw) {
             //dcw.fields.instr.chan = chan; // Real HW would not populate
-            out_msg("DCW %d at %06o : %s\n", i, addr, dcw2text(&dcw));
+            sim_printf("DCW %d at %06o : %s\n", i, addr, dcw2text(&dcw));
             control = dcw.fields.instr.control;
         } else if (dcw.type == tdcw) {
-            out_msg("DCW %d at %06o: <transfer> -- not implemented\n", i, addr);
+            sim_printf("DCW %d at %06o: <transfer> -- not implemented\n", i, addr);
             break;
         } else if (dcw.type == ddcw) {
-            out_msg("DCW %d at %06o: %s\n", i, addr, dcw2text(&dcw));
+            sim_printf("DCW %d at %06o: %s\n", i, addr, dcw2text(&dcw));
             if (dcw.fields.ddcw.type == 0)
                 control = 0;
         }
         ++addr;
         if (control != 2) {
             if (i == lpw.tally)
-                out_msg("-- end of list --\n");
+                sim_printf("-- end of list --\n");
             else
-                out_msg("-- end of list (because dcw control != 2) --\n");
+                sim_printf("-- end of list (because dcw control != 2) --\n");
         }
     }
     
@@ -3001,7 +3001,7 @@ static int iom_show_mbx(FILE *st, UNIT *uptr, int val, void *desc)
 
 static t_stat iom_show_nunits (FILE *st, UNIT *uptr, int val, void *desc)
   {
-    out_msg("Number of IOM units in system is %d\n", iom_dev . numunits);
+    sim_printf("Number of IOM units in system is %d\n", iom_dev . numunits);
     return SCPE_OK;
   }
 
@@ -3011,7 +3011,7 @@ static t_stat iom_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
     if (n < 1 || n > N_IOM_UNITS_MAX)
       return SCPE_ARG;
     if (n > 2)
-      out_msg ("Warning: Multics supports 2 IOMs maximum\n");
+      sim_printf ("Warning: Multics supports 2 IOMs maximum\n");
     iom_dev . numunits = n;
     return SCPE_OK;
   }
@@ -3022,11 +3022,11 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     if (unit_num < 0 || unit_num >= iom_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "iom_show_config: Invalid unit number %d\n", unit_num);
-        out_msg ("error: invalid unit number %d\n", unit_num);
+        sim_printf ("error: invalid unit number %d\n", unit_num);
         return SCPE_ARG;
       }
 
-    out_msg ("IOM unit number %d\n", unit_num);
+    sim_printf ("IOM unit number %d\n", unit_num);
     struct unit_data * p = unit_data + unit_num;
 
     char * os = "<out of range>";
@@ -3053,34 +3053,34 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
           break;
       }
 
-    out_msg("Allowed Operating System: %s\n", os);
-    out_msg("IOM Base Address:         %03o(8)\n", p -> config_sw_iom_base_address);
-    out_msg("Multiplex Base Address:   %04o(8)\n", p -> config_sw_multiplex_base_address);
-    out_msg("Bootload Card/Tape:       %s\n", blct);
-    out_msg("Bootload Tape Channel:    %02o(8)\n", p -> config_sw_bootload_magtape_chan);
-    out_msg("Bootload Card Channel:    %02o(8)\n", p -> config_sw_bootload_cardrdr_chan);
-    out_msg("Bootload Port:            %02o(8)\n", p -> config_sw_bootload_port);
-    out_msg("Port Address:            ");
+    sim_printf("Allowed Operating System: %s\n", os);
+    sim_printf("IOM Base Address:         %03o(8)\n", p -> config_sw_iom_base_address);
+    sim_printf("Multiplex Base Address:   %04o(8)\n", p -> config_sw_multiplex_base_address);
+    sim_printf("Bootload Card/Tape:       %s\n", blct);
+    sim_printf("Bootload Tape Channel:    %02o(8)\n", p -> config_sw_bootload_magtape_chan);
+    sim_printf("Bootload Card Channel:    %02o(8)\n", p -> config_sw_bootload_cardrdr_chan);
+    sim_printf("Bootload Port:            %02o(8)\n", p -> config_sw_bootload_port);
+    sim_printf("Port Address:            ");
     int i;
     for (i = 0; i < IOM_NPORTS; i ++)
-      out_msg (" %03o", p -> config_sw_port_addr [i]);
-    out_msg ("\n");
-    out_msg("Port Interlace:          ");
+      sim_printf (" %03o", p -> config_sw_port_addr [i]);
+    sim_printf ("\n");
+    sim_printf("Port Interlace:          ");
     for (i = 0; i < IOM_NPORTS; i ++)
-      out_msg (" %3o", p -> config_sw_port_interlace [i]);
-    out_msg ("\n");
-    out_msg("Port Enable:             ");
+      sim_printf (" %3o", p -> config_sw_port_interlace [i]);
+    sim_printf ("\n");
+    sim_printf("Port Enable:             ");
     for (i = 0; i < IOM_NPORTS; i ++)
-      out_msg (" %3o", p -> config_sw_port_enable [i]);
-    out_msg ("\n");
-    out_msg("Port Sysinit Enable:     ");
+      sim_printf (" %3o", p -> config_sw_port_enable [i]);
+    sim_printf ("\n");
+    sim_printf("Port Sysinit Enable:     ");
     for (i = 0; i < IOM_NPORTS; i ++)
-      out_msg (" %3o", p -> config_sw_port_sysinit_enable [i]);
-    out_msg ("\n");
-    out_msg("Port Halfsize:           ");
+      sim_printf (" %3o", p -> config_sw_port_sysinit_enable [i]);
+    sim_printf ("\n");
+    sim_printf("Port Halfsize:           ");
     for (i = 0; i < IOM_NPORTS; i ++)
-      out_msg (" %3o", p -> config_sw_port_halfsize [i]);
-    out_msg ("\n");
+      sim_printf (" %3o", p -> config_sw_port_halfsize [i]);
+    sim_printf ("\n");
     
     return SCPE_OK;
 }
@@ -3110,7 +3110,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
     if (unit_num < 0 || unit_num >= iom_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid unit number %d\n", unit_num);
-        out_msg ("error: iom_set_config: invalid unit number %d\n", unit_num);
+        sim_printf ("error: iom_set_config: invalid unit number %d\n", unit_num);
         return SCPE_ARG;
       }
 
@@ -3139,7 +3139,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
         if (! name)
           {
             sim_debug (DBG_ERR, & iom_dev, "iom_set_config: can't parse name\n");
-            out_msg ("error: iom_set_config: can't parse name\n");
+            sim_printf ("error: iom_set_config: can't parse name\n");
             break;
           }
 
@@ -3149,7 +3149,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
         if (! value)
           {
             sim_debug (DBG_ERR, & iom_dev, "iom_set_config: can't parse value\n");
-            out_msg ("error: iom_set_config: can't parse value\n");
+            sim_printf ("error: iom_set_config: can't parse value\n");
             break;
           }
 
@@ -3164,7 +3164,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             else
               {
                 sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid OS value <%s>\n", value);
-                out_msg ("error: iom_set_config: invalid OS value <%s>\n", value);
+                sim_printf ("error: iom_set_config: invalid OS value <%s>\n", value);
                 break;
               }
           }
@@ -3177,7 +3177,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             else
               {
                 sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid boot value <%s>\n", value);
-                out_msg ("error: iom_set_config: invalid boot value <%s>\n", value);
+                sim_printf ("error: iom_set_config: invalid boot value <%s>\n", value);
                 break;
               }
           }
@@ -3187,7 +3187,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             if (strlen (value) == 0)
               {
                 sim_debug (DBG_ERR, & iom_dev, "iom_set_config: missing number\n");
-                out_msg ("error: iom_set_config: missing number\n");
+                sim_printf ("error: iom_set_config: missing number\n");
                 break;
               }
             char * endptr;
@@ -3195,7 +3195,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             if (* endptr)
               {
                 sim_debug (DBG_ERR, & iom_dev, "iom_set_config: can't parse number <%s>\n", value);
-                out_msg ("error: iom_set_config: can't parse number <%s>\n", value);
+                sim_printf ("error: iom_set_config: can't parse number <%s>\n", value);
                 break;
               } 
 
@@ -3205,7 +3205,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (n < 0 || n > 07777)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: IOM_BASE value out of range: %ld\n", n);
-                    out_msg ("error: iom_set_config: IOM_BASE value out of range: %ld\n", n);
+                    sim_printf ("error: iom_set_config: IOM_BASE value out of range: %ld\n", n);
                     break;
                   } 
                 p -> config_sw_iom_base_address = n;
@@ -3216,7 +3216,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (n < 0 || n > 0777)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: MULTIPLEX_BASE value out of range: %ld\n", n);
-                    out_msg ("error: iom_set_config: MULTIPLEX_BASE value out of range: %ld\n", n);
+                    sim_printf ("error: iom_set_config: MULTIPLEX_BASE value out of range: %ld\n", n);
                     break;
                   } 
                 p -> config_sw_multiplex_base_address = n;
@@ -3227,7 +3227,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (n < 0 || n > 077)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: TAPECHAN value out of range: %ld\n", n);
-                    out_msg ("error: iom_set_config: TAPECHAN value out of range: %ld\n", n);
+                    sim_printf ("error: iom_set_config: TAPECHAN value out of range: %ld\n", n);
                     break;
                   } 
                 p -> config_sw_bootload_magtape_chan = n;
@@ -3238,7 +3238,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (n < 0 || n > 077)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: CARDCHAN value out of range: %ld\n", n);
-                    out_msg ("error: iom_set_config: CARDCHAN value out of range: %ld\n", n);
+                    sim_printf ("error: iom_set_config: CARDCHAN value out of range: %ld\n", n);
                     break;
                   } 
                 p -> config_sw_bootload_cardrdr_chan = n;
@@ -3249,7 +3249,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (n < 0 || n > 07)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: SCUPORT value out of range: %ld\n", n);
-                    out_msg ("error: iom_set_config: SCUPORT value out of range: %ld\n", n);
+                    sim_printf ("error: iom_set_config: SCUPORT value out of range: %ld\n", n);
                     break;
                   } 
                 p -> config_sw_bootload_port = n;
@@ -3260,7 +3260,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (n < 0 || n >= IOM_NPORTS)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT value out of range: %ld\n", n);
-                    out_msg ("error: iom_set_config: PORT value out of range: %ld\n", n);
+                    sim_printf ("error: iom_set_config: PORT value out of range: %ld\n", n);
                     break;
                   } 
                 port_num = n;
@@ -3271,7 +3271,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 if (port_num < 0 || port_num > 7)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: cached PORT value out of range: %d\n", port_num);
-                    out_msg ("error: iom_set_config: cached PORT value out of range: %d\n", port_num);
+                    sim_printf ("error: iom_set_config: cached PORT value out of range: %d\n", port_num);
                     break;
                   } 
 
@@ -3281,7 +3281,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                     if (n < 0 || n > 07)
                       {
                         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT.ADDR value out of range: %ld\n", n);
-                        out_msg ("error: iom_set_config: PORT.ADDR value out of range: %ld\n", n);
+                        sim_printf ("error: iom_set_config: PORT.ADDR value out of range: %ld\n", n);
                         break;
                       } 
                     p -> config_sw_port_addr [port_num] = n;
@@ -3292,7 +3292,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                     if (n < 0 || n > 01)
                       {
                         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT.INTERLACE value out of range: %ld\n", n);
-                        out_msg ("error: iom_set_config: PORT.INTERLACE value out of range: %ld\n", n);
+                        sim_printf ("error: iom_set_config: PORT.INTERLACE value out of range: %ld\n", n);
                         break;
                       } 
                     p -> config_sw_port_interlace [port_num] = n;
@@ -3303,7 +3303,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                     if (n < 0 || n > 01)
                       {
                         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT.ENABLE value out of range: %ld\n", n);
-                        out_msg ("error: iom_set_config: PORT.ENABLE value out of range: %ld\n", n);
+                        sim_printf ("error: iom_set_config: PORT.ENABLE value out of range: %ld\n", n);
                         break;
                       } 
                     p -> config_sw_port_enable [port_num] = n;
@@ -3314,7 +3314,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                     if (n < 0 || n > 01)
                       {
                         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT.INITENABLE value out of range: %ld\n", n);
-                        out_msg ("error: iom_set_config: PORT.INITENABLE value out of range: %ld\n", n);
+                        sim_printf ("error: iom_set_config: PORT.INITENABLE value out of range: %ld\n", n);
                         break;
                       } 
                     p -> config_sw_port_sysinit_enable [port_num] = n;
@@ -3325,7 +3325,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                     if (n < 0 || n > 01)
                       {
                         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT.HALFSIZE value out of range: %ld\n", n);
-                        out_msg ("error: iom_set_config: PORT.HALFSIZE value out of range: %ld\n", n);
+                        sim_printf ("error: iom_set_config: PORT.HALFSIZE value out of range: %ld\n", n);
                         break;
                       } 
                     p -> config_sw_port_halfsize [port_num] = n;
@@ -3333,7 +3333,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 else
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid switch name <%s>\n", name);
-                    out_msg ("error: iom_set_config: invalid switch name <%s>\n", name);
+                    sim_printf ("error: iom_set_config: invalid switch name <%s>\n", name);
                     break;
                   }
               } // port_num setting
