@@ -1157,7 +1157,7 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
         return -1;
     } else {
         if(addr & 1) {
-            sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %lo in core_read2\n", addr);
+            sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
             addr &= ~1; /* make it an even address */
         }
         *even = M[addr++] & DMASK;
@@ -1181,7 +1181,7 @@ int core_write2(word24 addr, word36 even, word36 odd) {
         return -1;
     } else {
         if(addr & 1) {
-            sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %lo in core_write2\n", addr);
+            sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
             addr &= ~1; /* make it even a dress, or iron a skirt ;) */
         }
         M[addr++] = even;
