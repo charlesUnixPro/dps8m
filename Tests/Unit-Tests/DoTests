@@ -1,7 +1,14 @@
 #!/bin/sh
+#set -x
 
-DPS8=~/Documents/Stuff/dps8m/Private/DerivedData/Build/Products/Debug/dps8
-AS8=~/Documents/Stuff/dps8m/Private/DerivedData/Build/Products/Debug/as8+
+BASE=~/Documents/dps8m\ \(New\)/XCode/DerivedData/Build/Products/Debug
+
+DPS8=${BASE}/dps8
+AS8=${BASE}/as8+
+
+#echo Base directory = "$BASE"
+#echo as8 = "$AS8"
+#echo dps8 = "$DPS8"
 
 SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE"
 
@@ -11,13 +18,12 @@ echo Epoch is $EPOCH
 
 for VARIABLE in $SRC
 do
-    echo  Running "$VARIABLE" ...
+echo  Running "$VARIABLE" ...
 
-    TEST="$VARIABLE"."$EPOCH"
+TEST="$VARIABLE"."$EPOCH"
 
 #    $AS8 -Isrc src/"$VARIABLE".as8 -o"$VARIABLE".o8
-    $DPS8 "$VARIABLE" > $TEST
-    diff $TEST "$VARIABLE".out
-    rm $TEST
+"$DPS8" "$VARIABLE" > $TEST
+diff $TEST "$VARIABLE".out
+rm $TEST
 done
-
