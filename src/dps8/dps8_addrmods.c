@@ -226,7 +226,7 @@ RI_MOD2:;
 #endif
     if (adrTrace)
     {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: indword=%012o TPR.CA=%06o rTAG=%02o\n", indword, TPR.CA, rTAG);
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n", indword, TPR.CA, rTAG);
     }
     
     goto startCA;
@@ -238,7 +238,7 @@ IR_MOD:;
     
     if (adrTrace)
     {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: CT_HOLD=%o\n", cu.CT_HOLD, Td);
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: CT_HOLD=%o %o\n", cu.CT_HOLD, Td);
     }
     
 IR_MOD_1:
@@ -259,7 +259,7 @@ IR_MOD_2:;
 #endif
     if (adrTrace)
     {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD1: indword=%012o TPR.CA=%06o Tm=%o Td=%02o (%s)\n", indword, TPR.CA, Tm, Td, getModString(GET_TAG(indword)));
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD1: indword=%012llo TPR.CA=%06o Tm=%o Td=%02o (%s)\n", indword, TPR.CA, Tm, Td, getModString(GET_TAG(indword)));
     }
     
     switch (Tm)
@@ -438,7 +438,7 @@ IT_MOD:;
                 
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%o\n", TPR.CA, CY);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
                 }
             } else if (operType == writeCY)
             {
@@ -536,7 +536,7 @@ IT_MOD:;
                 }
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%o\n", data, TPR.CA, CY);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
                 }
             }
             else if (operType == writeCY)
@@ -698,7 +698,7 @@ IT_MOD:;
                 }
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%o\n", data, TPR.CA, CY);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
                 }
                 
             } else if (operType == writeCY)
@@ -933,7 +933,7 @@ IT_MOD:;
 
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012o to addr %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
             Write(i, tmp18, indword, DataWrite, 0);
@@ -991,7 +991,7 @@ IT_MOD:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012o Yi=%06o tally=%04o\n", indword, Yi, tally);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
             }
             
             TPR.CA = Yi;
@@ -1035,7 +1035,7 @@ IT_MOD:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012o to addr %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
             Write(i, tmp18, indword, DataWrite, 0);
@@ -1061,7 +1061,7 @@ IT_MOD:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012o Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
             }
             
             Yi -= 1;
@@ -1077,7 +1077,7 @@ IT_MOD:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012o to addr %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
             Write(i, tmp18, indword, DataWrite, 0);
@@ -1133,7 +1133,7 @@ IT_MOD:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012o Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
             }
             
             TPR.CA = Yi;
@@ -1150,7 +1150,7 @@ IT_MOD:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012o to addr %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
             Write(i, tmp18, indword, DataWrite, TM_IT);
