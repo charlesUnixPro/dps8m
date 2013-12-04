@@ -4,5 +4,5 @@
 .cproject
 .project
 .settings/
-Makefile
+./Makefile
 
