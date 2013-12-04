@@ -18,12 +18,12 @@ echo Epoch is $EPOCH
 
 for VARIABLE in $SRC
 do
-echo  Running "$VARIABLE" ...
+	echo  Running "$VARIABLE" ...
 
-TEST="$VARIABLE"."$EPOCH"
+	TEST="$VARIABLE"."$EPOCH"
 
 #    $AS8 -Isrc src/"$VARIABLE".as8 -o"$VARIABLE".o8
-"$DPS8" "$VARIABLE" > $TEST
-diff $TEST "$VARIABLE".out
-rm $TEST
+	"$DPS8" "$VARIABLE" > $TEST
+	diff $TEST "$VARIABLE".out
+	rm $TEST
 done
