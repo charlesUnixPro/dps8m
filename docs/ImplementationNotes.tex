@@ -1,0 +1,315 @@
+\documentclass[notitlepage]{report}
+
+\begin{document}
+\title{Implementation Notes}
+%\author{}
+%\date{}
+\maketitle
+
+\part{Terminology}
+
+\section{Hardware}
+
+\subsection{History}
+
+
+\subsubsection{Systems}
+
+\begin{description}
+
+    \item[GE-600 Series]  \hfill \\
+
+    \begin{description}
+
+        \item[GE-635]
+
+        \item[GE-645] GE-635 with Multics support
+        \item[GE-655] Integrated circuit version of GE-635
+
+    \end{description}
+
+    \item[Honeywell 6000 Series] Honeywell version of GE-600 series
+
+    \begin{description}
+        \item[6170] GE-655
+        \item[6030, 6050] Reduced performance versions
+        \item[6025, 6040, 6060, 6080] Added EIS
+        \item[6180] GE-645  Hardware support for Multics
+        \item[Level 6]
+        \item[Level 61]
+        \item[Level 62]
+        \item[Level 64]
+        \item[Level 66] Honeywell's designation for the large-scale computers that ran GCOS, a repackaging of the “6000” line, later called the DPS-8/66.
+        \item[Level 68] Honeywell's designation for the large-scale computers that ran Multics.
+        \item[DPS-6] Another name for Level 6
+        \item[DPS-6plus] version of Level 6 that ran a secure system
+        \item[DPS-8]
+        \item[DPS-8M]
+        \item[DPS-68]
+        \item[DPS-88] Later name for the Honeywell ADP and Orion machines. Never ran Multics.
+        \item[DPS-90, DPS-9000] No Multics support
+    \end{description}
+
+\end{description} % systems
+
+\subsubsection{Disk Drives}
+
+    \begin{description}
+
+        \item[DS-10] Early disk unit
+
+        \item[DSS191] Same as MSU0400
+
+        \item[DUS170] 
+
+        \item[DSS180] Removable Disk Storage Subsystem 
+
+“Intermediate” size mass storage for Series 6000 systems. 
+
+Up to 18 drives
+
+Each drive 27.5 Million characters, total subsystem capacity of 500 million 
+characters
+
+Disk pack: Honeywell Sentinel DCT170 or 2316
+
+        \item[DSS190] Removable Disk Storage Subsystem 
+
+Mass storage for Series 6000 systems.
+
+Up to 16 drives
+
+Each drive 133,320,000 characters, total subsystem capacity of 2.13 billion 
+characters
+
+Disk pack: Honeywell M4050
+
+        \item[DSS270] Fixed Head  Disk Storage Subsystem 
+
+Paging disk?  mass storage for Series 6000 systems.
+
+Up to 20 drives
+
+Each drive 15.3 Million characters, total subsystem capacity of 307 million 
+characters
+
+Disk pack: N/A
+
+        \item[DSS167] Removable Disk Storage Subsystem 
+
+Mass storage for Series 6000 systems.
+
+6 drives or  9 drives (1 is spare, 8 active)
+
+Each drive 15 Million characters, total subsystem capacity of 120 million 
+characters
+
+Disk pack:  ?
+
+        \item[DSS170] Removable Disk Storage Subsystem 
+
+“Intermediate” size mass storage for Series 6000 systems.
+
+8 plus 1 spare drive
+
+Each drive 27.5 Million characters, total subsystem capacity of 500 million 
+characters
+
+Disk pack: ?
+
+        \item[MSU0500/0501]
+
+Dual spindle, nonremovable 1 milllion 9 bit bytes
+
+        \item[MSU0400/0402/0451]
+
+    \end{description} % Disk Drives
+
+\subsubsection{Tapes Drives}
+
+    \begin{description}
+
+        \item[MTH 200, 201, 300, 301, 372, 373] Seven track
+        \item[MTH 494, 405, 492, 493, 502, 505] Nine track
+
+    \end{description} % Tape Drives
+
+\subsubsection{Printers}
+
+    \begin{description}
+
+        \item[PRT300, 201]
+        \item[PRU0901/1201] Large systems printer
+        \item[PRU7070/7071]
+        \item[PRU7076/7076]
+
+    \end{description} % Printers
+
+\subsubsection{Card Readers/Punches}
+
+    \begin{description}
+
+        \item[CRZ201] Reader
+        \item[CPZ201] Punch
+
+    \end{description}
+
+\subsection{Input Output Multiplexers (IOM)}
+
+    \begin{description}
+        \item[Interface terminology] \hfill \\
+
+            \begin{description}
+              \item[Common Peripheral Interface (CPI)] Card reader, Slow tape drives
+              \item[Peripheral System Interface (PSI)] Fast Tape Drives
+            \end{description}
+
+        \item [GIOC]645 System I/O controller
+
+        \item [IOM] 6180 System I/O controller
+    \end{description}
+
+\part{Subsystem Model in the simulator}
+
+\section{SCU}
+
+From the Multicians' Multics Glossary:
+
+\begin{quote}
+SCU
+
+[BSG] (1) System Control Unit, or Memory Controller. The multiported, 
+arbitrating interface to each bank of memory (usually 128 or 256 KWords), each
+port connecting to a port of an "active device" (CPU, GIOC or IOM, bulk store
+or drum controller). On the 645, the clock occupied an SCU as well. The SCUs
+have their own repertoire of opcodes and registers, including those by which
+system interrupts are set by one active unit for another. (See connect.) The
+flexibility of this architecture was significant among the reasons why the GE
+600 line was chosen for Multics. See SCAS.
+
+SCAS
+
+[BSG] (for "System Controller Addressing Segment") A supervisor segment with
+one page in the memory space described by each SCU (or other passive module) in
+the system. The SCAS contains no data, is not demand-paged, and its page table
+is not managed by page control. Instructions directed specifically to an SCU as
+opposed to the memory it controls are issued to absolute addresses in the SCAS
+through pointers (in the SCS) calculated during initialization precisely to
+this end. Typical of such instructions are cioc (issue a connect), smic (set an
+interrupt), and the instructions to read and set SCU registers (including
+interrupt masks). On the 6180, rccl (the instruction to read the SCU-resident
+calendar clock) did not require an absolute address, but a port number,
+obviating the need for the SCAS to be visible outside ring 0 to support user
+clock-reading as had been the case on the 645. The SCAS, which is a segment but
+not a data base, is an example of exploiting the paging mechanism for a purpose
+other than implementing virtual memory.
+
+connect
+
+[BSG] Communication signal sent from one active device to another. When
+received by a processor, as polled for the control unit after each instruction
+pair like an interrupt, a special fault (connect fault), very much like an
+interrupt, is taken. As with interrupts, processors send "connects" to each
+other through the SCU, the only possible channel. While an interrupt is set in
+an SCU register and fielded by the first "taker" of all appropriately masked
+CPUs, a connect fault is routed by the SCU to one, specified processor (or I/O
+controller), and cannot be masked against (although the recipient's inhibit bit
+can postpone it for a short while). Sending a connect to the GIOC or IOM was
+the way of instructing it to begin executing I/O commands. See SCAS.
+
+Multics uses connects for forcing all CPUs to take note of SDW and PTW invalidation (and clear their associative memories and execute a partial cache clear when appropriate), holding CPUs in the air during critical phases of dynamic reconfiguration, and the like. If my memory serves me well, functions such as system crashing, scheduler preemption, and processor startup switched back and forth between software-generated interrupts and connects throughout the '70s.
+\end {quote}
+
+The simulator currently abstracts away the SCUs.
+
+\begin{itemize}
+
+\item The clock is implemented as a seperate SIMH device.
+
+\item The CPU connects directly to the IOMs.
+
+\item Memory is implemented a a single, device independent model.
+
+\item The SIMH CPU device only supports single CPUs currently, so the CPU to CPU communication issues are ignored for now. To get proper mult-CPU support, the SCU will probably need to be reallzed.
+\end {itemize}
+
+\section {IOM}
+
+[cac] The reference document I have been using is 43A239854 ENGINEERING PRODUCT PECIFICATION, PART 1 6000B INPUT/OUT MULTIPLEXER (IOM) CENTRAL
+
+The IOM model abstracts away controller devices such as the MPC. This means the
+IOM code is very device aware, including extracting dev\_code values to enable
+routing of connections. Unfortunately, this complexity leads to bugs relating
+to the confusion of dev\_codes with SIMH UNIT numbers. Adding MPC devices would
+isolate the complexities of dev\_code handling from the complexities of
+connection handling, is probably a good idea.
+
+\section {Tape}
+
+The device seems good to go; it is a very abstract model, with no hardware modeling beyond a tracking a virtual cable to a port on an IOM.
+
+\section {Disk}
+
+Existing code base is skeletal.
+
+\section {CPU}
+
+\section {CLK}
+
+\section {OPCON}
+
+\section {System}
+
+The simulator has been provide with commands to 'cable' together the various subsystems. The current test configuration is:
+
+\begin{verbatim}
+echo 
+echo Configuring test system: CPU, IOM * 2, TAPE * 2 
+echo 
+
+set iom nunits=2 
+set tape nunits=2 
+set opcon nunits=1 
+
+set iom0 config=iom_base=014
+set iom0 multiplex_base=0120
+set iom0 os=multics
+set iom0 boot=tape
+set iom0 tapechan=012
+set iom0 cardchan=011
+set iom0 scuport=0 
+set iom0 config=port=0;enable=0 
+set iom0 config=port=1;enable=0 
+set iom0 config=port=2;enable=0 
+set iom0 config=port=3;enable=0 
+set iom0 config=port=4;enable=0 
+set iom0 config=port=5;enable=0 
+set iom0 config=port=5;enable=0 
+set iom0 config=port=7;enable=0 
+
+set iom1 config=iom_base=014
+set iom0 multiplex_base=0121
+set iom0 os=multics
+set iom0 boot=tape
+set iom0 tapechan=012
+set iom0 cardchan=011
+set iom0 scuport=0 
+set iom1 config=port=0;addr=0;interlace=0;enable=1;initenable=0;halfsize=0; 
+set iom1 config=port=1;enable=0 
+set iom1 config=port=2;enable=0 
+set iom1 config=port=3;enable=0 
+set iom1 config=port=4;enable=0 
+set iom1 config=port=5;enable=0 
+set iom1 config=port=5;enable=0 
+set iom1 config=port=7;enable=0 
+
+; attach tape unit 0 to iom 0, chan 012, dev_code 0 
+cable tape,0,0,012,0 
+; attach tape unit 1 to iom 1, chan 012, dev_code 0 
+cable tape,1,1,012,0 
+
+; attach opcon unit 0 line 0 to iom A, chan 036 
+cable opcon,0,0,0,036 
+\end{verbatim}
+
+\end{document}
