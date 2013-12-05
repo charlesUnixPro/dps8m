@@ -2025,65 +2025,6 @@ typedef struct {
     int cpu_num;  // zero for CPU 'A', one for 'B' etc.
 } switches_t;
 
-// System Controller
-typedef struct {
-    // Note that SCUs had no switches to designate SCU 'A' or 'B', etc.
-    // Instead, SCU "A" is the one with base address switches set for 01400,
-    // SCU "B" is the SCU with base address switches set to 02000, etc.
-    // uint mem_base; // zero on boot scu
-    // mode reg: mostly not stored here; returned by scu_get_mode_register()
-    int mode; // program/manual; if 1, sscr instruction can set some fields
-#if 0
-    // The info below exists on the physical hardware but is mostly implemented
-    // as unchangable values in the emulator. Instead scu.c returns hard
-    // coded values. One exception is the program/manual switch which
-    // is listed above.
-    struct {
-        unsigned mask_a_assign:9;
-        unsigned a_online:1; // bank a online?
-        unsigned a1_online:1;
-        unsigned b_online:1;
-        unsigned b1_online:1;
-        unsigned port_no:4;
-        unsigned mode:1; // program or manual
-        unsigned nea_enabled:1;
-        unsigned nea:7;
-        unsigned interlace:1;
-        unsigned lwr:1; // controls whether A or B is low order memory
-        unsigned port_mask_0_3:4;
-        unsigned cyclic_prio:7;
-        unsigned port_mask_4_7:4;
-    } config_switches;
-#endif
-    
-    // CPU/IOM connectivity; designated 0..7
-    struct {
-        flag_t is_enabled;
-        enum active_dev type; // type of connected device
-        int idnum; // id # of connected dev, 0..7
-        int dev_port; // which port on the connected device?
-    } ports[8];
-    
-    
-    /* The interrupt registers.
-     Four exist; only two "A" and "B" used.
-     Two parts -- execute interrupt mask register and a 9-bit mask assignment
-     Currently missing: interrupt present
-     */
-    struct {
-        flag_t avail; // Not physical. Does mask really exist?
-        // Part 1 -- the execute interrupt mask register
-        unsigned int exec_intr_mask; // 32 bits, one for each intr or "cell"
-        // Part 2 -- the interrupt mask assignment register -- 9 bits total
-        struct {
-            unsigned int raw; // 9 bits; raw mask; decoded below
-            flag_t unassigned; // is it assigned to a port?
-            // We only list one port -- Multics only allowed one port at a time
-            // even though the SCU hardware would have allowed all 8 ports
-            uint port; // port to which mask is assigned (0..7)
-        } mask_assign; // eima_data[4];
-    } interrupts[4];
-} scu_t;
 
 // I/O Multiplexer
 enum { max_channels = 32 }; // enums are more constant than consts...
@@ -2247,9 +2188,6 @@ extern switches_t switches;
 extern cpu_state_t cpu;
 extern ctl_unit_data_t cu;
 extern stats_t sys_stats;
-
-extern scu_t scu; // only one for now
-
 extern int is_eis[];
 
 extern flag_t fault_gen_no_fault;
@@ -2903,6 +2841,7 @@ addr_modes_t get_addr_mode(void);
 void set_addr_mode(addr_modes_t mode);
 
 void ic_history_init(void);
+t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 
 /* dps8_decimal.c */
 
@@ -2930,6 +2869,8 @@ t_stat doXED(word36 *Ypair);
 /* dps8_iom.c */
 
 DEVICE * get_iom_channel_dev (uint iom_unit_num, int chan, int dev_code, int * unit_num);
+extern UNIT iom_unit [];
+
 void iom_init(void);
 t_stat iom_boot(int32 unit_num, DEVICE *dptr);
 void iom_interrupt(int iom_unit_num);
@@ -2939,6 +2880,7 @@ t_stat iom_boot(int32 unit_num, DEVICE *dptr);
 t_stat channel_svc(UNIT *up);
 int get_iom_numunits (void);
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, int dev_unit_num);
+t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
 
 /* dps8_mpc.c */
 
@@ -2960,7 +2902,11 @@ int get_mt_numunits (void);
 /* dps8_scu.c */
 
 extern DEVICE scu_dev;
+extern UNIT scu_unit [];
 int scu_set_interrupt(int inum);
+t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
+t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
+void scu_init (void);
 
 /* dps8_sys.c */
 

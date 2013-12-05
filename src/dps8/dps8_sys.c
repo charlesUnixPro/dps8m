@@ -70,6 +70,7 @@ static void dps8_init(void)    //CustomCmds(void)
     disk_init ();
     mt_init ();
     //mpc_init ();
+    scu_init ();
 }
 
 static int getval (char * * save, char * text)
@@ -94,7 +95,17 @@ static int getval (char * * save, char * text)
   }
 
 // Connect dev to iom
-//   cable <dev_name>,<dev_unit_num>,<iom_unit_num>,<chan_num>,<dev_code>
+//
+//   cable [TAPE | OPCON | DISK],<dev_unit_num>,<iom_unit_num>,<chan_num>,<dev_code>
+//
+//   or iom to scu
+//
+//   cable IOM <iom_unit_num>,<iom_port_num>,<scu_unit_num>,<scu_port_num>
+//
+//   or scu to cpu
+//
+//   cable SCU <scu_unit_num>,<scu_port_num>,<cpu_unit_num>,<cpu_port_num>
+//
 //
 
 static t_stat sys_cable (int32 arg, char * buf)
@@ -137,9 +148,22 @@ static t_stat sys_cable (int32 arg, char * buf)
       {
         rc = cable_mt (n1, n2, n3, n4);
       }
+// XXX not yet
+//    else if (strcasecmp (name, "DISK") == 0)
+//      {
+//        rc = cable_disk (n1, n2, n3, n4);
+//      }
     else if (strcasecmp (name, "OPCON") == 0)
       {
         rc = cable_opcon (n1, n2, n3, n4);
+      }
+    else if (strcasecmp (name, "IOM") == 0)
+      {
+        rc = cable_iom (n1, n2, n3, n4);
+      }
+    else if (strcasecmp (name, "SCU") == 0)
+      {
+        rc = cable_scu (n1, n2, n3, n4);
       }
     else
       {
@@ -353,7 +377,8 @@ sysinfo_t sys_opts =
 // XXX No idea why. However, setting it to zero queues the boot tape read instead of
 // XXX performing it immediately. This makes the boot code fail because iom_boot 
 // XXX returns before the read is dequeued, causing the CPU to start before the
-// XXX tape is read into memory. Need to fix boot_iom to wait....
+// XXX tape is read into memory. 
+// XXX Need to fix the cpu code to either do actual fault loop on unitialized memory, or force it into the wait for interrupt sate; and respond to the interrupt from the IOM's completion of the read.
 //
       -1, /* mt_times.read */
       0  /* mt_times.xfer */
