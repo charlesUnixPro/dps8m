@@ -127,21 +127,21 @@ t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan
   {
     if (opcon_unit_num < 0 || opcon_unit_num >= opcon_dev . numunits)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
         sim_printf ("cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
         return SCPE_ARG;
       }
 
     if (line_num < 0 || line_num >= N_LINES)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_opcon: line_num out of range <%d>\n", line_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: line_num out of range <%d>\n", line_num);
         sim_printf ("cable_opcon: line_num out of range <%d>\n", line_num);
         return SCPE_ARG;
       }
 
     if (cables_from_ioms [opcon_unit_num] [line_num] . iom_unit_num != -1)
       {
-        sim_debug (DBG_ERR, & tape_dev, "cable_opcon: socket in use\n");
+        // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: socket in use\n");
         sim_printf ("cable_opcon: socket in use\n");
         return SCPE_ARG;
       }

@@ -1651,21 +1651,21 @@ t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_
   {
     if (scu_unit_num < 0 || scu_unit_num >= scu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & scu_dev, "cable_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
         sim_printf ("cable_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
         return SCPE_ARG;
       }
 
     if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
       {
-        sim_debug (DBG_ERR, & scu_dev, "cable_scu: scu_port_num out of range <%d>\n", scu_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_scu: scu_port_num out of range <%d>\n", scu_unit_num);
         sim_printf ("cable_scu: scu_port_num out of range <%d>\n", scu_unit_num);
         return SCPE_ARG;
       }
 
     if (cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_unit_num != -1)
       {
-        sim_debug (DBG_ERR, & tape_dev, "cable_scu: port in use\n");
+        // sim_debug (DBG_ERR, & sys_dev, "cable_scu: port in use\n");
         sim_printf ("cable_scu: port in use\n");
         return SCPE_ARG;
       }
@@ -1690,21 +1690,21 @@ t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
   {
     if (scu_unit_num < 0 || scu_unit_num >= scu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & scu_dev, "cable_to_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
         sim_printf ("cable_to_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
         return SCPE_ARG;
       }
 
     if (scu_port_num < 0 || scu_port_num >= N_SCU_PORTS)
       {
-        sim_debug (DBG_ERR, & scu_dev, "cable_to_scu: scu_port_num out of range <%d>\n", scu_port_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_scu: scu_port_num out of range <%d>\n", scu_port_num);
         sim_printf ("cable_to_scu: scu_port_num out of range <%d>\n", scu_port_num);
         return SCPE_ARG;
       }
 
     if (scu [scu_unit_num] . ports [scu_port_num] . type != ADEV_NONE)
       {
-        sim_debug (DBG_ERR, & scu_dev, "cable_to_scu: socket in use\n");
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_scu: socket in use\n");
         sim_printf ("cable_to_scu: socket in use\n");
         return SCPE_ARG;
       }

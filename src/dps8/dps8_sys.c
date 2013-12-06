@@ -80,14 +80,14 @@ static int getval (char * * save, char * text)
     value = strtok_r (NULL, ",", save);
     if (! value)
       {
-        sim_debug (DBG_ERR, & iom_dev, "sys_cable: can't parse %s\n", text);
+        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse %s\n", text);
         sim_printf ("error: sys_cable: can't parse %s\n", text);
         return -1;
       }
     long l = strtol (value, & endptr, 0);
     if (* endptr || l < 0 || l > INT_MAX)
       {
-        sim_debug (DBG_ERR, & iom_dev, "sys_cable: can't parse %s <%s>\n", text, value);
+        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse %s <%s>\n", text, value);
         sim_printf ("error: sys_cable: can't parse %s <%s>\n", text, value);
         return -1;
       }
@@ -111,7 +111,6 @@ static int getval (char * * save, char * text)
 static t_stat sys_cable (int32 arg, char * buf)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
-// XXX iom_dev in the sim_debugs really should be sys_dev, which we haven't created yet
 
     char * copy = strdup (buf);
     t_stat rc = SCPE_ARG;
@@ -124,7 +123,7 @@ static t_stat sys_cable (int32 arg, char * buf)
     name = strtok_r (copy, ",", & name_save);
     if (! name)
       {
-        sim_debug (DBG_ERR, & iom_dev, "sys_cable: can't parse name\n");
+        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: can't parse name\n");
         sim_printf ("error: sys_cable: can't parse name\n");
         goto exit;
       }
@@ -167,7 +166,7 @@ static t_stat sys_cable (int32 arg, char * buf)
       }
     else
       {
-        sim_debug (DBG_ERR, & iom_dev, "sys_cable: Invalid switch name <%s>\n", name);
+        //sim_debug (DBG_ERR, & sys_dev, "sys_cable: Invalid switch name <%s>\n", name);
         sim_printf ("error: sys_cable: invalid switch name <%s>\n", name);
         goto exit;
       }

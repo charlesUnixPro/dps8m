@@ -1550,21 +1550,21 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
   {
     if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
+        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         return SCPE_ARG;
       }
 
     if (cpu_port_num < 0 || cpu_port_num >= N_CPU_PORTS)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
+        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
         sim_printf ("cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
         return SCPE_ARG;
       }
 
     if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_cpu: socket in use\n");
+        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: socket in use\n");
         sim_printf ("cable_to_cpu: socket in use\n");
         return SCPE_ARG;
       }

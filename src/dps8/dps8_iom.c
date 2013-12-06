@@ -519,21 +519,21 @@ t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_
   {
     if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         sim_printf ("cable_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         return SCPE_ARG;
       }
 
     if (iom_port_num < 0 || iom_port_num >= N_IOM_PORTS)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_iom: iom_port_num out of range <%d>\n", iom_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_iom: iom_port_num out of range <%d>\n", iom_unit_num);
         sim_printf ("cable_iom: iom_port_num out of range <%d>\n", iom_unit_num);
         return SCPE_ARG;
       }
 
     if (cables_from_scus [iom_unit_num] [iom_port_num] . scu_unit_num != -1)
       {
-        sim_debug (DBG_ERR, & tape_dev, "cable_iom: port in use\n");
+        // sim_debug (DBG_ERR, & sys_dev, "cable_iom: port in use\n");
         sim_printf ("cable_iom: port in use\n");
         return SCPE_ARG;
       }
@@ -562,28 +562,28 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
   {
     if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         sim_printf ("cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         return SCPE_ARG;
       }
 
     if (chan_num < 0 || chan_num >= max_channels)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: chan_num out of range <%d>\n", chan_num);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_iom: chan_num out of range <%d>\n", chan_num);
         sim_printf ("cable_to_iom: chan_num out of range <%d>\n", chan_num);
         return SCPE_ARG;
       }
 
     if (dev_code < 0 || dev_code >= N_DEV_CODES)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: dev_code out of range <%d>\n", dev_code);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_iom: dev_code out of range <%d>\n", dev_code);
         sim_printf ("cable_to_iom: dev_code out of range <%d>\n", dev_code);
         return SCPE_ARG;
       }
 
     if (iom [iom_unit_num] . channels [chan_num] [dev_code] . type != DEVT_NONE)
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: socket in use\n");
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_iom: socket in use\n");
         sim_printf ("cable_to_iom: socket in use\n");
         return SCPE_ARG;
       }
@@ -603,7 +603,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
       }
     else
       {
-        sim_debug (DBG_ERR, & iom_dev, "cable_to_iom: didn't grok dev_type %d\n", dev_type);
+        // sim_debug (DBG_ERR, & sys_dev, "cable_to_iom: didn't grok dev_type %d\n", dev_type);
         sim_printf ("cable_to_iom: didn't grok dev_type %d\n", dev_type);
         return SCPE_ARG;
       }
