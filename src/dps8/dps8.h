@@ -118,7 +118,7 @@ typedef word72      float72;    // double precision float
 #define SIGNMASK12      0xfffff800                        ///< mask to sign extend a 12-bit number to a 32-bit integer
 #define SIGNEXT12(x)    ((x) & SIGN12) ? ((x) | SIGNMASK12) : (x)  ///< sign extend a 12-bit word to 18/32-bit word
 
-#define SIGNEXT18(x)    (((x) & SIGN18) ? ((x) | SIGNMASK18) : (x)) ///< sign extend a 36-bit word to 64-bit
+#define SIGNEXT18(x)    (((x) & SIGN18) ? ((x) | SIGNMASK18) : (x)) ///< sign extend a 18-bit word to 64-bit
 #define SIGNEXT36(x)    (((x) & SIGN  ) ? ((x) |    SIGNEXT) : (x)) ///< sign extend a 36-bit word to 64-bit
 #define SIGNEXT15(x)    (((x) & SIGN15) ? ((x) | SIGNMASK15) : (x)) ///< sign extend a 15-bit word to 18/32-bit word
 
@@ -527,11 +527,13 @@ extern struct _ptw0 {
 typedef struct _ptw0 _ptw0;
 
 
+
 // Abort codes, used to sort out longjmp's back to the main loop.
 // Codes > 0 are simulator stop codes
 // Codes < 0 are internal aborts
-// Code  = 0 stops execution for an interrupt check
-//
+// Code  = 0 stops execution for an interrupt check (XXX Don't know if I like this or not)
+// XXX above is not entirely correct (anymore).
+
 
 #define STOP_UNK    0
 #define STOP_UNIMP  1
@@ -546,6 +548,7 @@ extern const char *sim_stop_messages[];
 
 // not really STOP codes, but get returned from instruction loops
 #define CONT_TRA    -1  ///< encountered a transfer instruction dont bump rIC
+#define CONT_FAULT  -2  ///< instruction encountered some kind of fault
 
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
