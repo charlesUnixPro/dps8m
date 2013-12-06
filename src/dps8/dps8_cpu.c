@@ -1275,6 +1275,15 @@ static DCDstruct *newDCDstruct(void)
     return p;
 }
 
+void freeDCDstruct(DCDstruct *p)
+{
+    if (!p)
+        return; // Uh-Uh...
+    
+    if (p->e)
+        free(p->e);
+    free(p);
+}
 
 /*
  * instruction fetcher ...

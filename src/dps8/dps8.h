@@ -729,7 +729,7 @@ typedef struct DCDstruct DCDstruct; // decoded instruction info ......
 extern DCDstruct *currentInstruction;
 
 //DCDstruct *newDCDstruct(void);
-//void freeDCDstruct(DCDstruct *p);
+void freeDCDstruct(DCDstruct *p);
 
 
 // opcode metadata (flag) ...
