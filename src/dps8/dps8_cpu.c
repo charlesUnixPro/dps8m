@@ -12,6 +12,8 @@
 // XXX Use this when we assume there is only a single unit
 #define ASSUME0 0
 
+void cpu_reset_array (void);
+
 /* CPU data structures
  
  cpu_dev      CPU device descriptor
@@ -21,6 +23,8 @@
  */
 
 #define N_CPU_UNITS 1
+#define N_CPU_PORTS 8
+
 UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
 
 /*! CPU modifier list */
@@ -448,7 +452,9 @@ t_stat cpu_reset (DEVICE *dptr)
     
     
     cpu_reset_mm(dptr);
-    
+
+    cpu_reset_array ();
+
     return SCPE_OK;
 }
 
@@ -1506,4 +1512,76 @@ void ic_history_init(void)
         ic_hist_max = 60;
     ic_hist = (ic_hist_t*) malloc(sizeof(*ic_hist) * ic_hist_max);
 }
+
+// XXX when multiple cpus are supported, make the cpu  data structure
+// an array and merge the unit state info into here; coding convention
+// is the name should be 'cpu' (as is 'iom' and 'scu'); but that name
+// is taken. It should probably be merged into here, and then this
+// should then be renamed.
+
+#define N_CPU_UNITS_MAX 1
+static struct
+  {
+    struct
+      {
+        flag_t inuse;
+        int scu_unit_num; // 
+        DEVICE * devp;
+        UNIT * unitp;
+      } ports [N_CPU_PORTS];
+
+  } cpu_array [N_CPU_UNITS_MAX];
+
+// XXX when multiple cpus are supported, merge this into cpu_reset
+
+void cpu_reset_array (void)
+  {
+    for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
+      for (int p = 0; p < N_CPU_UNITS; p ++)
+        cpu_array [i] . ports [p] . inuse = false;
+  }
+
+// A scu is trying to attach a cable to us
+//  to my port cpu_unit_num, cpu_port_num
+//  from it's port scu_unit_num, scu_port_num
+//
+
+t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int scu_port_num)
+  {
+    if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
+        sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cpu_port_num < 0 || cpu_port_num >= N_CPU_PORTS)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
+        sim_printf ("cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
+        return SCPE_ARG;
+      }
+
+    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
+      {
+        sim_debug (DBG_ERR, & iom_dev, "cable_to_cpu: socket in use\n");
+        sim_printf ("cable_to_cpu: socket in use\n");
+        return SCPE_ARG;
+      }
+
+    DEVICE * devp = & scu_dev;
+    UNIT * unitp = & scu_unit [scu_unit_num];
+     
+    cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse = true;
+    cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
+
+    cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
+    cpu_array [cpu_unit_num] . ports [cpu_port_num] . unitp  = unitp;
+
+    unitp -> u3 = cpu_port_num;
+    unitp -> u4 = 0;
+    unitp -> u5 = cpu_unit_num;
+
+    return SCPE_OK;
+  }
 

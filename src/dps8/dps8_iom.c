@@ -46,6 +46,8 @@
  * 
  * Note that all Mem[addr] references are absolute (The IOM has no access to
  * the CPU's appending hardware.)
+ *
+ * IOM BASE ADDRESS: 12 toggle switches: These are needed 
  */
 
 /*
@@ -299,27 +301,29 @@ struct unit_data
  
     // Sysinit: pushbutton
 
-    // Bootload SCU port: 3 toggle
+    // Bootload SCU port: 3 toggle AKA "ZERO BASE S.C. PORT NO"
+    // "the port number of the SC through which which connects are to
+    // be sent to the IOM
     uint config_sw_bootload_port; // = 0; 
 
     // 8 Ports: CPU/IOM connectivity
 
-#define IOM_NPORTS 8
+#define N_IOM_PORTS 8
     // Port configuration: 3 toggles/port 
-    // Which CPU number is this port attached to // XXX Is this right?
-    uint config_sw_port_addr [IOM_NPORTS]; // = { 0, 1, 2, 3, 4, 5, 6, 7 }; 
+    // Which SCU number is this port attached to // XXX Is this right?
+    uint config_sw_port_addr [N_IOM_PORTS]; // = { 0, 1, 2, 3, 4, 5, 6, 7 }; 
 
     // Port interlace: 1 toggle/port
-    uint config_sw_port_interlace [IOM_NPORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint config_sw_port_interlace [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Port enable: 1 toggle/port
-    uint config_sw_port_enable [IOM_NPORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint config_sw_port_enable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Port system initialize enable: 1 toggle/port // XXX What is this
-    uint config_sw_port_sysinit_enable [IOM_NPORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint config_sw_port_sysinit_enable [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Port half-size: 1 toggle/port // XXX what is this
-    uint config_sw_port_halfsize [IOM_NPORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    uint config_sw_port_halfsize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
   };
 
 static struct unit_data unit_data [N_IOM_UNITS_MAX];
@@ -410,7 +414,7 @@ typedef struct {
 typedef struct
   {
     uint iom_num;
-    int ports[IOM_NPORTS]; // CPU/IOM connectivity; designated a..h; negative to disable
+    int ports[N_IOM_PORTS]; // CPU/IOM connectivity; designated a..h; negative to disable
     int scu_port; // which port on the SCU(s) are we connected to?
     struct channels {
         enum dev_type type;
@@ -504,6 +508,46 @@ static int send_terminate_interrupt(int iom_unit_num, int chan);
 static int activate_chan(int iom_unit_num, int chan, int dev_code, pcw_t* pcw);
 static channel_t* get_chan(int iom_unit_num, int chan, int dev_code);
 static int run_channel(int iom_unit_num, int chan, int dev_code);
+
+static struct
+  {
+    int scu_unit_num;
+    int scu_port_num;
+  } cables_from_scus [N_IOM_UNITS_MAX] [N_IOM_PORTS];
+
+t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num)
+  {
+    if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & iom_dev, "cable_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
+        sim_printf ("cable_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (iom_port_num < 0 || iom_port_num >= N_IOM_PORTS)
+      {
+        sim_debug (DBG_ERR, & iom_dev, "cable_iom: iom_port_num out of range <%d>\n", iom_unit_num);
+        sim_printf ("cable_iom: iom_port_num out of range <%d>\n", iom_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables_from_scus [iom_unit_num] [iom_port_num] . scu_unit_num != -1)
+      {
+        sim_debug (DBG_ERR, & tape_dev, "cable_iom: port in use\n");
+        sim_printf ("cable_iom: port in use\n");
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_scu (scu_unit_num, scu_port_num, iom_unit_num, iom_port_num);
+    if (rc)
+      return rc;
+
+    cables_from_scus [iom_unit_num] [iom_port_num] . scu_unit_num = scu_unit_num;
+    cables_from_scus [iom_unit_num] [iom_port_num] . scu_port_num = scu_port_num;
+
+    return SCPE_OK;
+  }
 
 
 // cable_to_iom
@@ -984,6 +1028,7 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
 PPR.IC = 0330;
 sim_printf ("Faking interrupt\n");
 
+    // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;
   }
 
@@ -1056,7 +1101,7 @@ void iom_init (void)
     for (int unit_num = 0; unit_num < N_IOM_UNITS_MAX; unit_num ++)
       {
     
-        for (int i = 0; i < IOM_NPORTS; ++i)
+        for (int i = 0; i < N_IOM_PORTS; ++i)
           {
             iom [unit_num] . ports [i] = -1;
           }
@@ -1091,6 +1136,10 @@ void iom_init (void)
               }
           }
       }
+
+    for (int i = 0; i < N_IOM_UNITS_MAX; i ++)
+      for (int p = 0; p < N_IOM_PORTS; p ++)
+      cables_from_scus [i] [p] . scu_unit_num = -1;
   }
 
 // ============================================================================
@@ -3064,23 +3113,23 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Bootload Port:            %02o(8)\n", p -> config_sw_bootload_port);
     sim_printf("Port Address:            ");
     int i;
-    for (i = 0; i < IOM_NPORTS; i ++)
+    for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %03o", p -> config_sw_port_addr [i]);
     sim_printf ("\n");
     sim_printf("Port Interlace:          ");
-    for (i = 0; i < IOM_NPORTS; i ++)
+    for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> config_sw_port_interlace [i]);
     sim_printf ("\n");
     sim_printf("Port Enable:             ");
-    for (i = 0; i < IOM_NPORTS; i ++)
+    for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> config_sw_port_enable [i]);
     sim_printf ("\n");
     sim_printf("Port Sysinit Enable:     ");
-    for (i = 0; i < IOM_NPORTS; i ++)
+    for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> config_sw_port_sysinit_enable [i]);
     sim_printf ("\n");
     sim_printf("Port Halfsize:           ");
-    for (i = 0; i < IOM_NPORTS; i ++)
+    for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> config_sw_port_halfsize [i]);
     sim_printf ("\n");
     
@@ -3259,7 +3308,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             else if (strcmp (name, "PORT") == 0)
               {
                 // 8 ports
-                if (n < 0 || n >= IOM_NPORTS)
+                if (n < 0 || n >= N_IOM_PORTS)
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: PORT value out of range: %ld\n", n);
                     sim_printf ("error: iom_set_config: PORT value out of range: %ld\n", n);
