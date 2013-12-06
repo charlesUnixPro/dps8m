@@ -338,18 +338,51 @@ static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr simh_addr)
 // This is part of the simh interface
 /*! Based on the switch variable, symbolically output to stream ofile the data in array val at the specified addr
  in unit uptr.
+
+ * simh "fprint_sym" – Based on the switch variable, symbolically output to stream ofile the data in array val at the specified addr in unit uptr.
  */
-t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sswitch)
+
+t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
 {
 // XXX Bug: assumes single cpu
 // XXX CAC: This seems rather bogus; deciding the output format based on the
 // address of the UNIT? Would it be better to use sim_unit.u3 (or some such 
 // as a word width?
 
+    if (!(sw & SWMASK ('M')))
+        return SCPE_ARG;
+    
     if (uptr == &cpu_unit[0])
     {
-        fprintf(ofile, "%012llo", *val);
+        word36 word1 = *val;
+        
+        // get base syntax
+        char *d = disAssemble(word1);
+        
+        fprintf(ofile, "%s", d);
+        
+        // decode instruction
+        DCDstruct *p = decodeInstruction(word1, NULL);
+        
+        // MW EIS?
+        if (p->iwb->ndes > 1)
+        {
+            // Yup, just output word values (for now)
+            
+            // XXX Need to complete MW EIS support in disAssemble()
+            
+            for(int n = 0 ; n < p->iwb->ndes; n += 1)
+                fprintf(ofile, " %012llo", val[n + 1]);
+          
+            freeDCDstruct(p);
+            return -p->iwb->ndes;
+        }
+        
+        freeDCDstruct(p);
         return SCPE_OK;
+
+        //fprintf(ofile, "%012llo", *val);
+        //return SCPE_OK;
     }
     return SCPE_ARG;
 }
