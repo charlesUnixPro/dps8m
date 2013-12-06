@@ -2906,7 +2906,7 @@ int get_mt_numunits (void);
 
 extern DEVICE scu_dev;
 extern UNIT scu_unit [];
-int scu_set_interrupt(int inum);
+int scu_set_interrupt(uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);

@@ -432,7 +432,7 @@ SCU is called the bootload SCU.
  *
  * It also takes the channel number in the group (0-31 meaning
  * either channels 0-31 to 32-63) and sets the <channel number>th
- * bit in the <interrupy number>th memory location in the interrupt
+ * bit in the <interrupt number>th memory location in the interrupt
  * mask word (IMW) array in memory. It then generates a word with
  * the <interrupt number>th bit set and sends this to the bootload
  * SCU with the SC (set execute cells) SCU command. This sets the
@@ -472,7 +472,7 @@ SCU is called the bootload SCU.
  * assigned (enable), no further action takes place in regards to 
  * the A registers. (The B registers are still considered) (in
  * parallel, by the way).) If the register is assigned (enabled)
- * then interrupts will be send to all prots (prcoessors) whose
+ * then interrupts will be send to all ports (processors) whose
  * corresponding bit is set in the interrupt mask assignment
  * register. This, only certain interrupts are allowed to be
  * signalled at any given time (base on the contents of the execute
@@ -1402,11 +1402,13 @@ static int pima_parse_raw(int pima, const char *moi)
 
 // =============================================================================
 
-int scu_set_interrupt(int inum)
+// The SC (set execute cells) SCU command.
+
+int scu_set_interrupt(uint inum)
 {
     const char* moi = "SCU::interrupt";
     
-    if (inum < 0 || inum > 31) {
+    if (inum > 31) {
         sim_debug (DBG_WARN, &scu_dev, "%s: Bad interrupt number %d\n", moi, inum);
         cancel_run(STOP_WARN);
         return 1;
@@ -1439,6 +1441,8 @@ int scu_set_interrupt(int inum)
                         moi,
                        'A' + pima, port, scu[ASSUME0].ports[port].dev_port,
                         scu[ASSUME0].ports[port].idnum, inum);
+// This the equivalent of the XIP interrupt line to the CPU
+// XXX it really should be done with cpu_svc();
                 events.any = 1;
                 events.int_pending = 1;
                 events.interrupts[inum] = 1;

@@ -923,7 +923,7 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
             first record upon receipt of the terminate from reading that
             record.
 
-     3.  The connect channel PCS is treated differently by the CPI channel
+     3.  The connect channel PCW is treated differently by the CPI channel
          and the PSI channel. The CPI channel does a store status, The
          PSI channel goes into startup.
 
@@ -1659,7 +1659,18 @@ static int run_channel(int iom_unit_num, int chan, int dev_code)
         //       channel, it will store two words into the y-pair defined
         //       by the SW for the channel.:
 
-        chanp->have_status = 0;  // we just processed it
+        // OTOH, it does need to generate an interrupt! 
+        // From mst_boot_label.alm:
+        // " Assuming an MST with this program written on its label is 
+        // " mounted and ready on the selected tape  drive,  the  IOM  (or  
+        // " equivalant) hardwired  bootload  program will read in the first 
+        // " record on the tape (the label record), starting at location 
+        // " 30 (8) absolute. When the record  has  been  completely  read  
+        // " in,  a terminate  interrupt  is  executed.
+
+// [CAC] Setting to 0 allows the 'fake interrupt' in iom_boot to work
+// setting to 1 allows this code to do the terminate interrupt
+        chanp->have_status = 1;  // we just processed it
         
         // If we reach this point w/o resetting the state to chn_need_status,
         // we're busy and the channel hasn't terminated operations, so we don't
@@ -2891,6 +2902,9 @@ static void iom_fault(int iom_unit_num, int chan, const char* who, int is_sys, i
 
 // ============================================================================
 
+#define AN70
+#ifndef AN70  // [CAC] AN70-1 May84 disagrees
+
 enum iom_imw_pics {
     // These are for bits 19..21 of an IMW address.  This is normally
     // the Interrupt Level from a Channel's Program Interrupt Service
@@ -2905,6 +2919,42 @@ enum iom_imw_pics {
     imw_marker_pic = 5,     // IMW address ...101xx
     imw_special_pic = 7     // IMW address ...111xx
 };
+
+#else
+
+/* From AN70-1 May84
+ *  ... The IOM determines an interrupt
+ * number. (The interrupt number is a five bit value, from 0 to 31.
+ * The high order bits are the interrupt level.
+ *
+ * 0 - system fault
+ * 1 - terminate
+ * 2 - marker
+ * 3 - special
+ *
+ * The low order three bits determines the IOM and IOM channel 
+ * group.
+ *
+ * 0 - IOM 0 channels 32-63
+ * 1 - IOM 1 channels 32-63
+ * 2 - IOM 2 channels 32-63
+ * 3 - IOM 3 channels 32-63
+ * 4 - IOM 0 channels 0-31
+ * 5 - IOM 1 channels 0-31
+ * 6 - IOM 2 channels 0-31
+ * 7 - IOM 3 channels 0-31
+ *
+ */
+
+enum iom_imw_pics
+  {
+    imw_system_fault_pic = 0,
+    imw_terminate_pic = 1,
+    imw_marker_pic = 2,
+    imw_special_pic = 3
+  };
+
+#endif
 
 /*
  * send_marker_interrupt()
@@ -2949,9 +2999,15 @@ static int send_terminate_interrupt(int iom_unit_num, int chan)
 static int send_general_interrupt(int iom_unit_num, int chan, int pic)
 {
     uint imw_addr;
+#ifdef AN70
+    uint chan_group = chan < 32 ? 1 : 0;
+    uint chan_in_group = chan & 037;
+    uint interrupt_num = iom_unit_num | (chan_group << 2);
+#else
     imw_addr = iom [iom_unit_num] . iom_num; // 2 bits
     imw_addr |= pic << 2;   // 3 bits
     uint interrupt_num = imw_addr;
+#endif
     // Section 3.2.7 defines the upper bits of the IMW address as
     // being defined by the mailbox base address switches and the
     // multiplex base address switches.
@@ -2963,19 +3019,29 @@ static int send_general_interrupt(int iom_unit_num, int chan, int pic)
     // address switches.
     //imw_addr += 01200;  // all remaining bits
     uint pi_base = unit_data [iom_unit_num] . config_sw_multiplex_base_address & ~3;
+#ifdef AN70
+    imw_addr = (pi_base << 3) | interrupt_num;
+#else
     uint iom = unit_data [iom_unit_num] . config_sw_multiplex_base_address & 3; // 2 bits; only IOM 0 would use vector 030
     imw_addr +=  (pi_base << 3) | iom;
+#endif
 
     sim_debug (DBG_INFO, &iom_dev, "send_general_interrupt: IOM %c, channel %d (%#o), level %d; Interrupt %d (%#o).\n", 'A' + iom_unit_num, chan, chan, pic, interrupt_num, interrupt_num);
     t_uint64 imw;
     (void) fetch_abs_word(imw_addr, &imw);
     // The 5 least significant bits of the channel determine a bit to be
     // turned on.
+#ifdef AN70
+    sim_debug (DBG_DEBUG, &iom_dev, "send_general_interrupt: IMW at %#o was %012llo; setting bit %d\n", imw_addr, imw, chan_in_group);
+    imw = setbits36(imw, chan_in_group, 1, 1);
+#else
     sim_debug (DBG_DEBUG, &iom_dev, "send_general_interrupt: IMW at %#o was %012llo; setting bit %d\n", imw_addr, imw, chan & 037);
     imw = setbits36(imw, chan & 037, 1, 1);
+#endif
     sim_debug (DBG_INFO, &iom_dev, "send_general_interrupt: IMW at %#o now %012llo\n", imw_addr, imw);
     (void) store_abs_word(imw_addr, imw);
     
+// XXX this should call scu_svc
     return scu_set_interrupt(interrupt_num);
 }
 
