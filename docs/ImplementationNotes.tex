@@ -43,13 +43,22 @@
         \item[Level 68] Honeywell's designation for the large-scale computers that ran Multics.
         \item[DPS-6] Another name for Level 6
         \item[DPS-6plus] version of Level 6 that ran a secure system
-        \item[DPS-8]
+        \item[DPS-8] DPS8 is functionally identical to Level 68, but faster.
         \item[DPS-8M]
         \item[DPS-68]
         \item[DPS-88] Later name for the Honeywell ADP and Orion machines. Never ran Multics.
         \item[DPS-90, DPS-9000] No Multics support
     \end{description}
 
+From the AL39 Multics Processor Manual:
+
+\begin {quote}
+
+\ldots processors used in the Multics system. These are the DPS/L68, which
+refers to the DPS, L68 or older model processors (excluding the GE-645) and 
+DPS 8M, which refers to the DPS 8 family of Multics processors, i.e. DPS 8/70M, DPS 8/62M and DPS 8/52M.
+
+\end {quote}
 \end{description} % systems
 
 \subsubsection{Disk Drives}
@@ -167,6 +176,9 @@ Dual spindle, nonremovable 1 milllion 9 bit bytes
         \item [GIOC]645 System I/O controller
 
         \item [IOM] 6180 System I/O controller
+
+        \item [IMU] ``Infomation Multiplexer Unit'' DPS8 ? System I/O controller
+
     \end{description}
 
 \part{Subsystem Model in the simulator}
@@ -217,16 +229,25 @@ controller), and cannot be masked against (although the recipient's inhibit bit
 can postpone it for a short while). Sending a connect to the GIOC or IOM was
 the way of instructing it to begin executing I/O commands. See SCAS.
 
-Multics uses connects for forcing all CPUs to take note of SDW and PTW invalidation (and clear their associative memories and execute a partial cache clear when appropriate), holding CPUs in the air during critical phases of dynamic reconfiguration, and the like. If my memory serves me well, functions such as system crashing, scheduler preemption, and processor startup switched back and forth between software-generated interrupts and connects throughout the '70s.
+Multics uses connects for forcing all CPUs to take note of SDW and PTW
+invalidation (and clear their associative memories and execute a partial cache
+clear when appropriate), holding CPUs in the air during critical phases of
+dynamic reconfiguration, and the like. If my memory serves me well, functions
+such as system crashing, scheduler preemption, and processor startup switched
+back and forth between software-generated interrupts and connects throughout
+the '70s.
 \end {quote}
 
-The simulator currently abstracts away the SCUs.
+According to AL39, a DPS 8M supports only 2 SCUs.
+
+The code base currently abstracts away the SCUs, but they are being implemented.
+
 
 \begin{itemize}
 
 \item The clock is implemented as a seperate SIMH device.
 
-\item The CPU connects directly to the IOMs.
+\item The CPU connects directly to the IOMs. Being fixed.
 
 \item Memory is implemented a a single, device independent model.
 
