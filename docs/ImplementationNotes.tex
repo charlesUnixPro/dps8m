@@ -1,4 +1,5 @@
 \documentclass[notitlepage]{report}
+\usepackage {listings}
 
 \begin{document}
 \title{Implementation Notes}
@@ -274,6 +275,90 @@ The device seems good to go; it is a very abstract model, with no hardware model
 Existing code base is skeletal.
 
 \section {CPU}
+
+AL39 "Interrupt Sampling"
+
+"The processor always fetches intructions in pairs. At an appropriate point
+(as early as possible) in the execution of a pair of instructions, the
+next sequential instruction pair is fetched and held is a special 
+instruction buffer register. The exact point depends on instruction
+sequence and other conditions.
+
+"If the interrupt inhibit bit (bit 28) is not set in the current instruction
+word at the point of next sequential instruction pair virtual address 
+formation, te processor samples the group 7 faults [Shutdown, Timer Runout,
+Connect]. If any of the group 7 faults is found an internal flag is set
+reflecting the presence of a fault. The processor next samples the interrupt
+present lines from all eight memory interface posts and loads a register
+with bits corresponding to the states of the lines. If any bit in the
+register is set ON an internal flag is set to reflect te presence of the
+bit(s) in the register.
+
+"If the instruction pair virtual address being formed is the result of a
+transfer of control condition or if the current instruction is Execute (xec), * Execute Double (xed), Repeat (rpt), Repeat Double (rpd), or Repeat Link
+(rpl), the group 7 faults and interrupt present lines are not sampled.
+
+"At an appropriate point in the execution of the current instruction pair,
+the process fetches he next instruction pair. At this point, it first tests
+the internal flags for group 7 faults and interupts. If either flag is set
+it does not fetch the next instruction pair.
+
+"At the completion of the current instruction pair the proessor once again
+checks the internal flags. If neither flag is set execution of the next
+instruction pair proceeds. If the internal flag for group 7 faults is set,
+the processor enters a FAULT cycle for the highest priority group 7
+fault present. If the internal flag for interrupts s set, the processor
+enters an INTERRUPT CYCLE."
+
+\begin {lstlisting}
+ bool prefetch_valid = false
+ bool out_of_seq = false // set after transfer, execute or repeat
+
+ forever {
+
+     if !prefetch_valid {
+         inst_pair_buffer = fetch_pair ()
+     }
+
+     inst_pair = inst_pair_buffer
+     prefetch_valid = false
+
+     for inst# = 0, 1 {
+
+         // Bug; doesn't handle odd IC on entry
+
+         decode_inst (inst_pair [inst#]   
+
+         if inst# == 0 {
+            if !inhibit && !out_of_seq {
+                g7_flag = sample_g7_faults ()
+                int_flag = sample_interrupts ()
+            } else {
+                g7_flag = false
+                int_flag = false
+            }
+            if !g7_flag && ! int_flag {
+                inst_pair_buffer = fetch_pair ()
+                prefetch_valid = true
+            }
+         }
+
+         execute_decoded_inst ()
+         if was_transfer
+           break       // don't execute second half after a transfer
+     }
+
+     if g7_flag
+         enter_fault_cycle ()
+     if int_flag
+         enter_interrupt_cycle ()
+ }
+\end{lstlisting}
+
+This is not quite right yet; better integration with the out\_of\_seq
+conditions is needed. Perhaps the prefetch test also need an address
+check, ie. is the address that was fetched what the processor was
+expecting (equal to the Ir).
 
 \section {CLK}
 
