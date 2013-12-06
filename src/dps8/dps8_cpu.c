@@ -873,10 +873,16 @@ jmpRetry:;
                 {
                     case CONT_TRA:
 jmpTra:                 continue;   // don't bump rIC, instruction already did it
+                    case CONT_FAULT:
+                    {
+                        // XXX Instruction faulted.
+                    }
+                    break;
                 }
             }
         }
         
+        // XXX Remove this when we actually can wait for an interrupt
         if (ci->opcode == 0616) { // DIS
             reason = STOP_DIS;
             break;

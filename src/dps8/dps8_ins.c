@@ -321,12 +321,12 @@ t_stat executeInstruction(DCDstruct *ci)
         //if (processorAddressingMode == ABSOLUTE_MODE)
         if (get_addr_mode() == ABSOLUTE_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         //if (processorAddressingMode == APPEND_MODE)
         if (get_addr_mode() == APPEND_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "%05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
     }
     
@@ -3567,6 +3567,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 012:   ///< puls1
             {
+            // just generate a register dump
             printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(rIR));
             printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
             printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
