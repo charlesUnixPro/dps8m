@@ -524,7 +524,6 @@ SCU is called the bootload SCU.
 
 // ============================================================================
 
- //#include "hw6180.h"
 #include "dps8.h"
 #include <sys/time.h>
 
@@ -610,7 +609,7 @@ DEVICE scu_dev = {
 
 #define N_SCU_PORTS 8
 #define N_ASSIGNMENTS 2
-
+#define N_CELL_INTERRUPTS 32  // Number of interrupts in an interrupt cell register
 enum { MODE_MANUAL = 0, MODE_PROGRAM = 1 };
 
 // Hardware configuration switches
@@ -653,7 +652,7 @@ typedef struct {
     struct {
         flag_t avail; // Not physical. Does mask really exist?
         // Part 1 -- the execute interrupt mask register
-        uint32 exec_intr_mask; // 32 bits, one for each intr or "cell"
+        uint32 exec_intr_mask; // 32 (N_CELL_INTERRUPTS) bits, one for each intr or "cell"
         // Part 2 -- the interrupt mask assignment register -- 9 bits total
         struct {
             unsigned int raw; // 9 bits; raw mask; decoded below
@@ -859,7 +858,7 @@ static int scu_set_mask(t_uint64 addr, int port)
     scu[ASSUME0].interrupts[port_pima].exec_intr_mask = 0;
     scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= (getbits36(reg_A, 0, 16) << 16);
     scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= getbits36(reg_Q, 0, 16);
-    //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, port_pima + 'A', bin2text(scu[ASSUME0].interrupts[port_pima].exec_intr_mask, 32));
+    //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, port_pima + 'A', bin2text(scu[ASSUME0].interrupts[port_pima].exec_intr_mask, N_CELL_INTERRUPTS));
     return 0;
 }
 #endif
@@ -986,7 +985,7 @@ static int scu_get_config_switches(t_uint64 addr)
         int pima = 0;
         int port = i + pima * 4;
         int enabled = scu[ASSUME0].ports[port].is_enabled;
-        reg_A = setbits36(reg_A, 32+i, 1, enabled); // enable masks for ports 0-3
+        reg_A = setbits36(reg_A, N_CELL_INTERRUPTS+i, 1, enabled); // enable masks for ports 0-3
         if (enabled)
           {
             sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is enabled, it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
@@ -1404,7 +1403,13 @@ static int pima_parse_raw(int pima, const char *moi)
 
 // The SC (set execute cells) SCU command.
 
-int scu_set_interrupt(uint inum)
+// From AN70:
+//  It then generates a word with
+// the <interrupt number>th bit set and sends this to the bootload
+// SCU with the SC (set execute cells) SCU command. 
+//
+
+int scu_set_interrupt(uint scu_unit_num, uint inum)
 {
     const char* moi = "SCU::interrupt";
     
@@ -1414,33 +1419,33 @@ int scu_set_interrupt(uint inum)
         return 1;
     }
     
-    for (int pima = 0; pima < ARRAY_SIZE(scu[ASSUME0].interrupts); ++pima) {
-        if (! scu[ASSUME0].interrupts[pima].avail) {
+    for (int pima = 0; pima < N_CELL_INTERRUPTS; ++pima) {
+        if (! scu[scu_unit_num].interrupts[pima].avail) {
             sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: Mask is not available.\n",
                     moi, pima + 'A');
             continue;
         }
-        if (scu[ASSUME0].interrupts[pima].mask_assign.unassigned) {
+        if (scu[scu_unit_num].interrupts[pima].mask_assign.unassigned) {
             sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: Mask is not assigned.\n",
                     moi, pima + 'A');
             continue;
         }
-        uint mask = scu[ASSUME0].interrupts[pima].exec_intr_mask;
-        int port = scu[ASSUME0].interrupts[pima].mask_assign.port;
+        uint mask = scu[scu_unit_num].interrupts[pima].exec_intr_mask;
+        int port = scu[scu_unit_num].interrupts[pima].mask_assign.port;
         if ((mask & (1<<inum)) == 0) {
             sim_debug (DBG_INFO, &scu_dev, "%s: PIMA %c: Port %d is masked against interrupts.\n",
                     moi, 'A' + pima, port);
-            sim_debug (DBG_DEBUG, &scu_dev, "%s: Mask: %s\n", moi, bin2text(mask, 32));
+            sim_debug (DBG_DEBUG, &scu_dev, "%s: Mask: %s\n", moi, bin2text(mask, N_CELL_INTERRUPTS));
         } else {
-            if (scu[ASSUME0].ports[port].type != ADEV_CPU)
+            if (scu[scu_unit_num].ports[port].type != ADEV_CPU)
                 sim_debug (DBG_WARN, &scu_dev, "%s: PIMA %c: Port %d should receive interrupt %d, but the device is not a cpu.\n",
                         moi, 'A' + pima, port, inum);
             else {
                 //extern events_t events; // BUG: put in hdr file or hide behind an access function
                 sim_debug (DBG_NOTIFY, &scu_dev, "%s: PIMA %c: Port %d (which is connected to port %d of CPU %d will receive interrupt %d.\n",
                         moi,
-                       'A' + pima, port, scu[ASSUME0].ports[port].dev_port,
-                        scu[ASSUME0].ports[port].idnum, inum);
+                       'A' + pima, port, scu[scu_unit_num].ports[port].dev_port,
+                        scu[scu_unit_num].ports[port].idnum, inum);
 // This the equivalent of the XIP interrupt line to the CPU
 // XXX it really should be done with cpu_svc();
                 events.any = 1;

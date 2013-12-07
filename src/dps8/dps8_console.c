@@ -10,9 +10,6 @@
 
 #include "dps8.h"
 
-// XXX This used were we assume that only one unit exists
-#define ASSUME0 0
-
 /*
  console.c -- operator's console
  
@@ -48,7 +45,10 @@ static DEBTAB opcon_dt [] =
   };
 
 
+// Multics only supports a single opcon
 #define N_OPCON_UNITS 1
+#define OPCON_UNIT_NUM 0
+
 UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0) }};
 
 DEVICE opcon_dev = {
@@ -109,8 +109,7 @@ static struct
   {
     int iom_unit_num;
     int chan_num;
-    int line_num;
-  } cables_from_ioms [N_OPCON_UNITS] [N_LINES];
+  } cables_from_ioms [N_OPCON_UNITS];
 
 static void check_keyboard(int chan);
 
@@ -119,27 +118,12 @@ static void check_keyboard(int chan);
 void console_init()
 {
     for (int i = 0; i < N_OPCON_UNITS; i ++)
-      for (int l = 0; l < N_LINES; l ++)
-      cables_from_ioms [i] [l] . iom_unit_num = -1;
+      cables_from_ioms [i] . iom_unit_num = -1;
 }
 
-t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan_num)
+t_stat cable_opcon (int iom_unit_num, int chan_num)
   {
-    if (opcon_unit_num < 0 || opcon_unit_num >= opcon_dev . numunits)
-      {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
-        sim_printf ("cable_opcon: opcon_unit_num out of range <%d>\n", opcon_unit_num);
-        return SCPE_ARG;
-      }
-
-    if (line_num < 0 || line_num >= N_LINES)
-      {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: line_num out of range <%d>\n", line_num);
-        sim_printf ("cable_opcon: line_num out of range <%d>\n", line_num);
-        return SCPE_ARG;
-      }
-
-    if (cables_from_ioms [opcon_unit_num] [line_num] . iom_unit_num != -1)
+    if (cables_from_ioms [OPCON_UNIT_NUM] . iom_unit_num != -1)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: socket in use\n");
         sim_printf ("cable_opcon: socket in use\n");
@@ -147,12 +131,12 @@ t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, opcon_unit_num);
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, OPCON_UNIT_NUM);
     if (rc)
       return rc;
 
-    cables_from_ioms [opcon_unit_num] [line_num] . iom_unit_num = iom_unit_num;
-    cables_from_ioms [opcon_unit_num] [line_num] . chan_num = chan_num;
+    cables_from_ioms [OPCON_UNIT_NUM] . iom_unit_num = iom_unit_num;
+    cables_from_ioms [OPCON_UNIT_NUM] . chan_num = chan_num;
 
     return SCPE_OK;
   }
@@ -185,8 +169,8 @@ static DEVICE* find_opcon (void)
         devinfop = malloc(sizeof(*devinfop));
         if (devinfop == NULL)
             return NULL;
-        devinfop->iom_unit_num = ASSUME0;
-        devinfop->chan = -1; // XXX Magic value marks this devinfo as the OPCON
+        devinfop->iom_unit_num = cables_from_ioms [OPCON_UNIT_NUM] . iom_unit_num;
+        devinfop->chan = cables_from_ioms [OPCON_UNIT_NUM] . chan_num;
         devinfop->statep = NULL;
         devp->ctxt = devinfop;
     }
@@ -269,7 +253,7 @@ static int con_check_args(const char* moi, int chan, int dev_code, int* majorp, 
         return 1;
     }
     
-    *devpp = get_iom_channel_dev (ASSUME0, chan, ASSUME0, NULL);
+    *devpp = get_iom_channel_dev (cables_from_ioms [OPCON_UNIT_NUM] . iom_unit_num, chan, 0, NULL);
     DEVICE *devp = *devpp;
     if (devpp == NULL) {
         *majorp = 05;
@@ -557,7 +541,7 @@ static void check_keyboard(int chan)
         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: Bad channel\n");
         return;
     }
-    DEVICE* devp = get_iom_channel_dev (ASSUME0, chan, ASSUME0, NULL);
+    DEVICE* devp = get_iom_channel_dev (cables_from_ioms [OPCON_UNIT_NUM] . iom_unit_num, chan, 0, NULL);
     if (devp == NULL) {
         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device\n");
         return;

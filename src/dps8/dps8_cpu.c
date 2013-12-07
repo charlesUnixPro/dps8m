@@ -73,7 +73,7 @@ const char *sim_stop_messages[] = {
  *
  * From AM81-04 Multics System Maintainance Procedures
  *
- * "A level 68 IOM system may containa maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memort
+ * "A level 68 IOM system may containa maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
  * [CAC: but AN87 says multics only supports two IOMs
  * 
  * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
@@ -416,7 +416,9 @@ t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
 {
     // The boot button on the cpu is conneted to the boot button on the IOM
     // XXX is this true? Which IOM is it connected to?
-    return iom_boot (ASSUME0, & iom_dev);
+    //return iom_boot (ASSUME0, & iom_dev);
+    sim_printf ("Try 'BOOT IOMn'\n");
+    return SCPE_ARG;
 }
 
 t_stat cpu_reset (DEVICE *dptr)

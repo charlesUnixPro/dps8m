@@ -418,4 +418,14 @@ cable tape,1,1,012,0
 cable opcon,0,0,0,036 
 \end{verbatim}
 
+
+\part {Porting issues}
+
+\para {32 bit support}
+
+The DPS8 is a 36 bit computer, with a double word of 72 bits. In order to 
+manipulate these numbers in the assembler and the emulator, int128\_t 
+types must be supported by the compiler, or a complex and cumbersome 128 
+emulation library is needed.
+
 \end{document}

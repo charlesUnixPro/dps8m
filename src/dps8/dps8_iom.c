@@ -830,18 +830,26 @@ static void init_memory_iom (uint unit_num)
 
     // 9
 
-    // "SCU port" # (deduced as meaning "to which bootload IOM is attached")
-    // int port = unit_data [unit_num] . config_sw_bootload_port; // 3 bits;
+    // "SCU port" 
+    int port = unit_data [unit_num] . config_sw_bootload_port; // 3 bits;
     
-    // Why does bootload_tape_label.am claim that a port number belongs in 
+    // Why does bootload_tape_label.alm claim that a port number belongs in 
     // the low bits of the 2nd word of the PCW?  The lower 27 bits of the 
     // odd word of a PCW should be all zero.
 
+    // [CAC] Later, bootload_tape_label.alm does:
+    //
+    //     cioc    bootload_info+1 " port # stuck in PCW
+    //     lda     0,x5            " check for status
+    //
+    // So this is a bootloader kludge to pass the bootload SCU number
+    //
+
     // 2nd word of PCW pair
 
-    Mem [1] = ((t_uint64) (bootchan) << 27) /*| port*/;
+    Mem [1] = ((t_uint64) (bootchan) << 27) | port;
     sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
-      1, ((t_uint64) (bootchan) << 27) /*| port */);
+      1, ((t_uint64) (bootchan) << 27) | port);
     
 
     // 10
@@ -1414,6 +1422,7 @@ static int activate_chan (int iom_unit_num, int chan, int dev_code, pcw_t* pcwp)
                 devinfop -> statep = NULL;
                 chanp -> devinfop = devinfop;
               }
+#if 0 // [CAC] the cable command does this
             else
               // XXX What is this?
               if (chanp -> devinfop -> chan == -1)
@@ -1421,6 +1430,7 @@ static int activate_chan (int iom_unit_num, int chan, int dev_code, pcw_t* pcwp)
                   chanp -> devinfop -> chan = chan;
                   sim_debug (DBG_NOTIFY, & iom_dev, "activate_chan: OPCON found on channel %#o\n", chan);
                 }
+#endif
             devinfop = chanp -> devinfop;
             devp -> ctxt = devinfop;
           }
@@ -3042,7 +3052,8 @@ static int send_general_interrupt(int iom_unit_num, int chan, int pic)
     (void) store_abs_word(imw_addr, imw);
     
 // XXX this should call scu_svc
-    return scu_set_interrupt(interrupt_num);
+    uint bl_scu = unit_data [iom_unit_num] . config_sw_bootload_port;
+    return scu_set_interrupt (bl_scu, interrupt_num);
 }
 
 // ============================================================================

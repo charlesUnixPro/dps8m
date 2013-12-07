@@ -2804,7 +2804,7 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
 int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
 void console_init(void);
-t_stat cable_opcon (int opcon_unit_num, int line_num, int iom_unit_num, int chan_num);
+t_stat cable_opcon (int iom_unit_num, int chan_num);
 extern DEVICE opcon_dev;
 extern UNIT opcon_unit [];
 
@@ -2906,7 +2906,7 @@ int get_mt_numunits (void);
 
 extern DEVICE scu_dev;
 extern UNIT scu_unit [];
-int scu_set_interrupt(uint inum);
+int scu_set_interrupt(uint scu_unit_num, uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);

@@ -96,7 +96,7 @@ static int getval (char * * save, char * text)
 
 // Connect dev to iom
 //
-//   cable [TAPE | OPCON | DISK],<dev_unit_num>,<iom_unit_num>,<chan_num>,<dev_code>
+//   cable [TAPE | DISK],<dev_unit_num>,<iom_unit_num>,<chan_num>,<dev_code>
 //
 //   or iom to scu
 //
@@ -106,6 +106,9 @@ static int getval (char * * save, char * text)
 //
 //   cable SCU <scu_unit_num>,<scu_port_num>,<cpu_unit_num>,<cpu_port_num>
 //
+//   or opcon to iom
+//
+//   cable OPCON <iom_unit_num>,<chan_num>,0,0
 //
 
 static t_stat sys_cable (int32 arg, char * buf)
@@ -154,7 +157,7 @@ static t_stat sys_cable (int32 arg, char * buf)
 //      }
     else if (strcasecmp (name, "OPCON") == 0)
       {
-        rc = cable_opcon (n1, n2, n3, n4);
+        rc = cable_opcon (n1, n2);
       }
     else if (strcasecmp (name, "IOM") == 0)
       {
