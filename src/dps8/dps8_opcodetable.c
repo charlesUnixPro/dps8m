@@ -70,7 +70,7 @@ struct opCode NonEISopcodes[01000] = {
     {"aos", READ_OPERAND | STORE_OPERAND, NO_DDCSS, 0},
     {"asa", READ_OPERAND | STORE_OPERAND, NO_DDCSS, 0},
     {"asq", READ_OPERAND | STORE_OPERAND, NO_DDCSS, 0},
-    {"sscr", PRIV_INS, NO_DDCSS, 0},
+    {"sscr", PREPARE_CA | PRIV_INS, NO_DDCSS, 0},
     {"adx0", READ_OPERAND, NO_CSS, 0},
     {"adx1", READ_OPERAND, NO_CSS, 0},
     {"adx2", READ_OPERAND, NO_CSS, 0},

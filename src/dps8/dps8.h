@@ -1801,6 +1801,10 @@ enum { seg_bits = 15}; // number of bits in a segment number
 enum { n_segments = 1 << seg_bits}; // why does c89 treat enums as more constant than consts?
 
 
+// simh only explicitly supports a single cpu
+#define N_CPU_UNITS 1
+#define CPU_UNIT_NUM 0
+
 // Devices connected to a SCU
 enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
 
@@ -2910,6 +2914,7 @@ int scu_set_interrupt(uint scu_unit_num, uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);
+t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
 
 /* dps8_sys.c */
 

@@ -1,5 +1,5 @@
 //
-//  dps8_scu.c
+//  dps8_scu.c  4MW SCU Emulator
 //  dps8
 //
 //  Created by Harry Reed on 6/15/13.
@@ -11,27 +11,28 @@
 #define ASSUME0 0
 
 /*
- scu.c -- System Controller
- 
- See AN70, section 8 and GB61.
- 
- There were a few variations of SCs and SCUs:
- SCU -- Series 60 Level66 Controller
- SC -- Level 68 System Controller
- 4MW SCU -- A later version of the L68 SC
- 
- SCUs control access to memory.
- Each SCU owns a certain range of absolute memory.
- This emulator allows the CPU to access memory directly however.
- SCUs contain clocks.
- SCUS also contain facilites which allow CPUS and IOMs to communicate.
- CPUs or IOMS request access to memory via the SCU.
- CPUs use the cioc instr to talk to IOMs and other CPUs via a SCU.
- IOMs use interrupts to ask a SCU to signal a CPU.
- Other Interesting instructions:
- read system controller reg and set system controller reg (rscr & sscr)
- 
+ * scu.c -- System Controller
+ *
+ * See AN70, section 8 and GB61.
+ *
+ * There were a few variations of SCs and SCUs:
+ * SCU -- Series 60 Level66 Controller
+ * SC -- Level 68 System Controller
+ * 4MW SCU -- A later version of the L68 SC
+ *
+ * SCUs control access to memory.
+ * Each SCU owns a certain range of absolute memory.
+ * This emulator allows the CPU to access memory directly however.
+ * SCUs contain clocks.
+ * SCUS also contain facilites which allow CPUS and IOMs to communicate.
+ * CPUs or IOMS request access to memory via the SCU.
+ * CPUs use the cioc instr to talk to IOMs and other CPUs via a SCU.
+ * IOMs use interrupts to ask a SCU to signal a CPU.
+ * Other Interesting instructions:
+ * read system controller reg and set system controller reg (rscr & sscr)
+ *  
  */
+
 /*
  Copyright (c) 2007-2013 Michael Mondy
  
@@ -43,306 +44,299 @@
 
 
 /*
- Physical Details & Interconnection -- AN70, section 8.
- 
- SCUs have 8 ports.
+ * Physical Details & Interconnection -- AN70, section 8.
+ * 
+ * SCUs have 8 ports.
  * Active modules (CPUs and IOMs) have up to four of their ports
- connected to SCU ports.
+ * connected to SCU ports.
+ *
  * The 4MW SCU has eight on/off switches to enable or disable
- the ports.  However, the associated registers allow for
- values of enabled, disabled, and program control.
- 
- SCUs have stores (memory banks).
- 
- SCUs have four sets of registers controlling interrupts.  Only two
- of these sets, designated "A" and "B" are used.  Each set has:
+ * the ports.  However, the associated registers allow for
+ * values of enabled, disabled, and program control.
+ *
+ * SCUs have stores (memory banks).
+ *
+ * SCUs have four sets of registers controlling interrupts.  Only two
+ * of these sets, designated "A" and "B" are used.  Each set has:
  * Execute interrupt mask register -- 32 bits; enables/disables
- the corresponding execute interrupt cell
+ * the corresponding execute interrupt cell
  * Interrupt mask assignment register -- 9 bits total
- two parts: assigned bit, set of assigned ports (8 bits)
- In Multics, only one CPU will be assigned in either mask
- and no CPU appears in both.   Earlier hardware versions had
- four 10-position rotary switches.  Later hardware versions had
- two 9-position (0..7 and off) rotary switches.
- 
- Config panel -- level 68 6000 SCU
- -- from AM81
- store A and store B
- 3 position rotary switch: on line, maint, off line
- size: 32k, 64k, 128k, 256k
- exec interrupt mask assignment
- four 10-position rotary switches (a through d): off, 0, .. 7, M
- One switch for each program interrupt register
- Assign mask registers to system ports
- Normally assign one mask reg to each CPU
-
-   AM81:
-     "        The EXECUE INTERRUPT MASK ASSIGNENT (EIMA) rotary switches
-      determine where interrupts sent to memory are directed.  The four EIMA rotary
-      switches, one for each program interrupt register, are used to assign mask registers to
-      system ports. The normal settings assign one mask register to eah CPU configured.
-      Each switch assigns mask registers as follows:
-
-          Position
-            OFF     Unassigned
-              0     Assigned to port 0
-                ...
-              7     Assigned to port 7
-              M     Assigned to maintainance panel
-
-            Assignment of a mask register to a system port designates the port as a control
-      port, and that port receives interrupt present signals. Up to four system ports can
-      be designated as control ports. The normal settings assign one mask register to each CPY
-      configured."
-
-
-   
- Config panel -- Level 68 System Controller UNIT (4MW SCU)
- -- from AM81
- Store A, A1, B, B1 (online/offline)
- LWR Store Size
- PORT ENABLE
- Eight on/off switches
- Should be on for each port connected to a configured CPU
- mask/port assignment
- Two rotary switchs (A & B); set to (off, 0..7)
- See EXEC INTERRUPT on the 6000 SCU
- When booting, one should be set to the port connected to
- the bootload CPU.   The other should be off.
- 
- If memory port B of CPU C goes to SCU D, then memory port B of all
- other CPUs *and* IOMs must go to SCU D. -- AN70, 8-4.
- 
- The base address of the SCU is the actual memory size * the port
- assignment. -- AN70, 8-6.
-
-  43a239854 6000B Eng. Prod. Spec, 3.2.7 Interrupt Multiplex Word:
-    "The IOM has the ability to set any of the 32 program interrupt
-     cells located in the system controller containing the base address
-     of the IOM. It should be noted that for any given IOM identity
-     switch setting, the IOM can set only 8 of these program interrupt
-     cells."
-
-    [CAC] XXX I don't understand "in the SC containing the base address
-    of the IOM".
-
+ * two parts: assigned bit, set of assigned ports (8 bits)
+ * In Multics, only one CPU will be assigned in either mask
+ * and no CPU appears in both.   Earlier hardware versions had
+ * four 10-position rotary switches.  Later hardware versions had
+ * two 9-position (0..7 and off) rotary switches.
+ *  
+ * Config panel -- level 68 6000 SCU
+ * -- from AM81
+ * store A and store B
+ * 3 position rotary switch: on line, maint, off line
+ * size: 32k, 64k, 128k, 256k
+ * exec interrupt mask assignment
+ * four 10-position rotary switches (a through d): off, 0, .. 7, M
+ * One switch for each program interrupt register
+ * Assign mask registers to system ports
+ * Normally assign one mask reg to each CPU
+ * 
+ *   AM81:
+ *     "        The EXECUE INTERRUPT MASK ASSIGNENT (EIMA) rotary switches
+ *      determine where interrupts sent to memory are directed.  The four EIMA rotary
+ *      switches, one for each program interrupt register, are used to assign mask registers to
+ *      system ports. The normal settings assign one mask register to eah CPU configured.
+ *      Each switch assigns mask registers as follows:
+ *
+ *          Position
+ *            OFF     Unassigned
+ *              0     Assigned to port 0
+ *                ...
+ *              7     Assigned to port 7
+ *              M     Assigned to maintainance panel
+ *
+ *            Assignment of a mask register to a system port designates the port as a control
+ *      port, and that port receives interrupt present signals. Up to four system ports can
+ *      be designated as control ports. The normal settings assign one mask register to each CPY
+ *      configured."
+ *
+ *
+ *   
+ * Config panel -- Level 68 System Controller UNIT (4MW SCU)
+ * -- from AM81
+ * Store A, A1, B, B1 (online/offline)
+ * LWR Store Size
+ * PORT ENABLE
+ * Eight on/off switches
+ * Should be on for each port connected to a configured CPU
+ * mask/port assignment
+ * Two rotary switchs (A & B); set to (off, 0..7)
+ * See EXEC INTERRUPT on the 6000 SCU
+ * When booting, one should be set to the port connected to
+ * the bootload CPU.   The other should be off.
+ * 
+ * If memory port B of CPU C goes to SCU D, then memory port B of all
+ * other CPUs *and* IOMs must go to SCU D. -- AN70, 8-4.
+ * 
+ * The base address of the SCU is the actual memory size * the port
+ * assignment. -- AN70, 8-6.
+ *
+ *  43a239854 6000B Eng. Prod. Spec, 3.2.7 Interrupt Multiplex Word:
+ *    "The IOM has the ability to set any of the 32 program interrupt
+ *     cells located in the system controller containing the base address
+ *     of the IOM. It should be noted that for any given IOM identity
+ *     switch setting, the IOM can set only 8 of these program interrupt
+ *     cells."
+ *
+ *    [CAC] XXX I don't understand "in the SC containing the base address
+ *    of the IOM".
+ *
  */
 
 
 /*
- The following comment is probably wrong:
- The term SCU is used throughout this code to match AL39, but the
- device emulated is closer to a Level 68 System Controller (SC) than
- to a Series 60 Level 66 Controller (SC).  The emulated device may
- be closer to a Level 68 4MW SCU than to an Level 68 6000 SCU.
- 
- BUG/TODO: The above is probably wrong; we explicitly report an
- ID code for SCU via rscr 000001x.  It wouldn't hurt to review
- all the code to make sure we never act like a SC instead of an
- SCU.
+ * The following comment is probably wrong:
+ * The term SCU is used throughout this code to match AL39, but the
+ * device emulated is closer to a Level 68 System Controller (SC) than
+ * to a Series 60 Level 66 Controller (SC).  The emulated device may
+ * be closer to a Level 68 4MW SCU than to an Level 68 6000 SCU.
+ * 
+ * BUG/TODO: The above is probably wrong; we explicitly report an
+ * ID code for SCU via rscr 000001x.  It wouldn't hurt to review
+ * all the code to make sure we never act like a SC instead of an
+ * SCU.
  */
 
 
 /*
- === Initialization and Booting -- Part 1 -- Operator's view
- 
- Booting Instructions (GB61)
- First boot the BCE OS (Bootload command Environment).  See below.
- A config deck is used
- Bootload SCU is the one with a base addr of zero.
- BCE is on a BCE/Multics System tape
- Booted from tape into the system via bootload console
+ * === Initialization and Booting -- Part 1 -- Operator's view
+ * 
+ * Booting Instructions (GB61)
+ * First boot the BCE OS (Bootload command Environment).  See below.
+ * A config deck is used
+ * Bootload SCU is the one with a base addr of zero.
+ * BCE is on a BCE/Multics System tape
+ * Booted from tape into the system via bootload console
  
  */
 
 /*
- 58009906 (DPS8)
- When CPU needs to address the SCU (for a write/read data cycle,
- for example), the ETMCM board int the CU of the CPU issues a $INT
- to the SCU.  This signal is sent ... to the SCAMX active port
- control board in the SCU
+ * 58009906 (DPS8)
+ * When CPU needs to address the SCU (for a write/read data cycle,
+ * for example), the ETMCM board int the CU of the CPU issues a $INT
+ * to the SCU.  This signal is sent ... to the SCAMX active port
+ * control board in the SCU
  */
 
-/*
- // How?  If one of the 32 interrupt cells is set in one of the SCs,
- // our processor will have the interrupt present (XIP) line active.
- // Perhaps faults are flagged in the same way via the SXC system
- // controller command.
- */
-
-// =============================================================================
-#if 0
-TEMPORARY
-Each SCU owns a certain range of absolute memory.
-CPUs use the cioc instr to talk to IOMs and other CPUs via a SCU.
-IOMs use interrupts to ask a SCU to signal a CPU.
-read system controller reg and set system controller reg (rscr & sscr)
-Bootload SCU is the one with a base addr of zero.
-58009906
-When CPU needs to address the SCU (for a write/read data cycle,
-                                   for example), the ETMCM board int the CU of the CPU issues a $INT
-to the SCU.  This signal is sent ... to the SCAMX active port
-control board in the
------------------------
 // How?  If one of the 32 interrupt cells is set in one of the SCs,
 // our processor will have the interrupt present (XIP) line active.
 // Perhaps faults are flagged in the same way via the SXC system
 // controller command.
-#endif
+
+// TEMPORARY
+// Each SCU owns a certain range of absolute memory.
+// CPUs use the cioc instr to talk to IOMs and other CPUs via a SCU.
+// IOMs use interrupts to ask a SCU to signal a CPU.
+// read system controller reg and set system controller reg (rscr & sscr)
+// Bootload SCU is the one with a base addr of zero.
+// 58009906
+// When CPU needs to address the SCU (for a write/read data cycle,
+// for example), the ETMCM board int the CU of the CPU issues a $INT
+// to the SCU.  This signal is sent ... to the SCAMX active port
+// control board in the
+// -----------------------
+// How?  If one of the 32 interrupt cells is set in one of the SCs,
+// our processor will have the interrupt present (XIP) line active.
+// Perhaps faults are flagged in the same way via the SXC system
+// controller command.
 
 /*
- *** More (new) notes ***
- 
- instr rmcm -- read mem controller mask register
- ... for the selected controller, if the processor has a mask register
- assigned ..
- instr smcm -- set  mem controller mask register
- ... for the selected controller, if the processor has a mask register
- assigned, set it to C(AQ)
- instr smic
- turn on interrupt cells (any of 0..31)
- instr cioc -- connect i/o channel, pg 173
- SC addressed by Y sends a connect signal to the port specified
- by C(Y)33,35
- instr rscr & sscr -- Read/Store System Controller Register, pg 170
- 
- 32 interrupt cells ... XIP
- mask info
- 8 mask registers
- 58009906
- =============
- 
- AM81
- Every active device (CPU, IOM) must be able to access all SCUs
- Every SCU must have the same active device on the same SCU, so
- all SCUs must have the same PORT ENABLE settings
- Every active device must have the same SCU on the same port,
- so all active devices will have the same config panel settings.
- Ports must correspond -- port A on every CPU and IOM must either
- be connected tothe same SCU or not connected to any SCU.
- IOMs should be on lower-numbered SCU ports than CPUs.
- Multics can have 16MW words of memory.
- CPUs have 8 ports, a..h.
- SCUs have 8 ports, 0..7.
- 
- 
-Level 68 6000 SCU Configuration Panel
-   system control and monitor (cont&mon/mon/ofF)
-   system boot control (on/off)
-   alarm (disable/normal)
-   maintainance panel mode (test/normal)
-   store a
-      mode (offline/maint/online)
-      size (32k, 64k, 128k, 256k)
-   store b
-      mode (offline/maint/online)
-      size (32k, 64k, 128k, 256k)
-   execute interrupt mask assigment
-      (A through D; off/0/1/2/3/4/5/6/7/m)
-   [CAC] I interperet this as CPU [A..D] is connected to my port [0..7]
-   address control
-      lower store (a/b)
-      offset (off, 16k, 32k, 64k)
-      interlace (on/off)
-   cycle port priority (on/off)
-   port control (8 toogles) (enabled/prog cont/disable)
-
- The EXECUTE INTERRUPT MASK ASSIGNMENT (EIMA) rotary switches
- determine where interrupts sent to memory are directed. The four EIMA rotary
- switches, one for each program interrupt register, are used to assign mask registers to
-  system ports. The normal settings assign one mask register to each CPU configured.
- 
-  Assignment of a mask register to a system port designates the port as a control 
-  port, and that port receives interrupt present signals. Up to four system ports can be
-  designated as control ports. The normal settings assign one mask register to each cpu configured.
-
-
-
-Configuration rules for Multics:
-
-   1. Each CPU in the system must be connected to each SCU in the system
-
-   2. Each IOM in the system must be connected to eacm SCU in the system
-
-   3. Each SCU in the system must be connected to every CPU and IOM in the system.
-
-   4. Corresponding ports on all CPUs and IOMs must be connected to the same
-      SCU. For example, port A on every CPU and IOM must be connected to the
-      same SCU or not connected to any SCU.
-
-   5. Corresponding ports on all SCUs must be connected to the same active device
-      (CPU or IOM). For example, if port 0 on any SCU is connected to IOM A,
-      then port 0 on all SCUs must be connected to IOM A.
-
-   6. IOMs should be connected to lower-number SCU ports the CPUs.
-
-   These rules are illustrated in Figure 3-5, where the port numbers for a small Multics
-   system of 2 CPUS, 3 SCUs and 2 IOMs have deen indicated
-
-       
-
-
-                    -----------------                      -----------------
-                    |               |                      |               |
-                    |     CPU A     |                      |     CPU B     |
-                    |               |                      |               |
-                    -----------------                      -----------------
-                    | A | B | C | D |                      | A | B | C | D |
-                    -----------------                      -----------------
-                      |   |   |                              |   |   |
-                      |   |   |                              |   |   -----------------
-                      |   |   |                              |   |                   |
-                      |   |   -------------------------------)---)----------------   |
-                      |   |                                  |   |               |   |
-   --------------------   -----------------                  |   |               |   |
-   |                                      |                  |   |               |   |
-   |   -----------------------------------)-------------------   |               |   |
-   |   |                                  |                      |               |   |
-   |   |                                  |   --------------------               |   |
-   |   |                                  |   |                                  |   |
- -----------------                      -----------------                      -----------------
- | 7 | 6 | 5 | 4 |                      | 7 | 6 | 5 | 4 |                      | 7 | 6 | 5 | 4 |
- -----------------                      -----------------                      -----------------
- |               |                      |               |                      |               |
- |     SCU C     |                      |     SCU B     |                      |     SCU A     |
- |               |                      |               |                      |               |
- -----------------                      -----------------                      -----------------
- | 3 | 2 | 1 | 0 |                      | 3 | 2 | 1 | 0 |                      | 3 | 2 | 1 | 0 |
- -----------------                      -----------------                      -----------------
-           |   |                                  |   |                                  |   |
-           |   |                                  |   -----------                        |   |
-           |   |                                  |             |                        |   |
-           |   -----------------------------------)---------    |                        |   |
-           |                                      |        |    |                        |   |
-           ----------    --------------------------        |    |                        |   |
-                    |    |                                 |    |                        |   |
-                    |    |   ------------------------------)----)-------------------------   |
-                    |    |   |                             |    |                            |
-                    |    |   |                             |    |  ---------------------------
-                    |    |   |                             |    |  |
-                   -----------------                      -----------------
-                   | A | B | C | D |                      | A | B | C | D |
-                   -----------------                      -----------------
-                   |               |                      |               |
-                   |     IOM A     |                      |     IOM B     |
-                   |               |                      |               |
-                   -----------------                      -----------------
-
- 
-Abstracted from the addressing rules... Interesting.. A Multics system can support up to 16 MW of
-memory. The memory is divided across the SCUs. One and only one SCU can have a base addres of 0. This
-SCU is called the bootload SCU.
-
-"During bootload, Multics requires a contiguous section of memory beginning at
- absolute address 0 and sufficently large to contain all routines and data
- structures used durng the first phase of Multics initialiation (i.e. collection 1).
- The size of the section required varies among Multics release, and it also
- depends on the size of the SST segment, which is dependent on the parameters
- specified by the tite on the sst config card. ... However
- 512 KW is adequate for all circumstancces. There can be no "holes" in memory
- within this region. Beyond this region, "holes" can exist in memory."
-
-
+ * *** More (new) notes ***
+ * 
+ * instr rmcm -- read mem controller mask register
+ * ... for the selected controller, if the processor has a mask register
+ * assigned ..
+ * instr smcm -- set  mem controller mask register
+ * ... for the selected controller, if the processor has a mask register
+ * assigned, set it to C(AQ)
+ * instr smic
+ * turn on interrupt cells (any of 0..31)
+ * instr cioc -- connect i/o channel, pg 173
+ * SC addressed by Y sends a connect signal to the port specified
+ * by C(Y)33,35
+ * instr rscr & sscr -- Read/Store System Controller Register, pg 170
+ * 
+ * 32 interrupt cells ... XIP
+ * mask info
+ * 8 mask registers
+ * 58009906
+ * =============
+ * 
+ * AM81
+ * Every active device (CPU, IOM) must be able to access all SCUs
+ * Every SCU must have the same active device on the same SCU, so
+ * all SCUs must have the same PORT ENABLE settings
+ * Every active device must have the same SCU on the same port,
+ * so all active devices will have the same config panel settings.
+ * Ports must correspond -- port A on every CPU and IOM must either
+ * be connected tothe same SCU or not connected to any SCU.
+ * IOMs should be on lower-numbered SCU ports than CPUs.
+ * Multics can have 16MW words of memory.
+ * CPUs have 8 ports, a..h.
+ * SCUs have 8 ports, 0..7.
+ * 
+ * 
+ * Level 68 6000 SCU Configuration Panel
+ *   system control and monitor (cont&mon/mon/ofF)
+ *   system boot control (on/off)
+ *   alarm (disable/normal)
+ *   maintainance panel mode (test/normal)
+ *   store a
+ *      mode (offline/maint/online)
+ *      size (32k, 64k, 128k, 256k)
+ *   store b
+ *      mode (offline/maint/online)
+ *      size (32k, 64k, 128k, 256k)
+ *   execute interrupt mask assigment
+ *      (A through D; off/0/1/2/3/4/5/6/7/m)
+ *   [CAC] I interperet this as CPU [A..D] is connected to my port [0..7]
+ *   address control
+ *      lower store (a/b)
+ *      offset (off, 16k, 32k, 64k)
+ *      interlace (on/off)
+ *   cycle port priority (on/off)
+ *   port control (8 toogles) (enabled/prog cont/disable)
+ *
+ * The EXECUTE INTERRUPT MASK ASSIGNMENT (EIMA) rotary switches
+ * determine where interrupts sent to memory are directed. The four EIMA rotary
+ * switches, one for each program interrupt register, are used to assign mask registers to
+ *  system ports. The normal settings assign one mask register to each CPU configured.
+ * 
+ *  Assignment of a mask register to a system port designates the port as a control 
+ *  port, and that port receives interrupt present signals. Up to four system ports can be
+ *  designated as control ports. The normal settings assign one mask register to each cpu configured.
+ *
+ *
+ *
+ * Configuration rules for Multics:
+ *
+ *   1. Each CPU in the system must be connected to each SCU in the system
+ *
+ *   2. Each IOM in the system must be connected to eacm SCU in the system
+ *
+ *   3. Each SCU in the system must be connected to every CPU and IOM in the system.
+ *
+ *   4. Corresponding ports on all CPUs and IOMs must be connected to the same
+ *      SCU. For example, port A on every CPU and IOM must be connected to the
+ *      same SCU or not connected to any SCU.
+ *
+ *   5. Corresponding ports on all SCUs must be connected to the same active device
+ *      (CPU or IOM). For example, if port 0 on any SCU is connected to IOM A,
+ *      then port 0 on all SCUs must be connected to IOM A.
+ *
+ *   6. IOMs should be connected to lower-number SCU ports the CPUs.
+ *
+ *   These rules are illustrated in Figure 3-5, where the port numbers for a small Multics
+ *   system of 2 CPUS, 3 SCUs and 2 IOMs have been indicated
+ *
+ *       
+ *
+ *
+ *                    -----------------                      -----------------
+ *                    |               |                      |               |
+ *                    |     CPU A     |                      |     CPU B     |
+ *                    |               |                      |               |
+ *                    -----------------                      -----------------
+ *                    | A | B | C | D |                      | A | B | C | D |
+ *                    -----------------                      -----------------
+ *                      |   |   |                              |   |   |
+ *                      |   |   |                              |   |   -----------------
+ *                      |   |   |                              |   |                   |
+ *                      |   |   -------------------------------)---)----------------   |
+ *                      |   |                                  |   |               |   |
+ *   --------------------   -----------------                  |   |               |   |
+ *   |                                      |                  |   |               |   |
+ *   |   -----------------------------------)-------------------   |               |   |
+ *   |   |                                  |                      |               |   |
+ *   |   |                                  |   --------------------               |   |
+ *   |   |                                  |   |                                  |   |
+ * -----------------                      -----------------                      -----------------
+ * | 7 | 6 | 5 | 4 |                      | 7 | 6 | 5 | 4 |                      | 7 | 6 | 5 | 4 |
+ * -----------------                      -----------------                      -----------------
+ * |               |                      |               |                      |               |
+ * |     SCU C     |                      |     SCU B     |                      |     SCU A     |
+ * |               |                      |               |                      |               |
+ * -----------------                      -----------------                      -----------------
+ * | 3 | 2 | 1 | 0 |                      | 3 | 2 | 1 | 0 |                      | 3 | 2 | 1 | 0 |
+ * -----------------                      -----------------                      -----------------
+ *           |   |                                  |   |                                  |   |
+ *           |   |                                  |   -----------                        |   |
+ *           |   |                                  |             |                        |   |
+ *           |   -----------------------------------)---------    |                        |   |
+ *           |                                      |        |    |                        |   |
+ *           ----------    --------------------------        |    |                        |   |
+ *                    |    |                                 |    |                        |   |
+ *                    |    |   ------------------------------)----)-------------------------   |
+ *                    |    |   |                             |    |                            |
+ *                    |    |   |                             |    |  ---------------------------
+ *                    |    |   |                             |    |  |
+ *                   -----------------                      -----------------
+ *                   | A | B | C | D |                      | A | B | C | D |
+ *                   -----------------                      -----------------
+ *                   |               |                      |               |
+ *                   |     IOM A     |                      |     IOM B     |
+ *                   |               |                      |               |
+ *                   -----------------                      -----------------
+ *
+ * 
+ *
+ *"During bootload, Multics requires a contiguous section of memory beginning at
+ * absolute address 0 and sufficently large to contain all routines and data
+ * structures used durng the first phase of Multics initialiation (i.e. collection 1).
+ * The size of the section required varies among Multics release, and it also
+ * depends on the size of the SST segment, which is dependent on the parameters
+ * specified by the site on the sst config card. ... However
+ * 512 KW is adequate for all circumstancces. There can be no "holes" in memory
+ * within this region. Beyond this region, "holes" can exist in memory."
+ *
+ *
  */
 
 /*
@@ -529,11 +523,20 @@ SCU is called the bootload SCU.
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 
 //#define N_SCU_UNITS_MAX 4
 #define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
+                          // [CAC] I believe that this is because the
+                          // 8MW SCU supported much more memory then
+                          // the earlier units, and two fully loaded
+                          // 8MW's maxed out memory.
+                          // 8MW lower store max size: 4M words
+                          //     + upper store = 8M
+                          //     * 2 SCUs = 16M 
+                          // The phys addr width is 24 bits, and 2^24 = 16M
 
 #define N_SCU_UNITS 1 // Default
 UNIT scu_unit [N_SCU_UNITS_MAX] =
@@ -565,6 +568,15 @@ static MTAB scu_mod [] =
       "Number of SCU units in the system" /* value descriptor */
     },
     {
+      MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "STATE",     /* print string */
+      "STATE",         /* match string */
+      NULL, /* validation routine */
+      scu_show_state, /* display routine */
+      "SCU unit internal state" /* value descriptor */
+    },
+    {
       0
     }
   };
@@ -574,6 +586,7 @@ static t_stat scu_reset (DEVICE *dptr);
 
 static DEBTAB scu_dt [] =
   {
+    { "WARN", DBG_WARN },
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
     { "ERR", DBG_ERR },
@@ -612,6 +625,14 @@ DEVICE scu_dev = {
 #define N_CELL_INTERRUPTS 32  // Number of interrupts in an interrupt cell register
 enum { MODE_MANUAL = 0, MODE_PROGRAM = 1 };
 
+// Cabling
+
+static struct
+  {
+    int cpu_unit_num;
+    int cpu_port_num;
+  } cables_from_cpus [N_SCU_UNITS_MAX] [N_SCU_PORTS];
+
 // Hardware configuration switches
 
 static struct config_switches
@@ -620,6 +641,7 @@ static struct config_switches
     int port_enable [N_SCU_PORTS];  // enable/disable
     int mask_enable [N_ASSIGNMENTS]; // enable/disable
     int mask_assignment [N_ASSIGNMENTS]; // assigned port number
+    int lower_store_size; // In K words, power of 2; 32 - 4096
   } config_switches [N_SCU_UNITS_MAX];
 
 // System Controller
@@ -634,7 +656,7 @@ typedef struct {
 
     // CPU/IOM connectivity; designated 0..7
     // [CAC] really CPU/SCU and SCU/IOM connectivity
-    struct {
+    struct ports {
         flag_t is_enabled;
         enum active_dev type; // type of connected device
         int idnum; // id # of connected dev, 0..7
@@ -649,8 +671,7 @@ typedef struct {
      Two parts -- execute interrupt mask register and a 9-bit mask assignment
      Currently missing: interrupt present
      */
-    struct {
-        flag_t avail; // Not physical. Does mask really exist?
+    struct interrupts {
         // Part 1 -- the execute interrupt mask register
         uint32 exec_intr_mask; // 32 (N_CELL_INTERRUPTS) bits, one for each intr or "cell"
         // Part 2 -- the interrupt mask assignment register -- 9 bits total
@@ -696,9 +717,6 @@ static t_stat scu_reset (DEVICE *dptr)
 
         for (int i = 0; i < N_ASSIGNMENTS; i ++)
           {
-            // XXX [CAC] I am not really sure what 'avail' is about; it
-            // may be meant to represent the configartion switch? 
-            up ->  interrupts [i] . avail = 1;
             up ->  interrupts [i] . exec_intr_mask = 0;
             up ->  interrupts [i] . mask_assign . raw = 0 /* 0720 */;
             up ->  interrupts [i] . mask_assign . unassigned = 
@@ -744,8 +762,8 @@ static const char* adev2text(enum active_dev type)
 
 // ============================================================================
 
-#ifndef QUIET_UNUSED
-static int scu_hw_arg_check(const char *tag, t_uint64 addr, int port)
+#if 0 // XXX [CAC] this code causes more complexity then it solves, IMO
+static int scu_hw_arg_check(const char *tag, word36 addr, uint scu_unit_num, int port)
 {
     // Sanity check args
     // Verify that HW could have received signal
@@ -756,9 +774,6 @@ static int scu_hw_arg_check(const char *tag, t_uint64 addr, int port)
         return 2;
     }
     
-#if 0
-    return 0;
-#else
     // Verify that HW could have received signal
     
     // port-no that rscr instr came in on
@@ -771,7 +786,7 @@ static int scu_hw_arg_check(const char *tag, t_uint64 addr, int port)
         return 1;
     }
     
-    int cpu_port = scu[ASSUME0].ports[rcv_port].dev_port;    // which port on the CPU?
+    int cpu_port = scu[scu_unit_num].ports[rcv_port].dev_port;    // which port on the CPU?
     
     // Verify that HW could have received signal
     if (cpu_port < 0 || cpu_port > 7) {
@@ -781,7 +796,6 @@ static int scu_hw_arg_check(const char *tag, t_uint64 addr, int port)
     }
     // TODO: Check that cpu_ports.ports[cpu_port] is this SCU
     return 0;
-#endif
 }
 #endif
 
@@ -808,8 +822,6 @@ static int scu_set_mask(t_uint64 addr, int port)
     int cpu_found = 0;
     int port_found = 0;
     for (int p = 0; p < ARRAY_SIZE(scu[ASSUME0].interrupts); ++p) {
-        if (! scu[ASSUME0].interrupts[p].avail)
-            continue;
         if (scu[ASSUME0].interrupts[p].mask_assign.unassigned)
             continue;
         if (scu[ASSUME0].interrupts[p].mask_assign.port == port) {
@@ -1020,151 +1032,146 @@ static int scu_get_config_switches(t_uint64 addr)
 
 // =============================================================================
 
-#ifndef QUIET_UNUSED
-static int scu_set_config_switches(t_uint64 addr)
-{
-    // Implements part of the sscr instruction, function y0001x
+// system controller and the function to be performed as follows:
+//
+//  Effective  Function
+//  Address
+//  y0000x     C(system controller mode register) → C(AQ)
+//  y0001x     C(system controller configuration switches) → C(AQ)
+//  y0002x     C(mask register assigned to port 0) → C(AQ)
+//  y0012x     C(mask register assigned to port 1) → C(AQ)
+//  y0022x     C(mask register assigned to port 2) → C(AQ)
+//  y0032x     C(mask register assigned to port 3) → C(AQ)
+//  y0042x     C(mask register assigned to port 4) → C(AQ)
+//  y0052x     C(mask register assigned to port 5) → C(AQ)
+//  y0062x     C(mask register assigned to port 6) → C(AQ)
+//  y0072x     C(mask register assigned to port 7) → C(AQ)
+//  y0003x     C(interrupt cells) → C(AQ)
+//
+//  y0004x
+//    or       C(calendar clock) → C(AQ)
+//  y0005x
+//
+//  y0006x
+//    or C(store unit mode register) → C(AQ)
+//  y0007x
+//
+// where: y = value of C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M 
+// processor) used to select the system controller
+// x = any octal digit
+//
+
+t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
+  {
     // Only valid for a 4MW SCU
-    // BUG: addr should determine which SCU is selected
-    const char* moi = "SCU::set-config-switches";
-    
-// XXX ASSUME0
-    if (scu_hw_arg_check(moi, addr, 0) > 0)
-        return 1;
-#ifndef QUIET_UNUSED
-    int rcv_port = cpu_ports.scu_port;  // port-no that instr came in on
-#endif
-    // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
-    // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
-    
-    
+    const char * moi = "SCU::scu_sscr";
+
+    // Level 68 uses 3 bits for 8 SCU's
+    // DPS8M uses 2 bits for 4 SCU's
+    // we will use 3, and check it againist numunits
+    uint scu_unit_num = (addr >> 15) & 03;
+
+    if (scu_unit_num >= scu_dev . numunits)
+      {
+        sim_debug (DBG_ERR, &scu_dev, "scu_sscr: scu_unit_num out of range %d\n", scu_unit_num);
+        return STOP_BUG;
+      }
+    scu_t * scup = scu + scu_unit_num;
+
+    uint function = (addr >> 3) & 07777;
+
     // See scs.incl.pl1
     
-    if (scu[ASSUME0].mode != MODE_PROGRAM) {
-        sim_debug (DBG_WARN, &scu_dev, "%s: SCU mode is 'MANUAL', not 'PROGRAM' -- sscr not allowed to set switches.\n", moi);
-// XXX [CAC] I think I read somewhere that this should generate a STORE FAULT
-        cancel_run(STOP_BUG);
-    }
-    
-    // get settings from reg A
-    
-    int pima = 0;
-    scu[ASSUME0].interrupts[pima].mask_assign.raw = getbits36(reg_A, 0, 9);
-    pima_parse_raw(pima, moi);
-    
-    // BUG: We don't allow changes to many of the settings
-    //getbits36(reg_A, 9, 3);   // size of lower store -- 2^(5+5) == 1024 K-words
-    //getbits36(reg_A, 12, 4);  // all four stores online
-    // requester's port cannot be set from bits 16..20 of A
-    // scu[ASSUME0].mode = getbits36(reg_A, 21, 1);  // programmable flag; not for sscr
-    // getbits36(reg_A, 22, 1); // non-existent address logic enabled
-    // getbits36(reg_A, 23, 7); // nea size
-    // getbits36(reg_A, 30, 1); // internally interlaced
-    // getbits36(reg_A, 31, 1); // store B is lower?
-    // check enable masks -- see rscr reg a 32..36
-    // Set enable masks for ports 0-3
-    for (int i = 0; i < 4; ++ i)
+    if (config_switches [scu_unit_num] . mode != MODE_PROGRAM)
       {
-        int enabled = getbits36(reg_A, 32+i, 1);
-        int port = i+pima*4;
-        if (! enabled)
-          {
-            if (! scu[ASSUME0].ports[port].is_enabled)
-              {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d still disabled.\n", moi, port);
-              }
-            else
-              {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d now disabled.\n", moi, port);
-              }
-            scu[ASSUME0].ports[port].is_enabled = 0;
-          }
-        else
-          {
-            if (!scu[ASSUME0].ports[port].is_enabled)
-              {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is now enabled; it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
-                scu[ASSUME0].ports[port].is_enabled = 1;
-              }
-            else
-              {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is still enabled; it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
-              }
-          }
+        sim_debug (DBG_WARN, & scu_dev, "%s: SCU mode is 'MANUAL', not 'PROGRAM' -- sscr not allowed to set switches.\n", moi);
+// XXX [CAC] Setting an unassigned register generates a STORE FAULT;
+// this probably should as well
+        return STOP_BUG;
       }
     
-    
-    // get settings from reg Q
-    
-    pima = 1;
-    scu[ASSUME0].interrupts[pima].mask_assign.raw = getbits36(reg_Q, 0, 9);
-    pima_parse_raw(pima, moi);
-    
-    // BUG  getbits36(reg_Q, 57-36, 7, 0);  // cyclic port priority switches; BUG
-    for (int i = 0; i < 4; ++ i)
+    switch (function)
       {
-        int enabled = getbits36(reg_Q, 32+i, 1);
-        int port = i+pima*4;
-        if (! enabled)
+        case 00000: // Set system controller mode register
+          return STOP_UNIMP;
+
+        case 00001: // Set system controller configuration register (4MW SCU only)
+          return STOP_UNIMP;
+
+        case 00002: // Set mask register port 0
+        case 00012: // Set mask register port 1
+        case 00022: // Set mask register port 2
+        case 00032: // Set mask register port 3
+        case 00042: // Set mask register port 4
+        case 00052: // Set mask register port 5
+        case 00062: // Set mask register port 6
+        case 00072: // Set mask register port 7
           {
-            if (!scu[ASSUME0].ports[port].is_enabled)
+            uint port_num = (function >> 3) & 03;
+            uint rcv_port;
+            // Determine which SCU port the indicated CPU is attached to
+            for (rcv_port = 0; rcv_port < N_SCU_PORTS; rcv_port ++)
+              if (cables_from_cpus [cpu_unit_num] [rcv_port] . cpu_unit_num)
+                break;
+            if (rcv_port >= N_SCU_PORTS)
               {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d still disabled.\n", moi, port);
+                sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", moi, rcv_port);
+                fault_gen (FAULT_STR);
+                return CONT_FAULT;
               }
-            else
+
+            // Find mask reg assigned to specified port
+            uint mask_num = -1;
+            uint n_masks_found = 0;
+            for (uint p = 0; p < N_ASSIGNMENTS; p ++)
               {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d now disabled.\n", moi, port);
+                if (scup -> interrupts [p] . mask_assign . unassigned)
+                  continue;
+                if (scup -> interrupts [p] . mask_assign . port == port_num)
+                  {
+                    mask_num = p;
+                    n_masks_found ++;
+                  }
               }
-            scu[ASSUME0].ports[port].is_enabled = 0;
-          }
-        else
-          {
-            if (!scu[ASSUME0].ports[port].is_enabled)
-              {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is now enabled; it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
-                scu[ASSUME0].ports[port].is_enabled = 1;
-              }
-            else
-              {
-                sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is still enabled; it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
-              }
-          }
-      }
     
-    sim_debug (DBG_NOTIFY, &scu_dev, "%s: Doing BUG check.\n", moi);
-    int ret = 0;
-    t_uint64 a = reg_A;
-    t_uint64 q = reg_Q;
-    scu_get_config_switches(addr);
-    if (a == reg_A) {
-        sim_debug (DBG_NOTIFY, &scu_dev, "%s: we handled reg A correctly\n", moi);
-    } else {
-        sim_debug (DBG_ERR, &scu_dev, "scu_get_config_switches: sscr specified reg A %012llo\n", a);
-        sim_debug (DBG_ERR, &scu_dev, "scu_get_config_switches: we used              %012llo\n", reg_A);
-        reg_A = a;
-        ret = 1;
-    }
-    if (q == reg_Q) {
-        sim_debug (DBG_NOTIFY, &scu_dev, "%s: we handled reg Q correctly\n", moi);
-    } else {
-        sim_debug (DBG_ERR, &scu_dev, "scu_get_config_switches: sscr specified reg Q %012llo\n", q);
-        sim_debug (DBG_ERR, &scu_dev, "scu_get_config_switches: we used              %012llo\n", reg_Q);
-        reg_Q = q;
-        ret = 1;
-    }
+            if (! n_masks_found)
+              {
+// According to bootload_tape_label.alm, this condition is aok
+                //sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", moi, rcv_port);
+                //fault_gen (FAULT_STR); // XXX we are the SCU, we can't do fault gen.
+                return CONT_FAULT;
+              }
+            if (n_masks_found > 1)
+              {
+                // Not legal for Multics
+                sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", moi, rcv_port);
+                return STOP_WARN;
+              }
     
-    if (ret == 0)
-      {
-        sim_debug (DBG_WARN, &scu_dev, "%s: Unfinished but OK.\n", moi);
+            // See AN87
+            scup -> interrupts[mask_num].exec_intr_mask = 0;
+            scup -> interrupts[mask_num].exec_intr_mask |= (getbits36(rega, 0, 16) << 16);
+            scup -> interrupts[mask_num].exec_intr_mask |= getbits36(regq, 0, 16);
+            //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, mask_num + 'A', bin2text(scup -> interrupts[mask_num].exec_intr_mask, N_CELL_INTERRUPTS));
+          }
+          break;
+
+        case 00003: // Set interrupt cells
+          return STOP_UNIMP;
+
+        case 00004: // Set calendar clock (4MW SCU only)
+        case 00005: 
+          return STOP_UNIMP;
+
+        case 00006: // Set unit mode register
+        case 00007: 
+          return STOP_UNIMP;
+
+        default:
+          return STOP_UNIMP;
       }
-    else
-      {
-        sim_debug (DBG_ERR, &scu_dev, "scu_get_config_switches: Unfinished and incorrect.\n");
-        cancel_run(STOP_BUG);
-      }
-    return ret;
+    return SCPE_OK;
   }
-#endif
 
 // =============================================================================
 
@@ -1188,8 +1195,6 @@ static int scu_get_mask(t_uint64 addr, int port)
     int port_pima = 0;
     int port_found = 0;
     for (int p = 0; p < ARRAY_SIZE(scu[ASSUME0].interrupts); ++p) {
-        if (! scu[ASSUME0].interrupts[p].avail)
-            continue;
         if (scu[ASSUME0].interrupts[p].mask_assign.unassigned)
             continue;
         if (scu[ASSUME0].interrupts[p].mask_assign.port == port) {
@@ -1420,11 +1425,6 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
     }
     
     for (int pima = 0; pima < N_CELL_INTERRUPTS; ++pima) {
-        if (! scu[scu_unit_num].interrupts[pima].avail) {
-            sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: Mask is not available.\n",
-                    moi, pima + 'A');
-            continue;
-        }
         if (scu[scu_unit_num].interrupts[pima].mask_assign.unassigned) {
             sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: Mask is not assigned.\n",
                     moi, pima + 'A');
@@ -1477,6 +1477,51 @@ static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
     return SCPE_OK;
   }
 
+static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc)
+  {
+    int scu_unit_num = UNIT_NUM (uptr);
+    if (scu_unit_num < 0 || scu_unit_num >= scu_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & scu_dev, "scu_show_state: Invalid unit number %d\n", scu_unit_num);
+        sim_printf ("error: invalid unit number %d\n", scu_unit_num);
+        return SCPE_ARG;
+      }
+
+    sim_printf ("SCU unit number %d\n", scu_unit_num);
+    scu_t * scup = scu + scu_unit_num;
+
+    sim_printf ("State data:\n");
+
+    for (int i = 0; i < N_SCU_PORTS; i ++)
+      {
+        struct ports * pp = scup -> ports + i;
+
+        sim_printf ("Port %d ", i);
+
+        sim_printf ("is_enabled %d, ", pp -> is_enabled);
+        sim_printf ("idnum %d, ", pp -> idnum);
+        sim_printf ("dev_port %d, ", pp -> dev_port);
+        sim_printf ("type %d (%s)\n", pp -> type,
+          pp -> type == ADEV_NONE ? "NONE" :
+          pp -> type == ADEV_CPU ? "CPU" :
+          pp -> type == ADEV_IOM ? "IOM" :
+          "<enum broken>");
+      }
+    for (int i = 0; i < N_ASSIGNMENTS; i ++)
+      {
+        struct interrupts * ip = scup -> interrupts + i;
+
+        sim_printf ("Cell %d\n", i);
+
+        sim_printf ("  exec_intr_mask %012o\n", ip -> exec_intr_mask);
+        sim_printf ("  raw %03o\n", ip -> mask_assign . raw);
+        sim_printf ("  unassigned %d\n", ip -> mask_assign . unassigned);
+        sim_printf ("  port %u\n", ip -> mask_assign . port);
+
+      }
+    return SCPE_OK;
+  }
+
 static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 {
     static char * map [N_SCU_PORTS] = {"0", "1", "2", "3", "4", "5", "6", "7" };
@@ -1489,6 +1534,7 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
       }
 
     sim_printf ("SCU unit number %d\n", scu_unit_num);
+
     struct config_switches * sw = config_switches + scu_unit_num;
 
     char * mode = "<out of range>";
@@ -1502,15 +1548,17 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
           break;
       }
 
-    sim_printf("Mode:                     %s\n", mode);
-    sim_printf("Port Enable:             ");
+    sim_printf ("Mode:                     %s\n", mode);
+    sim_printf ("Port Enable:             ");
     for (int i = 0; i < N_SCU_PORTS; i ++)
       sim_printf (" %3o", sw -> port_enable [i]);
     sim_printf ("\n");
     for (int i = 0; i < N_ASSIGNMENTS; i ++)
       {
-        sim_printf("Mask %c:                   %s\n", 'A' + i, sw -> mask_enable [i] ? (map [sw -> mask_assignment [i]]) : "Off");
+        sim_printf ("Mask %c:                   %s\n", 'A' + i, sw -> mask_enable [i] ? (map [sw -> mask_assignment [i]]) : "Off");
       }
+    sim_printf ("Lower Store Size:        %dK\n", sw -> lower_store_size);
+
     return SCPE_OK;
   }
 
@@ -1521,7 +1569,19 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           mode=  manual | program
 //           mask[A|B] = off | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 //           portN = enable | disable
+//           lwrstoresize 32 | 64 | 128 | 256 | 512 | 1024 | 2048 | 4096
 //
+//      o  nea is not implemented; will read as "nea off"
+//      o  Multics sets cyclic priority explicitly; config
+//         switches are ignored.
+//      o  STORE A, A1, B, B1 ONLINE/OFFLINE not implemented;
+//         will always read online.
+//      o  store size if not enforced; a full memory complement
+//         is provided.
+//      o  interlace not implemented; will read as 'off'
+//      o  LOWER STORE A/B not implemented.
+//      o  MASK is 'MASK/PORT ASSIGNMENT' analagous to the
+//         'EXECUTE INTERRUPT MASK ASSIGNMENT of a 6000 SCU
 
 static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
@@ -1634,6 +1694,30 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 break;
               }
           }
+	else if (strcmp (name, "LWRSTORESIZE") == 0)
+          {
+            if (strlen (value) == 0)
+              {
+                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: missing value\n");
+                sim_printf ("error: scu_set_config: missing value\n");
+                break;
+              }
+            char * endptr;
+            long int n = strtol (value, & endptr, 0);
+            if (* endptr)
+              {
+                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: can't parse number <%s>\n", value);
+                sim_printf ("error: scu_set_config: can't parse number <%s>\n", value);
+                break;
+              } 
+            if (n != 32 && n != 64 && n != 128 && n != 256 && n != 512 && n != 1024 && n != 2048 && n != 4096)
+              {
+                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: LWRSTORESIZE value out of range: %ld\n", n);
+                sim_printf ("error: scu_set_config: LWRSTORESIZE value out of range: %ld\n", n);
+                break;
+              } 
+            sw -> lower_store_size = n;
+          }
         else
           {
             sim_debug (DBG_ERR, & scu_dev, "scu_set_config: Invalid switch name <%s>\n", name);
@@ -1645,12 +1729,6 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
     return SCPE_OK;
   }
-
-static struct
-  {
-    int cpu_unit_num;
-    int cpu_port_num;
-  } cables_from_cpus [N_SCU_UNITS_MAX] [N_SCU_PORTS];
 
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num)
   {

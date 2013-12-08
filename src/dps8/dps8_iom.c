@@ -685,12 +685,6 @@ int get_iom_numunits (void)
 
 static void init_memory_iom (uint unit_num)
   {
-    // On the physical hardware, settings of various switchs are reflected
-    // into memory.  We provide no support for simulation of of the physical
-    // switches because there is only one useful value for almost all of the
-    // switches.  So, we hard code the memory values that represent usable
-    // switch settings.
-    
     // The presence of a 0 in the top six bits of word 0 denote an IOM boot
     // from an IOX boot
     
@@ -709,7 +703,7 @@ static void init_memory_iom (uint unit_num)
     // template_slt_$iom_mailbox_absloc
 
     uint pi_base = unit_data [unit_num] . config_sw_multiplex_base_address & ~3;
-    uint iom_num = unit_data [unit_num] . config_sw_multiplex_base_address & 3; // 2 bits; only IOM 0 would use vector 030
+    uint iom_num = unit_data [unit_num] . config_sw_multiplex_base_address & 3; 
     t_uint64 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
     uint dev = 0;            // 6 bits: drive number
     
@@ -843,7 +837,7 @@ static void init_memory_iom (uint unit_num)
     //     lda     0,x5            " check for status
     //
     // So this is a bootloader kludge to pass the bootload SCU number
-    //
+    // 
 
     // 2nd word of PCW pair
 

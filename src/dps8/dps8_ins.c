@@ -3902,12 +3902,54 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0231:  ///< rsw
         
-        // Privileged – System Control
+        // Privileged -- System Control
+
         case 0015:  ///< cioc
         case 0553:  ///< smcm
         case 0451:  ///< smic
-        case 0057:  ///< sscr
             return STOP_UNIMP;
+
+        case 0057:  ///< sscr
+            {
+              t_stat rc = scu_sscr (CPU_UNIT_NUM, TPR.CA, reg_A, reg_Q);
+              if (rc)
+                return rc;
+            }
+            break;
+#if 0
+            {
+                int hi = GETHI(i->IWB);
+                int Ysc = (hi >> 15) & 03;
+                
+                int EAF = hi & 077770;
+                switch (EAF)
+                {
+                    case 0000:
+                    case 0010:
+                        return STOP_UNIMP;
+                    case 0020:
+                    case 0120:
+                    case 0220:
+                    case 0320:
+                    case 0420:
+                    case 0520:
+                    case 0620:
+                    case 0720:
+                       
+                        return STOP_UNIMP;
+                    case 0040:
+                    case 0050:  // return clock/calendar in AQ
+                        goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
+                        
+                        
+                    case 0060:
+                    case 0070:
+                    default:
+                        return STOP_UNIMP;
+                }
+            }
+#endif
+            
 
         // Privileged - Miscellaneous
         case 0212:  ///< absa
