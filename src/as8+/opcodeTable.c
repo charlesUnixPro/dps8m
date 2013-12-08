@@ -598,7 +598,7 @@ opCode allOpcodes[] =
 	{"tsp7", OPCODE, 0, 0, false, 0673, 0673000},
 	{"tspsb", OPCODE, 0, 0, false, 0673, 0673000},
     
-	{"lcpr", OPCODE, 0, 0, false, 0674, 0674000},
+	{"lcpr", OPCODESTC, 0, 0, false, 0674, 0674000},
 	{"era", OPCODE, 0, 0, false, 0675, 0675000},
 	{"erq", OPCODE, 0, 0, false, 0676, 0676000},
 	{"eraq", OPCODE, 0, 0, false, 0677, 0677000},
