@@ -14,7 +14,6 @@ typedef uint16_t word9;
 typedef uint64_t word36;
 typedef unsigned int uint;
 
-
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
@@ -266,6 +265,7 @@ int main (int argc, char * argv [])
         exit (1);
       }
 
+#ifdef SPECIAL_CASE_LABEL
     printf ("Processing label...\n");
     int rc = read_mst_blk (fd);
     if (rc)
@@ -283,7 +283,7 @@ int main (int argc, char * argv [])
         printf ("Expected tape mark\n");
         exit (1);
       }
-
+#endif 
     int seg_num = 0;
     for (;;) // every tape marked region
       {
@@ -305,7 +305,14 @@ int main (int argc, char * argv [])
             printf ("Oops\n");
             exit (rc);
           }
-
+#ifndef SPECIAL_CASE_LABEL
+        if (seg_num == 1)
+          {
+            print_string ("Installation ID: ", 32, 32);
+            print_string ("Tape Reel ID:    ", 64, 32);
+            print_string ("Volume Set ID:   ", 96, 32);
+          }
+#endif
         num_files ++;
         char file_name [1025];
         sprintf (file_name, "tape_file_%08d.dat", seg_num);
