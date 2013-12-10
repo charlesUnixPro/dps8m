@@ -7,7 +7,11 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <libgen.h>
+
+#include "mst.h"
 #include "bit36.h"
+#include "simhtapes.h"
 
 
 typedef uint16_t word9;
@@ -38,44 +42,6 @@ typedef unsigned int uint;
 
 
 
-// MST -- Standard record format
-//
-// MULTICS SYSTEM-PROGRAMMERS' MANUAL Section BB.3.01
-// PUBLISHED: 06/02/67
-//
-// Each physical consists of a 256 word (9216-bit) data space
-// enclosed by an eight-word header and an eight-word trailer. The total
-// record length is then 272 words (9792 bits).
-//
-// hdr      8 word36 =   288 bits =   36 bytes
-// data   256 word36 =  9216 bits = 1152 bytes
-// trlr     8 word36 =   288 bits =   36 bytes
-//
-// hdr      8 word36 =   288 bits =   36 bytes
-// data  1024 word36 = 36864 bits = 4608 bytes
-// trlr     8 word36 =   288 bits =   36 bytes
-//       ----          -----        ----
-//
-// total 1040 word36 = 38440 bits = 4680 bytes
-//
-
-#define mst_blksz_bytes 4680
-#define mst_blksz_ascii 4160 // 4680 * 9 / 8
-#define mst_blksz_word36 1040
-#define mst_datasz_bytes 4608
-// Header, trailer
-
-#define header_c1  0670314355245
-#define header_c2  0512556146073
-#define trailer_c1 0107463422532
-#define trailer_c2 0265221631704
-
-#define header_sz_words 8
-#define data_sz_words 1024
-
-// Label
-
-
 //
 // the block will be read into these buffers
 //
@@ -91,68 +57,6 @@ static uint32_t file_num;
 static uint32_t nbits;
 static uint32_t admin;
 static char * top_level_dir;
-
-
-
-
-// ret: >0 sizeread
-//      0 tapemark 
-//      -1 eof
-//      -2 file format error
-//      -3 buffer overrun
-
-static int read_simh_blk (int fd, void * buf, ssize_t buflen)
-  {
-    ssize_t sz;
-    uint32_t blksiz, blksiz2;
-
-    sz = read (fd, & blksiz, sizeof (blksiz));
-
-    if (sz == 0)
-      return -1;
-
-    if (sz != sizeof (blksiz))
-      {
-        //printf ("can't read blksiz\n");
-        return -2;
-      }
-
-    //printf ("blksiz %d\n", blksiz);
-
-    if (! blksiz)
-      {
-        //printf ("tapemark\n");
-        return 0;
-      }
-
-    if (blksiz <= buflen)
-      {
-        sz = read (fd, blk, blksiz);
-        if (sz != blksiz)
-          {
-            //printf ("can't read blk\n");
-            return -2;
-          }
-      }
-    else
-      lseek (fd, blksiz, SEEK_CUR);
-
-
-    sz = read (fd, & blksiz2, sizeof (blksiz2));
-
-    if (sz != sizeof (blksiz2))
-      {
-        //printf ("can't read blksiz2\n");
-        return -2;
-      }
-
-    if (blksiz != blksiz2)
-      {
-        //printf ("can't sync\n");
-        return -2;
-      }
-    return blksiz;
-  }
 
 
 //
@@ -265,6 +169,9 @@ int main (int argc, char * argv [])
         exit (1);
       }
 
+    char base_name [1025];
+    strncpy (base_name, basename (argv [1]), 1024);
+printf ("%s\n", base_name);
 #ifdef SPECIAL_CASE_LABEL
     printf ("Processing label...\n");
     int rc = read_mst_blk (fd);
@@ -315,7 +222,7 @@ int main (int argc, char * argv [])
 #endif
         num_files ++;
         char file_name [1025];
-        sprintf (file_name, "tape_file_%08d.dat", seg_num);
+        sprintf (file_name, "%s.%08d.dat", base_name, seg_num);
         int fdout = open (file_name, O_WRONLY | O_CREAT | O_TRUNC, 0664);
         if (fdout < 0)
           {
