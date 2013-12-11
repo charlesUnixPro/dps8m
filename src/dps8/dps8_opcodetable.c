@@ -444,7 +444,7 @@ struct opCode NonEISopcodes[01000] = {
     {"tsp5", PREPARE_CA | TRANSFER_INS | TSPN_INS | NO_RPT, NO_DDCSS, 0},
     {"tsp6", PREPARE_CA | TRANSFER_INS | TSPN_INS | NO_RPT, NO_DDCSS, 0},
     {"tsp7", PREPARE_CA | TRANSFER_INS | TSPN_INS | NO_RPT, NO_DDCSS, 0},
-    {"lcpr", PREPARE_CA | READ_OPERAND | PRIV_INS | NO_RPT, 0},
+    {"lcpr", READ_OPERAND | NO_TAG | PRIV_INS | NO_RPT | NO_BAR, 0},
     {"era", READ_OPERAND, 0},
     {"erq", READ_OPERAND, 0},
     {"eraq", PREPARE_CA | READ_YPAIR, NO_DDCSS, 0},

@@ -50,15 +50,13 @@ static t_stat clk_svc(UNIT *up)
     return 0;
 }
 
-#define reg_TR rTR
-
 #ifndef QUIET_UNUSED
 static int activate_timer (void)
 {
     uint32 t;
     sim_debug (DBG_DEBUG, & clk_dev, "clk_svc: TR has %d time units left\n", t);
-    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %lld %#llo.\n", reg_TR, reg_TR);
-    if (bit_is_neg(reg_TR, 27)) {
+    sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR is %lld %#llo.\n", rTR, rTR);
+    if (bit_is_neg(rTR, 27)) {
         if ((t = sim_is_active(&TR_clk_unit[0])) != 0)
             sim_debug (DBG_DEBUG, & clk_dev, "activate_timer: TR cancelled with %d time units left.\n", t);
         else
@@ -72,7 +70,7 @@ static int activate_timer (void)
     }
     
     (void) sim_rtcn_init(CLK_TR_HZ, TR_CLK);
-    sim_activate(&TR_clk_unit[0], reg_TR);
+    sim_activate(&TR_clk_unit[0], rTR);
     if ((t = sim_is_active(&TR_clk_unit[0])) == 0)
         sim_debug (DBG_DEBUG, & TR_clk_unit, "activate_timer: TR is not running\n", t);
     else

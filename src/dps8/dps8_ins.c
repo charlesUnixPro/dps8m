@@ -3822,11 +3822,76 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         // Privileged Instructions
 
         // Privileged - Register Load
+        // DPS8M interpratation
         case 0674:  ///< lcpr
+            switch (i->tag)
+              {
+// Extract bits from 'from' under 'mask' shifted to where (where is
+// dps8 '0 is the msbit.
+#define GETBITS(from,mask,where) \
+ (((from) >> (35 - (where))) & (word36) (mask))
+                case 02: // cache mode register
+                  //CMR = CY;
+                  // CMR . cache_dir_address = <ignored for lcpr>
+                  // CMR . par_bit = <ignored for lcpr>
+                  // CMR . lev_ful = <ignored for lcpr>
+                     CMR . csh1_on = GETBITS (CY, 1, 72 - 54);
+                     CMR . csh2_on = GETBITS (CY, 1, 72 - 55);
+                  // CMR . opnd_on = ; // DPS8, not DPS8M
+                     CMR . inst_on = GETBITS (CY, 1, 72 - 57);
+                     CMR . csh_reg = GETBITS (CY, 1, 72 - 59);
+                  // CMR . str_asd = <ignored for lcpr>
+                  // CMR . col_ful = <ignored for lcpr>
+                  // CMR . rro_AB = GETBITS (CY, 1, 18);
+                     CMR . luf = GETBITS (CY, 3, 72 - 71);
+                  // You need bypass_cache_bit to actually manage the cache,
+                  // but it is not stored
+#ifndef QUIET_UNUSED
+                     uint bypass_cache_bit = GETBITS (CY, 1, 72 - 68);
+#endif
+                  break;
+
+                case 04: // mode register
+                  MR . cuolin = GETBITS (CY, 1, 18);
+                  MR . solin = GETBITS (CY, 1, 19);
+                  MR . sdpap = GETBITS (CY, 1, 20);
+                  MR . separ = GETBITS (CY, 1, 21);
+                  MR . tm = GETBITS (CY, 3, 23);
+                  MR . vm = GETBITS (CY, 3, 26);
+                  MR . hrhlt = GETBITS (CY, 1, 28);
+                  MR . hrxfr = GETBITS (CY, 1, 29);
+                  MR . ihr = GETBITS (CY, 1, 30);
+                  MR . ihrrs = GETBITS (CY, 1, 31);
+                  MR . mrgctl = GETBITS (CY, 1, 32);
+                  MR . hexfp = GETBITS (CY, 1, 33);
+                  MR . emr = GETBITS (CY, 1, 35);
+                  break;
+
+                case 03: // DPS 8m 0's -> history
+                  return STOP_UNIMP;
+
+                case 05: // DPS 8m 1's -> history
+                  return STOP_UNIMP;
+
+                default:
+                  return CONT_FAULT;
+
+              }
+            break;
+
         case 0232:  ///< ldbr
+            return STOP_UNIMP;
+
         case 0637:  ///< ldt
+            rTR = (CY << 9) && 0777777777000LL;
+            break;
+
         case 0257:  ///< lsdp
+            return STOP_UNIMP;
+
         case 0613:  ///< rcu
+            return STOP_UNIMP;
+
         case 0452:  ///< scpr
             return STOP_UNIMP;
 
@@ -3837,8 +3902,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0154:  ///< sdbr
+            return STOP_UNIMP;
         case 0557:  ///< sdp
+            return STOP_UNIMP;
         case 0532:  ///< cams
+            return STOP_UNIMP;
             
         // Privileged - Configuration and Status
             
@@ -3901,11 +3969,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0231:  ///< rsw
+            return STOP_UNIMP;
         
         // Privileged -- System Control
 
         case 0015:  ///< cioc
+            return STOP_UNIMP;
         case 0553:  ///< smcm
+            return STOP_UNIMP;
         case 0451:  ///< smic
             return STOP_UNIMP;
 
@@ -5272,26 +5343,6 @@ t_stat doXED(word36 *Ypair)
 
 
 #include <ctype.h>
-
-void sim_printf( const char * format, ... )
-{
-    char buffer[4096];
-    
-    va_list args;
-    va_start (args, format);
-    vsnprintf (buffer, sizeof(buffer), format, args);
-    
-    for(int i = 0 ; i < sizeof(buffer); i += 1)
-    {
-        if (buffer[i])
-            sim_putchar(buffer[i]);
-        else
-            break;
-    }
-    
-    
-    va_end (args);
-}
 
 /**
  * emulator call instruction. Do whatever address field sez' ....

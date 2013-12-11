@@ -585,6 +585,7 @@ struct _ptw PTWAM[64], *PTW = &PTWAM[0];    ///< PAGE TABLE WORD ASSOCIATIVE MEM
 struct _ptw0 PTW0;  ///< a PTW not in PTWAM (PTWx1)
 
 _cache_mode_register CMR;
+_mode_register MR;
 
 /*
  * register stuff ...

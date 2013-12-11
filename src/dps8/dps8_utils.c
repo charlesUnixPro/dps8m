@@ -1221,3 +1221,42 @@ char *bin2text(t_uint64 word, int n)
     return str;
 }
 
+#include <ctype.h>
+
+void sim_printf( const char * format, ... )
+{
+    char buffer[4096];
+    
+    va_list args;
+    va_start (args, format);
+    vsnprintf (buffer, sizeof(buffer), format, args);
+    
+#if 0 // one way
+// simh puts the tty in raw mode when the sim is running
+// cook it for this message
+    if (sim_is_running)
+      sim_ttcmd ();
+#endif
+
+    for(int i = 0 ; i < sizeof(buffer); i += 1)
+    {
+        if (buffer[i]) {
+// the other way (the way sim_debug does it, mor or less)
+// note that sim_putchar also writes to the debug file, so it will
+// end up with extra CRs.
+            if (sim_is_running && buffer [i] == '\n')
+              sim_putchar ('\r');
+            sim_putchar(buffer[i]);
+        } else
+            break;
+    }
+ 
+#if 0
+// and back to raw mode
+    if (sim_is_running)
+      sim_ttrun ();
+#endif
+
+    va_end (args);
+}
+

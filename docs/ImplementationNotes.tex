@@ -174,13 +174,22 @@ Dual spindle, nonremovable 1 milllion 9 bit bytes
               \item[Peripheral System Interface (PSI)] Fast Tape Drives
             \end{description}
 
-        \item [GIOC]645 System I/O controller
+        \item [GIOC]i 645 System I/O controller
 
         \item [IOM] 6180 System I/O controller
 
-        \item [IMU] ``Infomation Multiplexer Unit'' DPS8 ? System I/O controller
+        \item [IMU] ``Infomation Multiplexer Unit'' DPS8 ? System I/O 
+controller. Functional replacement for IOM.
 
     \end{description}
+
+\subsection {System Control Units (SCU)}
+
+    \begin {description}
+        \item [SCU] Series 60 Level 66 controller
+        \item [SC] Level 68 
+        \item [4MW SCU] Later version of SC
+    \end {description}
 
 \part{Subsystem Model in the simulator}
 
@@ -421,11 +430,123 @@ cable opcon,0,0,0,036
 
 \part {Porting issues}
 
-\para {32 bit support}
+\paragraph {32 bit support}
 
 The DPS8 is a 36 bit computer, with a double word of 72 bits. In order to 
 manipulate these numbers in the assembler and the emulator, int128\_t 
 types must be supported by the compiler, or a complex and cumbersome 128 
 emulation library is needed.
 
+\part {Notes}
+
+\paragraph {Known device names}
+
+This information is cribbed from 
+http://stuff.mit.edu/afs/athena/reference/multics-history/source/Multics/ldd/system\_library\_1/source/bound\_library\_1\_.s.archive,
+circa 1987.
+
+\begin{verbatim}
+
+    model name   valid drives
+
+    mpc_msp_model_names (msp Mass Storage Processor)
+
+    dsc0451       450, 451
+    msp0451       450, 451
+    msp0601       450, 451, 500, 501
+    msp0603       450, 451, 500, 501
+    msp0607       450, 451, 500, 501
+    msp0609       450, 451, 500, 501
+    msp0611       450, 451, 500, 501
+    msp0612       450, 451, 500, 501
+    msp800        450, 451, 500, 501
+
+    mpc_mtp_model_names (mtp Magnetic Tape Processor)
+
+    mtc501        500, 507
+    mtc502        500, 507
+    mtp0600       500, 507, 600, 601, 602
+    mtp0601       500, 507, 600, 601, 602
+    mtp0602       500, 507, 600, 601, 602
+    mtp0610       500, 507, 600, 601, 602
+    mtp0611       500, 507, 600, 601, 602
+
+    ipc_msp_model_names
+
+    fips-ipc      3380, 3381
+
+    ipc_mtp_model_names
+
+    fips-ipc      8200
+
+    mpc_urp_model_names
+
+    urc002
+    urp0600
+    urp8001
+    urp8002
+    urp8003
+    urp8004
+
+    disk_drive_model_names
+
+    451   msu0451
+    500   msu0500
+    501   msu0501
+    3380  msu3380
+    3381  msu3381
+
+    tape_drive_model_names
+
+    500   mtc501, mtc502
+    507   mtc502
+    600   mtp0600
+    601   mtp0601
+    602   mtp0602
+    610   mtp0610
+    630   mtp0630
+    8200  mtu8200
+
+    printer_model_names
+
+    301   prt301
+    1000  pru1000
+    1200  pru1200
+    1600  pru1600
+    901   pru0901
+  
+    reader_model_names
+
+    500   cru0500
+    501   cru0501
+    301   crz301
+    201   crz201
+
+    ccu_model_names
+
+    401   ccu401
+
+    punch_model_names
+
+    301   cpz301
+    300   cpz300
+    201   cpz201
+
+    console_model_names
+
+    6001  csu6001
+    6004  csu6004
+    6601  csu6601
+
+\end{verbatim}
+
+\part {Unresolved questions}
+
+\section {Actual H/W behavior}
+
+What should happen is when an \textbf{sscr} instruction is issued to an IOM 
+that is configured in MANUAL (not PROGRAM mode)? According to AL39, a
+ \textbf{sscr} that tries 
+to set an unassigned mask register generates a STORE FAULT.
+ (dps8\_scu.c/scu\_sscr()).
 \end{document}

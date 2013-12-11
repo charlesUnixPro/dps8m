@@ -1495,18 +1495,18 @@ extern bool bPuls2;
 
 struct _cache_mode_register
 {
-    int     cache_dir_address;  // Probably not used by simulator
-    bool    par_bit;            // "
-    bool    lev_ful;
-    bool    csh1_on;
-    bool    csh2_on;
-    bool    opnd_on;
-    bool    inst_on;
-    bool    csh_reg;
-    bool    str_asd;
-    bool    col_ful;
-    int     rro_AB;
-    int     luf;        // LUF value
+    word15     cache_dir_address;  // Probably not used by simulator
+    word1    par_bit;            // "
+    word1    lev_ful;
+    word1    csh1_on;
+    word1    csh2_on;
+    word1    opnd_on;
+    word1    inst_on; // DPS8, but not DPS8M
+    word1    csh_reg;
+    word1    str_asd;
+    word1    col_ful;
+    word2     rro_AB;
+    word2     luf;        // LUF value
                         // 0   1   2   3
                         // Lockup time
                         // 2ms 4ms 8ms 16ms
@@ -1514,6 +1514,24 @@ struct _cache_mode_register
 };
 typedef struct _cache_mode_register _cache_mode_register;
 extern _cache_mode_register CMR;
+
+typedef struct mode_registr
+  {
+    word1 cuolin;
+    word1 solin;
+    word1 sdpap;
+    word1 separ;
+    word2 tm;
+    word2 vm;
+    word1 hrhlt;
+    word1 hrxfr;
+    word1 ihr;
+    word1 ihrrs;
+    word1 mrgctl;
+    word1 hexfp;
+    word1 emr;
+  } _mode_register;
+extern _mode_register MR;
 
 //! Appending unit stuff .......
 
@@ -1632,12 +1650,6 @@ char *getModString(int32 tag);
 
 int strmask(char *str, char *mask);
 char *strlower(char *q);
-
-void sim_printf( const char * format, ... )    // not really simh, by my impl
-#ifdef __GNUC__
-  __attribute__ ((format (printf, 1, 2)))
-#endif
-;
 
 extern word24 finalAddress; ///< final 24-bit address for appending unit
 
@@ -2925,6 +2937,12 @@ extern word36 *M;
 int bitfieldInsert(int a, int b, int c, int d);
 int bitfieldExtract(int a, int b, int c);
 char *bin2text(t_uint64 word, int n);
+void sim_printf( const char * format, ... )    // not really simh, by my impl
+#ifdef __GNUC__
+  __attribute__ ((format (printf, 1, 2)))
+#endif
+;
+
 
 
 #endif

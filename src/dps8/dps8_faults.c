@@ -185,6 +185,7 @@ typedef enum {
     // fr_ill_dig = 1 << 6 // illegal decimal digit
 } fault_cond_t;
 
+#if 0 // DPS8M
 // "MR" Mode Register, L68
 typedef struct {
     // See member "word" for the raw bits, other member values are derivations
@@ -193,8 +194,8 @@ typedef struct {
     flag_t fault_reset; // bit 31 "m"
     t_uint64 word;
 } mode_reg_t;
-
 static mode_reg_t MR;
+#endif 
 
 /*
  *  check_events()
@@ -256,6 +257,7 @@ void fault_gen(int f)
     events.any = 1;
     //sim_debug(DBG_DEBUG, & cpu_dev, "CU fault: Recording fault # %d in group %d\n", f, group);
     
+#if 0 // This is DPS8, not DPS8M
     // Note that we never simulate a (hardware) op_not_complete_fault
     if (MR.mr_enable && (f == FAULT_ONC || MR.fault_reset)) {
         if (MR.strobe) {
@@ -264,6 +266,7 @@ void fault_gen(int f)
         } else
             sim_debug(DBG_INFO, & cpu_dev, "CU fault: MR.strobe was already unset.\n");
     }
+#endif
     
     if (group == 7) {
         // Recognition of group 7 faults is delayed and we can have
