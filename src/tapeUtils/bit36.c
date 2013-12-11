@@ -59,17 +59,17 @@ word36 extr36 (uint8_t * bits, uint woffset)
 
 //
 //   extr9
-//     extract the word9 at woffset
+//     extract the word9 at coffset
 //
 //   | 012345678 | 012345678 |012345678 | 012345678 | 012345678 | 012345678 | 012345678 | 012345678 |
 //     0       1          2         3          4          5          6          7          8
 //     012345670   123456701  234567012   345670123   456701234   567012345   670123456   701234567  
 //
 
-word9 extr9 (uint8_t * bits, uint woffset)
+word9 extr9 (uint8_t * bits, uint coffset)
   {
-    uint charNum = woffset % 8;
-    uint dwoffset = woffset / 8;
+    uint charNum = coffset % 8;
+    uint dwoffset = coffset / 8;
     uint8_t * p = bits + dwoffset * 9;
 
     word9 w;

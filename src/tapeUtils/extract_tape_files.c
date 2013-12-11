@@ -49,7 +49,7 @@ typedef unsigned int uint;
 //   blk_ascii:  unpacked from 9bit and placed in 8bit chars
 
 static uint8_t blk [mst_blksz_bytes];
-static uint8_t blk_ascii [mst_blksz_ascii];
+static uint8_t blk_ascii [mst_blksz_word9];
 
 static int blk_num = 0;
 static uint32_t rec_num;
@@ -78,9 +78,41 @@ static int read_mst_blk (int fd)
         exit (1);
       }
 
+// Check to see if the next block(s) are rewrites
+    off_t where = lseek (fd, 0, SEEK_CUR);
+
+    for (;;)
+      {
+        uint8_t nxt [mst_blksz_bytes];
+        int rc = read_simh_blk (fd, nxt, mst_blksz_bytes);
+        if (rc == -1) // eof; so no next block
+          {
+            // not a repeat; put the file position back
+            where = lseek (fd, where, SEEK_SET);
+            break;
+          }
+        if (rc == 1) // tape mark; keep looking
+          continue;
+
+        word36 w6 = extr36 (nxt, 5);     // flags
+        //printf ("flags %036lo\n", w6);
+        word36 repeat = w6 & (1LU << 20);
+        if (repeat)
+          {
+            printf ("repeat\n");
+            memcpy (blk, nxt, sizeof (blk));
+            where = lseek (fd, 0, SEEK_CUR);
+          }
+        else
+          {
+            // not a repeat; put the file position back
+            where = lseek (fd, where, SEEK_SET);
+            break;
+          }
+      }
     {
       uint8_t * pa = blk_ascii;
-      for (uint i = 0; i < mst_blksz_word36; i ++)
+      for (uint i = 0; i < mst_blksz_word9; i ++)
         {
           word9 w9 = extr9 (blk, i);
           * pa ++ = w9 & 0xff;
@@ -89,23 +121,23 @@ static int read_mst_blk (int fd)
 
     blk_num ++;
 
-    word36 w1 = extr36 (blk, 0);
-    //word36 w2 = extr36 (blk, 1);
-    //word36 w3 = extr36 (blk, 2);
-    word36 w4 = extr36 (blk, 3);
-    word36 w5 = extr36 (blk, 4);
-    word36 w6 = extr36 (blk, 5);
-    //word36 w7 = extr36 (blk, 6);
-    word36 w8 = extr36 (blk, 7);
+    word36 w1 = extr36 (blk, 0);     // c1
+    //word36 w2 = extr36 (blk, 1);   // uid
+    //word36 w3 = extr36 (blk, 2);   // uid
+    word36 w4 = extr36 (blk, 3);     // re_within_file, phy_file
+    word36 w5 = extr36 (blk, 4);     // data_bits_used, data_bit_len
+    word36 w6 = extr36 (blk, 5);     // flags
+    //word36 w7 = extr36 (blk, 6);   // checksum
+    word36 w8 = extr36 (blk, 7);     // c2
 
-    word36 t1 = extr36 (blk, header_sz_words + data_sz_words + 0);
-    //word36 t2 = extr36 (blk, 18 + data_sz_words + );
-    //word36 t3 = extr36 (blk, header_sz_words + data_sz_words + 2);
-    //word36 t4 = extr36 (blk, header_sz_words + data_sz_words + 3);
-    //word36 t5 = extr36 (blk, header_sz_words + data_sz_words + 4);
-    //word36 t6 = extr36 (blk, header_sz_words + data_sz_words + 5);
-    //word36 t7 = extr36 (blk, header_sz_words + data_sz_words + 6);
-    word36 t8 = extr36 (blk, header_sz_words + data_sz_words + 7);
+    word36 t1 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 0);
+    //word36 t2 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 1);
+    //word36 t3 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 2);
+    //word36 t4 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 3);
+    //word36 t5 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 4);
+    //word36 t6 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 5);
+    //word36 t7 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 6);
+    word36 t8 = extr36 (blk, mst_header_sz_word36 + mst_datasz_word36 + 7);
 
     if (w1 != header_c1)
       {
@@ -171,7 +203,7 @@ int main (int argc, char * argv [])
 
     char base_name [1025];
     strncpy (base_name, basename (argv [1]), 1024);
-printf ("%s\n", base_name);
+
 #ifdef SPECIAL_CASE_LABEL
     printf ("Processing label...\n");
     int rc = read_mst_blk (fd);
@@ -209,7 +241,7 @@ printf ("%s\n", base_name);
           }
         if (rc)
           {
-            printf ("Oops\n");
+            printf ("Oops 1\n");
             exit (rc);
           }
 #ifndef SPECIAL_CASE_LABEL
@@ -230,6 +262,7 @@ printf ("%s\n", base_name);
             exit (1);
           }
         ssize_t n_written = 0;
+        int n_records = 1; // Already have one in the barrel
         for (;;) // for every record
           {
 #ifdef DATA_ONLY
@@ -252,14 +285,19 @@ printf ("%s\n", base_name);
               break;
             if (rc == 1)
               {
-                break;
+                //printf ("tapemark %d %d\n", n_records, n_records % 128);
+                if (n_records % 128 == 0)
+                  continue;
+                else
+                  break;
               }
-            if (rc)
+            if (rc != 0)
               {
-                printf ("Oops\n");
+                printf ("Oops 2\n");
                 close (fdout);
                 exit (rc);
               }
+            n_records ++;
           }
         printf ("%ld bytes written\n", n_written);
         close (fdout);
