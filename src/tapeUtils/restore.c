@@ -75,11 +75,11 @@ struct file_hdr_36
     word36 zz1 [8];
     word36 hc [14];
     word36 zz2 [8];
-    word36 hdrcnt; // word count for header
-    word36 segcnt; // word count for data
-    word36 dlen;
+    word36 hdrcnt; // word count for header  // mxload:preamble_length in word36
+    word36 segcnt; // word count for data  // mxload:segment_length
+    word36 dlen; // bin(17)
     word36 dname [42];
-    word36 elen;
+    word36 elen; // bin(17)
     word36 ename [8];
     word36 bitcnt;
     word36 record_type;
@@ -125,7 +125,6 @@ static char * record_type [] =
   };
 
 static int restore_cnt = 0;
-static int restoring_file = 0;
 static char path [4097]; // sanatized top_level_dir/dir_name
 static char filename [4097]; // sanatized elem_name
 static char dirname [4097]; // sanatized dir_name
@@ -146,123 +145,17 @@ static int is_file_hdr (void)
            strncmp (p_hdr9 -> zz2, const_zz, 32) == 0;
   }
 
-#if 0
-static void restore_file  (int fd)
-  {
-    if (record_typ != 19) // not a segment
-      return; 
-
-    // Build path from top_level_dir and dir_name
-
-    strcpy (path, top_level_dir);
-    strcat (path, "/");
-
-    if (dir_name [0] == '>')
-      strcpy (dirname, dir_name + 1);
-    else
-      strcpy (dirname, dir_name);
-    size_t l = strlen (dirname);
-    for (int i = 0; i < l; i ++)
-      if (dirname [i] == '/')
-        dirname [i] = '+';
-    strcat (path, dirname);
-
-    // Build filename
-    strcpy (filename, elem_name);
-    l = strlen (elem_name);
-    for (int i = 0; i < l; i ++)
-      if (elem_name [i] == '/')
-        elem_name [i] = '+';
-    strcat (filename, elem_name);
-
-    if (bit_count == 0)
-      {
-        printf ("       Creating EMPTY file %s%s\n", path, filename);
-        // fdout = open ( // XXX
-        // close (fdout);
-      }
-
-    uint8_t * pData = blk + mst_header_sz_bytes;
-
-    uint char_in_blk = 4096 - (data_start*4); /* Char in 1st blk */
-    uint word_in_blk = 1024 - data_start;     /* Word in 1st blk */
-    /* The data will always start on an even word boundary */
-    uint cnt = bit_count/9;              /* Num of characters rounded DOWN */
-    uint cntx = min(char_in_blk,cnt);    /* Characters to check */
-
-
-    cnt = (bit_count + 8) / 9;          /* Num of characters rounded UP */
-    // hFile = FOPEN( FileName, 'w' );
-    // if hFile = 0 then do;
-      // put skip edit( '*** File open error' )(a);
-      // /* Bypass input records if open error */
-      // do while( seg_cnt>0 );        /* Bypass input records */
-        // seg_cnt=seg_cnt-word_in_blk;
-        // if seg_cnt<=0 then leave;
-        // call read_data_block;
-        // word_in_blk=1024;
-        // end; /* do while */
-      // RestoringFile='0'b;
-      // return;
-      // end; /* hFile=0 */
-
-    /*-------------------------*/
-    /* Restore the File        */
-    /*-------------------------*/
-
-    while (seg_cnt > 0)
-      {
-        cntx = min (char_in_blk, cnt); /* Characters to write */
-        // write_binary_data(hfile,pData,DataStart*4,cntx);
- printf ("write %d %d\n", data_start *, cntx);
-
-        cnt = cnt - cntx;              /* Character left to write */
-        seg_cnt = seg_cnt - word_in_blk;
-        if (seg_cnt <=0)
-          return;
-
-        get_mst_record (fd);
-
-        char_in_blk = 4096;
-        word_in_blk = 1024;
-
-        // The size of the segment may be smaller than the bit count indicates
-        // All we can do right now is truncate
-
-        if (is_file_hdr ())
-          {
-            printf ("*** This file truncated\n");
-            // rc = FCLOSE(hFile);             /* Close the file */
-            //RestoringFile='0'b;             /* Say we're done */
-            return;
-          };
-        pData = addr(MstBlkData) + stg(NULL->mstr_header);
-        data_start=0;
-      } /* do while */
-  
-    //rc = FCLOSE(hFile);             /* Close the file */
-    //RestoringFile='0'b;             /* Say we're done */
-
-    // The size of the segment may be larger than the bit count indicates
-    // read any extra data here
-    while (seg_cnt > 0)
-      {
-        get_mst_record (fd);
-        seg_cnt = seg_cnt - 1024;
-      }
-  }
-#endif
 
 // n is the word9 offset into the data region to start from
 // chan_cnt is the number of word9's to write
 // assumes n is a multiple of 8 (word72 aligned)
 //
+
 static void write_binary_data (int fdout, uint n, uint char_cnt)
   {
     uint x = (n * 9) / 8;
     //uint cc = (char_cnt * 9) / 8; // restore.pli loses trailing  bits
     uint cc = ((char_cnt * 9) + 7) / 8;
-printf ("writing %u bytes\n", cc);
     int rc = write (fdout, blk + mst_header_sz_bytes + x, cc);
     if (rc != cc)
       {
@@ -279,6 +172,25 @@ static void write_ascii_data (int fdout, uint n, uint char_cnt)
          printf ("write failed\n");
          exit (1);
       }
+  }
+
+static int check_ASCII (uint n, uint cnt)
+  {
+    for (int i = 0; i < cnt; i ++)
+      {
+        word9 w9 = blk_word9 [mst_header_sz_word9 + n + i];
+        if (w9 >127)
+          return 0;
+        if (w9 < 32 &&
+            w9 != '\000' &&
+            w9 != '\t' &&
+            w9 != '\n' &&
+            w9 != '\v' &&
+            w9 != '\f' &&
+            w9 != '\r')
+          return 0;
+      }
+    return 1;
   }
 
 int main (int argc, char * argv [])
@@ -321,7 +233,7 @@ int main (int argc, char * argv [])
                 int rc = get_mst_record (fd);
                 if (rc < 0)
                   goto eof;
-                if (! is_file_hdr())
+                if (is_file_hdr())
                   break;
               }
           }
@@ -329,8 +241,16 @@ int main (int argc, char * argv [])
         struct file_hdr_36 * fh36p = (struct file_hdr_36 *) blk_word36;
         uint hc = fh36p -> hdrcnt;
         uint sc = fh36p -> segcnt;
-        uint dlen = fh36p -> dlen;
-        uint elen = fh36p -> elen;
+        // printf ("hc %u sc %u\n", hc, sc);
+        // Bit_count is the number of word9 in the data
+        bit_count = fh36p -> bitcnt & 077777777;
+
+        uint maximum_bitcnt = sc * 36;
+        if (bit_count == 0 || bit_count > maximum_bitcnt)
+          bit_count = maximum_bitcnt;
+
+        uint dlen = (fh36p -> dlen) & 0377777; // bin(17)
+        uint elen = (fh36p -> elen) & 0377777; // bin(17)
         if (dlen > 168)
           {
             printf ("truncating dlen");
@@ -346,9 +266,7 @@ int main (int argc, char * argv [])
         strncpy (elem_name, fh9p -> ename, elen);
         elem_name [elen] = '\0';
 
-        // Bit_count is the number of word9 in the data
-        bit_count = fh36p -> bitcnt & 077777777;
-        record_typ = fh36p ->  record_type;
+        record_typ = (fh36p ->  record_type) & 0377777; // bin(17);
         char * rt = "(unknown)";
         if (record_typ > 0 && record_typ < 21)
           rt = record_type [record_typ];
@@ -357,24 +275,14 @@ int main (int argc, char * argv [])
         /* Skip over the rest of the header and      */
         /* segment information.                      */
         /* (32 is the length of the preamble)        */
-printf ("hc %u sc %u\n", hc, sc);
+
         /* This is the number of words in the header */
 
-// for the file ask_.pl1, this code sets wh to 1024, but an ascii dump
-// of the tape shows that the file seems to start at 512 
-// and the file is missing it's beginning
-#if 0
-        word36 wh = hc + 32 + (mst_datasz_word36 - 1);
-        wh = wh - wh % mst_datasz_word36;
-#elif 0
 // this is the restore.pli code: file has junk at beginning
-        word36 wh = hc + /* 32 */ + (256 - 1);
+// Apparently, the preamble allocates itself in 256 word36 chunks;
+
+        word36 wh = hc + 32 + (256 - 1);
         wh = wh - wh % 256;
-#else
-// this is emperically deduced code; still junk at the beginning
-        word36 wh = hc + 32 + (512 - 1);
-        wh = wh - wh % 512;
-#endif
         /* This is the number of words in the segments */
         word36 ws = sc + (mst_datasz_word36 - 1);
         ws = ws - ws % mst_datasz_word36;
@@ -384,7 +292,7 @@ printf ("hc %u sc %u\n", hc, sc);
 
         while (wh > mst_datasz_word36)      /* Find the right record */
           {
-printf ("whittling down wh %lu\n", wh);
+            //printf ("whittling down wh %lu\n", wh);
             int rc = get_mst_record (fd);
             if (rc < 0)
               {
@@ -397,7 +305,7 @@ printf ("whittling down wh %lu\n", wh);
         // p = addr(MstBlkData) + stg(NULL->mstr_header);
 
         data_start = wh; // ??? offset from start of data segment in word36
-printf ("data_start %u\n", data_start);
+        //printf ("data_start %u\n", data_start);
         if (record_typ != 19)
           {
             get_mst_record (fd);
@@ -432,9 +340,7 @@ printf ("data_start %u\n", data_start);
           if (filename [i] == '/')
             filename [i] = '+';
 
-        //restore_file (fd);
-
-        //extract_cnt ++;
+        restore_cnt ++;
 
         if (bit_count == 0)
           {
@@ -452,6 +358,8 @@ printf ("data_start %u\n", data_start);
         // let the user post-process as needed
         // int isASCII = check_ASCII( pData, DataStart*4, cntx );
 
+        int isASCII = check_ASCII (data_start * 4, cntx);
+
         cnt = (bit_count + 8) / 9; /* Num of characters rounded UP */
 
         sprintf (mkcmd, "mkdir -p %s", path);
@@ -467,27 +375,18 @@ printf ("data_start %u\n", data_start);
             printf ("can't open file for writing\n");
             exit (1);
           }
-        strcat (fullname, ".ascii");
-        int fdouta = open (fullname, O_WRONLY | O_CREAT | O_TRUNC, 0664);
-        if (fdouta < 0)
-          {
-            printf ("can't open file for writing\n");
-            exit (1);
-          }
 
-        //hFile = FOPEN( FileName, 'w' );
-        // if hFile = 0 then do;
-          // put skip edit( '*** File open error' )(a);
-          // /* Bypass input records if open error */
-          // do while( seg_cnt>0 );        /* Bypass input records */
-            // seg_cnt=seg_cnt-n_words_in_blk;
-            // if seg_cnt<=0 then leave;
-            // call read_data_block;
-            // n_words_in_blk=1024;
-            // end; /* do while */
-          // RestoringFile='0'b;
-          // return;
-          // end; /* hFile=0 */
+        int fdouta = -1;
+        if (isASCII)
+          {
+            strcat (fullname, ".ascii");
+            fdouta = open (fullname, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            if (fdouta < 0)
+              {
+                printf ("can't open file for writing\n");
+                exit (1);
+              }
+          }
 
         /*-------------------------*/
         /* Restore the File        */
@@ -496,8 +395,9 @@ printf ("data_start %u\n", data_start);
         while (seg_cnt > 0)
           {
             cntx = min (char_in_blk, cnt); /* Characters to write */
-            write_binary_data (fdout, data_start, cntx);
-            write_ascii_data (fdouta, data_start, cntx);
+            write_binary_data (fdout, data_start * 4, cntx);
+            if (isASCII)
+              write_ascii_data (fdouta, data_start * 4, cntx);
             cnt = cnt - cntx;              /* Character left to write */
             seg_cnt = seg_cnt - n_words_in_blk;
             if (seg_cnt <= 0)
@@ -515,7 +415,8 @@ printf ("data_start %u\n", data_start);
         off_t bw = lseek (fdout, 0, SEEK_CUR); 
         printf ("%ld bytes written; %ld bits,%.1f word36, %.1f word9\n", bw, bw * 8, ((float) bw) * 8 / 36, ((float) bw) * 8 / 9);
         close (fdout);
-        close (fdouta);
+        if (isASCII)
+          close (fdouta);
 
         // The size of the segment may be larger than the bit count indicates
         // read any extra data here
@@ -534,5 +435,5 @@ printf ("data_start %u\n", data_start);
           break;
       }
   eof:
-    ;
+    printf ("%d files restored\n", restore_cnt);
   }
