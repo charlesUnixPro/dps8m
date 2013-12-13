@@ -1633,7 +1633,9 @@ void dfstr(DCDstruct *, word36 *Ypair);
 void fstr(DCDstruct *, word36 *CY);
 
 
+#ifndef QUIET_UNUSED
 word36 AddSub36 (char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
+#endif
 word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags);
 word18 AddSub18b(char op, bool isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags);
 word72 AddSub72b(char op, bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags);

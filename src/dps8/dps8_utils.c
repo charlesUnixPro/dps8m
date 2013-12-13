@@ -223,6 +223,7 @@ d8 add36PDP10 (char op, d8 a, d8 b, word18 *flags)
    }
 #endif
 
+#ifndef QUIET_UNUSED
 word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
 {
     word36 res = 0;
@@ -333,6 +334,7 @@ word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSe
     
     return res & DMASK;           // 64 => 36-bit. Mask off unnecessary bits ...
 }
+#endif
 
 word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
 {
@@ -392,7 +394,7 @@ word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToS
     
     if (flagsToSet & I_ZERO)
     {
-        if (res == 0)
+        if ((res & DMASK) == 0)
             SETF(*flags, I_ZERO);       // zero result
         else
             CLRF(*flags, I_ZERO);
@@ -469,7 +471,7 @@ word18 AddSub18b(char op, bool isSigned, word18 op1, word18 op2, word18 flagsToS
     
     if (flagsToSet & I_ZERO)
     {
-        if (res == 0)
+        if ((res & MASK18) == 0)
             SETF(*flags, I_ZERO);       // zero result
         else
             CLRF(*flags, I_ZERO);
@@ -530,7 +532,7 @@ word72 AddSub72b(char op, bool isSigned, word72 op1, word72 op2, word18 flagsToS
     
     if (flagsToSet & I_ZERO)
     {
-        if (res == 0)
+        if ((res & MASK72) == 0)
             SETF(*flags, I_ZERO);       // zero result
         else
             CLRF(*flags, I_ZERO);
