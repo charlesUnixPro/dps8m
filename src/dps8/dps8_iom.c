@@ -1027,7 +1027,8 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
 
 // XXX
 // Since interrupts aren't working yet....
-PPR.IC = 0330;
+//PPR.IC = 0330;
+PPR.IC = 030;
 sim_printf ("Faking interrupt\n");
 
     // returning OK from the simh BOOT command causes simh to start the CPU
