@@ -469,7 +469,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     
     if (xrv == 0)
         longjmp(jmpMain, JMP_NEXT);     // execute next instruction
-    else if (0)                         // TODO: need to put test in to retry instruction
+    else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
         longjmp(jmpMain, JMP_RETRY);    // retry instruction
     
     
@@ -514,4 +514,18 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 void fault_gen(int f)
 {
     doFault(NULL, f, 0, "");
+}
+
+
+/*
+ * return true if group 7 faules are pending ...
+ */
+bool bG7Pending()
+{
+    return g7Faults;
+}
+
+void doG7Faults()
+{
+    
 }
