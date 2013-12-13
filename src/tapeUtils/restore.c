@@ -133,9 +133,9 @@ static char mkcmd [4097];
 static char * top_level_dir;
 static char dir_name [169];
 static char elem_name [33];
-static uint record_typ;
-static uint bit_count;
-static uint data_start;
+static word36 record_typ;
+static word36 bit_count;
+static word36 data_start;
 
 static int is_file_hdr (void)
   {
@@ -270,7 +270,7 @@ int main (int argc, char * argv [])
         char * rt = "(unknown)";
         if (record_typ > 0 && record_typ < 21)
           rt = record_type [record_typ];
-        printf ("%8u %-10s %s>%s\n", bit_count, rt, dir_name, elem_name);
+        printf ("%8lu %-10s %s>%s\n", bit_count, rt, dir_name, elem_name);
 
         /* Skip over the rest of the header and      */
         /* segment information.                      */

@@ -165,14 +165,14 @@ static void mfile (char * fname)
             printf ("  totbits wrong %ld\n", totbits);
           }
 
-        uint rec_num = (p -> thdr [3] >> 18) & 0777777UL;
-        uint file_num = p -> thdr [3] & 0777777UL;
-        uint nbits = (p -> thdr [4] >> 18) & 0777777UL;
-        uint admin = p -> thdr [5] & 0400000000000UL;
+        word36 rec_num = (p -> thdr [3] >> 18) & 0777777UL;
+        word36 file_num = p -> thdr [3] & 0777777UL;
+        word36 nbits = (p -> thdr [4] >> 18) & 0777777UL;
+        word36 admin = p -> thdr [5] & 0400000000000UL;
 
         struct theader_9 * p_hdr9 = (struct theader_9 *) blk_ascii;
 
-        printf ("  mst header  rec_num %6u  file_num %6u  nbits %6u  admin %u\n",
+        printf ("  mst header  rec_num %6lu  file_num %6lu  nbits %6lu  admin %lu\n",
           rec_num, file_num, nbits, admin); 
 
         if (strncmp (p_hdr9 -> zz1, const_zz, 32) == 0 &&
@@ -213,12 +213,12 @@ printf ("dunno\n");
                 //printf ("  totbits wrong %ld\n", totbits);
               //}
 
-            uint rec_num = (boot_p -> thdr [3] >> 18) & 0777777UL;
-            uint file_num = boot_p -> thdr [3] & 0777777UL;
-            uint nbits = (boot_p -> thdr [4] >> 18) & 0777777UL;
-            uint admin = boot_p -> thdr [5] & 0400000000000UL;
+            word36 rec_num = (boot_p -> thdr [3] >> 18) & 0777777UL;
+            word36 file_num = boot_p -> thdr [3] & 0777777UL;
+            word36 nbits = (boot_p -> thdr [4] >> 18) & 0777777UL;
+            word36 admin = boot_p -> thdr [5] & 0400000000000UL;
 
-            printf ("  mst boot header  rec_num %6u  file_num %6u  nbits %6u  admin %u\n",
+            printf ("  mst boot header  rec_num %6lu  file_num %6lu  nbits %6lu  admin %lu\n",
               rec_num, file_num, nbits, admin); 
 
             print_string ("  Installation ID: ", 32 + 32, 32);
