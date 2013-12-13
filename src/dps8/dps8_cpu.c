@@ -850,6 +850,12 @@ jmpRetry:;
             break;
         }
         
+        
+        // do group 7 fault processing
+        if (G7Pending && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
+            doG7Faults();
+            
+        //
         // fetch instruction
         processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
         
