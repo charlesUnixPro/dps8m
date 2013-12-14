@@ -173,7 +173,7 @@ struct opCode NonEISopcodes[01000] = {
     {"ldx6", READ_OPERAND, NO_CSS, 0},
     {"ldx7", READ_OPERAND, NO_CSS, 0},
     {"lbar", READ_OPERAND, NO_CSS, 0},
-    {"rsw", PRIV_INS | NO_RPT, 0},
+    {"rsw", PRIV_INS | NO_RPT | PREPARE_CA, 0},
     {"ldbr", PREPARE_CA | READ_YPAIR | PRIV_INS | NO_RPT, NO_DDCSS,  0},
     {"rmcm", PRIV_INS, NO_DDCSS, 0},
     {"szn", READ_OPERAND, 0},

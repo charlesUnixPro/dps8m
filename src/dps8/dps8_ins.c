@@ -3969,8 +3969,39 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0231:  ///< rsw
-            return STOP_UNIMP;
-        
+          {
+            uint select = TPR.CA & 0x7;
+            switch (select)
+              {
+                case 0: // data switches
+                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking data switches\n");
+                  rA = 0; // XXX need to put the data switch code in
+                  break;
+
+                case 1: // configuration switches for ports A, B, C, D
+                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking configuration switches\n");
+                  rA = 0; // XXX need to put the config. switch code in
+                  break;
+
+                case 2: // fault base and processor number  switches
+                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking port interface, processor mode and processor speed  switches\n");
+                  rA = 0010020712000 | (switches . FLT_BASE & 077) << 24 | (switches . cpu_num & 3); // | proc. ID 
+                  break;
+
+                case 3: // configuration switches for ports E, F, G, H
+                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking configuration switches\n");
+                  rA = 0; // XXX need to put the config. switch code in
+                  break;
+
+                default:
+                  // XXX Guessing values; also don't know if this is actually a fault
+                  doFault(i, ill_proc, 0, "Illegal register select value");
+              }
+            SCF (rA == 0, rIR, I_ZERO);
+            SCF (rA & SIGN36, rIR, I_NEG);
+          }
+          break;
+
         // Privileged -- System Control
 
         case 0015:  ///< cioc

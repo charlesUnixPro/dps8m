@@ -367,7 +367,8 @@ word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToS
     
     if (flagsToSet & I_CARRY)
     {
-        const bool carry = (res > 0xfffffffff);
+        /* const */  bool carry = (res > 0xfffffffff);
+if (op == '-') carry = ! carry; // XXX CAC black magic
         if (carry)
             SETF(*flags, I_CARRY);
         else
@@ -444,7 +445,8 @@ word18 AddSub18b(char op, bool isSigned, word18 op1, word18 op2, word18 flagsToS
     
     if (flagsToSet & I_CARRY)
     {
-        const bool carry = (res > 0777777);
+        /* const */ bool carry = (res > 0777777);
+if (op == '-') carry = ! carry; // XXX CAC black magic
         if (carry)
             SETF(*flags, I_CARRY);
         else
@@ -517,7 +519,8 @@ word72 AddSub72b(char op, bool isSigned, word72 op1, word72 op2, word18 flagsToS
     
     if (flagsToSet & I_CARRY)
     {
-        const bool carry = (res > MASK72);
+        /* const */ bool carry = (res > MASK72);
+if (op == '-') carry = ! carry; // XXX CAC black magic
         if (carry)
             SETF(*flags, I_CARRY);
         else
