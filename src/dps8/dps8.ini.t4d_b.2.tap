@@ -1,0 +1,125 @@
+set debug stdout
+
+;
+; Configure system
+;
+echo
+echo Configuring test system: CPU, IOM * 2, TAPE * 2, SCU * 2, OPCON
+echo
+
+;set cpu nunits=2
+set iom nunits=2
+set tape nunits=2
+set scu nunits=2
+
+set iom0 config=iom_base=014;multiplex_base=0120;os=multics;boot=tape;tapechan=012;cardchan=011;scuport=0
+;set iom0 config=port=0;addr=0;interlace=0;enable=1;initenable=0;halfsize=0;
+set iom0 config=port=0;enable=0
+set iom0 config=port=1;enable=0
+set iom0 config=port=2;enable=0
+set iom0 config=port=3;enable=0
+set iom0 config=port=4;enable=0
+set iom0 config=port=5;enable=0
+set iom0 config=port=5;enable=0
+set iom0 config=port=7;enable=0
+
+set iom1 config=iom_base=014;multiplex_base=0121;os=multics;boot=tape;tapechan=012;cardchan=011;scuport=0
+;set iom1 config=port=0;enable=0
+set iom1 config=port=0;addr=0;interlace=0;enable=1;initenable=0;halfsize=0;
+set iom1 config=port=1;enable=0
+set iom1 config=port=2;enable=0
+set iom1 config=port=3;enable=0
+set iom1 config=port=4;enable=0
+set iom1 config=port=5;enable=0
+set iom1 config=port=5;enable=0
+set iom1 config=port=7;enable=0
+echo
+sh iom0 config
+echo
+sh iom1 config
+echo
+
+set scu0 config=mode=program
+set scu0 config=port0=disable
+set scu0 config=port1=disable
+set scu0 config=port2=disable
+set scu0 config=port3=disable
+set scu0 config=port4=disable
+set scu0 config=port5=disable
+set scu0 config=port6=disable
+set scu0 config=port7=enable
+set scu0 config=maska=7
+set scu0 config=maskb=off
+
+set scu1 config=mode=program
+set scu1 config=port0=disable
+set scu1 config=port1=disable
+set scu1 config=port2=disable
+set scu1 config=port3=disable
+set scu1 config=port4=disable
+set scu1 config=port5=disable
+set scu1 config=port6=disable
+set scu1 config=port7=enable
+set scu1 config=maska=7
+set scu1 config=maskb=off
+
+echo
+sh scu0 config
+echo
+sh scu1 config
+echo
+
+;set cpu0 config ....
+;sh cpu0 config
+
+;cable ripout
+
+; Attach TAPE unit 0 to IOM 0, chan 012, dev_code 0
+cable tape,0,0,012,0
+; Attach TAPE unit 1 to IOM 1, chan 012, dev_code 0
+cable tape,1,1,012,0
+
+; Attach OPCON to IOM A, chan 036
+cable opcon,0,036,0,0
+
+; Attach IOM unit 0 port A (0) to SCU unit 1, port 1
+cable iom,0,0,1,1
+
+; Attach IOM unit 0 port B (1) to SCU unit 0, port 1
+cable iom,0,1,0,1
+
+; Attach IOM unit 1 port A (0) to SCU unit 1, port 0
+cable iom,1,0,1,0
+
+; Attach IOM unit 1 port B (1) to SCU unit 0, port 0
+cable iom,1,1,0,0
+
+; Attach SCU unit 0 port 7 to CPU unit A (0), port 1
+cable scu,0,7,0,1
+
+; Attach SCU unit 1 port 7 to CPU unit A (0), port 0
+cable scu,1,7,0,0
+
+;cable show
+;cable verify
+
+set CPU DEBUG=TRACE;REGDUMPAQI
+;set CPU DEBUG=TRACE
+;set CPU DEBUG=REGDUMPDSBR
+set IOM DEBUG
+set SCU DEBUG=ALL
+;set CLK DEBUG
+;set TIMER  DEBUG
+;set CON-TEL  DEBUG
+set TAPE DEBUG
+set TAPE WATCH
+
+;attach -r TAPE0  20184.tap 
+;attach -r TAPE1  20184.tap 
+;set tape0 rewind
+;set tape1 rewind
+;boot iom1
+
+;set debug dps8.log
+attach -r TAPE1 t4d_b.2.tap
+boot iom1
