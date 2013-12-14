@@ -59,5 +59,8 @@ int read_simh_blk (int fd, void * buf, ssize_t buflen)
         //printf ("can't sync\n");
         return -2;
       }
+    if (blksiz > buflen)
+      return -3; // buffer overrun
+
     return blksiz;
   }

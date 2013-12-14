@@ -12,7 +12,8 @@ and 9 bit character formats
 
 
 The program 'extract_tape_files' reads a SIMH tape and produces a set of files
-containing the MST files.
+containing the MST files. Any tape blocks that are not MST block sized (4680
+bytes) will be written as individual files.
 
      Usage: extract_tape_files tape_file_name directory_to_extract_to
 

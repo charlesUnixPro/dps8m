@@ -40,7 +40,7 @@ typedef unsigned int uint;
 //     int32 0   // tape mark
 //
 
-
+#define max_blksiz 18432 // largest observed in the wild; make larger if needed
 
 //
 // the block will be read into these buffers
@@ -48,9 +48,9 @@ typedef unsigned int uint;
 //   blk:        the packed bit stream from the tape
 //   blk_ascii:  unpacked from 9bit and placed in 8bit chars
 
-static uint8_t blk [mst_blksz_bytes];
+static uint8_t blk [max_blksiz /*mst_blksz_bytes*/];
 static uint8_t blk_ascii [mst_blksz_word9];
-
+static int blksiz;
 static int blk_num = 0;
 static uint32_t rec_num;
 static uint32_t file_num;
@@ -63,19 +63,23 @@ static char * top_level_dir;
 // return 0  ok
 //        1 tapemark
 //        -1 EOF
+//        -2 buffer overrun
+//        -3 not an MST block
 
 static int read_mst_blk (int fd)
   {
-    int rc = read_simh_blk (fd, blk, mst_blksz_bytes);
-    if (rc == 0)
+    blksiz = read_simh_blk (fd, blk, max_blksiz /*mst_blksz_bytes*/);
+    if (blksiz == 0) // tapemar
       return 1;
-    if (rc < 0)
+    if (blksiz == -3) // buffer overrun
+      return -2;
+    if (blksiz < 0) // EOF or ERROR
       return -1;
 
-    if (rc != mst_blksz_bytes)
+    if (blksiz != mst_blksz_bytes)
       {
-        printf ("can't read blk\n");
-        exit (1);
+        printf ("not an MST blk\n");
+        return -3;
       }
 
 // Check to see if the next block(s) are rewrites
@@ -239,6 +243,31 @@ int main (int argc, char * argv [])
             printf ("Empty segment\n");
             continue;
           }
+        if (rc == -2) // block too large
+          {
+            printf ("skipping oversized block\n");
+            continue;
+          }
+        if (rc == -3) // not a MST block
+          {
+            num_files ++;
+            char file_name [1025];
+            sprintf (file_name, "%s/%s.%08d.dat", top_level_dir, base_name, seg_num);
+            int fdout = open (file_name, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            if (fdout < 0)
+              {
+                printf ("can't open %s\n", file_name);
+                exit (1);
+              }
+            ssize_t cnt = write (fdout, blk, blksiz);
+            if (cnt != blksiz)
+              {
+                printf ("error writing\n");
+                exit (1);
+              }
+            close (fdout);
+            continue;
+          }
         if (rc)
           {
             printf ("Oops 1\n");
@@ -254,7 +283,7 @@ int main (int argc, char * argv [])
 #endif
         num_files ++;
         char file_name [1025];
-        sprintf (file_name, "%s.%08d.dat", base_name, seg_num);
+        sprintf (file_name, "%s/%s.%08d.dat", top_level_dir, base_name, seg_num);
         int fdout = open (file_name, O_WRONLY | O_CREAT | O_TRUNC, 0664);
         if (fdout < 0)
           {

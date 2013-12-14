@@ -59,7 +59,7 @@ int main (int argc, char * argv [])
             for (i = 0; i < blksiz; i += 9)
               {
                 int n = 9;
-                if (i + 9 >= blksiz)
+                if (i + 9 > blksiz)
                   n = blksiz - i;
                 memset (bytes, 0, 9);
                 sz = read (fd, bytes, n);
