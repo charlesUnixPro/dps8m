@@ -12,6 +12,38 @@ set iom nunits=2
 set tape nunits=2
 set scu nunits=2
 
+; test tape doesn't like fault base 2???
+;; bit 11 up
+;set cpu config=faultbase=002
+; try 0
+set cpu config=faultbase=000
+
+set cpu config=num=0
+set cpu config=data=0
+; enable ports 0 and 1 (scu connections)
+set cpu config=portenable=3
+; portconfig: ABCD
+;   each is 3 bits adr assignment
+;           1 bit enabled 
+;           1 bit sysinit enabled
+;           1 bit interface enabled (interlace?)
+;           3 bit memory size
+; thus:
+;   A: 000 1 1 0 111 : 047
+;   B: 001 1 1 0 111 : 147
+;   C: 000 0 0 0 000 : 000
+;   D: 000 0 0 0 000 : 000
+set cpu config=portconfig=0047147000000
+set cpu config=portinterface=0
+; 0 = GCOS 1 = VMS
+set cpu config=mode=1
+; 0 = 8/70
+set cpu config=speed=0
+
+echo
+show cpu config
+echo
+
 set iom0 config=iom_base=014;multiplex_base=0120;os=multics;boot=tape;tapechan=012;cardchan=011;scuport=0
 ;set iom0 config=port=0;addr=0;interlace=0;enable=1;initenable=0;halfsize=0;
 set iom0 config=port=0;enable=0
