@@ -26,11 +26,22 @@ void cpu_reset_array (void);
 #define N_CPU_PORTS 8
 
 UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
-
+#define UNIT_NUM(uptr) ((uptr) - cpu_unit)
+static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 /*! CPU modifier list */
 MTAB cpu_mod[] = {
-    { UNIT_V_UF, 0, "STD", "STD", NULL },
+    /* { UNIT_V_UF, 0, "STD", "STD", NULL }, */
     //{ MTAB_XTD|MTAB_VDV, 0, "SPECIAL", NULL, NULL, &spec_disp },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+      0,            /* match */
+      "CONFIG",     /* print string */
+      "CONFIG",         /* match string */
+      cpu_set_config,         /* validation routine */
+      cpu_show_config, /* display routine */
+      NULL          /* value descriptor */
+    },
     { 0 }
 };
 
@@ -1590,6 +1601,191 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
     unitp -> u3 = cpu_port_num;
     unitp -> u4 = 0;
     unitp -> u5 = cpu_unit_num;
+
+    return SCPE_OK;
+  }
+
+static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
+{
+    int unit_num = UNIT_NUM (uptr);
+    if (unit_num < 0 || unit_num >= cpu_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
+        sim_printf ("error: invalid unit number %d\n", unit_num);
+        return SCPE_ARG;
+      }
+
+    sim_printf ("CPU unit number %d\n", unit_num);
+
+    sim_printf("Fault base:               %03o(8)\n", switches . FLT_BASE);
+    sim_printf("CPU number:               %01o(8)\n", switches . cpu_num);
+    sim_printf("Data switches:            %012llo(8)\n", switches . data_switches);
+    sim_printf("Port enable:              %01o(8)\n", switches . port_enable);
+    sim_printf("Port configuration:       %012llo(8)\n", switches . port_config);
+    sim_printf("Port interface:           %02o(8)\n", switches . port_interface);
+    sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
+    sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
+
+    return SCPE_OK;
+}
+
+//
+// set cpu0 config=<blah> [;<blah>]
+//
+//    blah =
+//           faultbase = n
+//           num = n
+//           data = n
+//           portenable = n
+//           portconfig = n
+//           portinterface = n
+//           mode = n
+//           speed = n
+
+static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+  {
+// XXX Minor bug; this code doesn't check for trailing garbage
+
+    int cpu_unit_num = UNIT_NUM (uptr);
+    if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
+        sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
+        return SCPE_ARG;
+      }
+
+    char * copy = strdup (cptr);
+    char * start = copy;
+    char * statement_save = NULL;
+    for (;;) // process statements
+      {
+        char * statement;
+        statement = strtok_r (start, ";", & statement_save);
+        start = NULL;
+        if (! statement)
+          break;
+
+        // process statement
+
+        // extract name
+        char * name_start = statement;
+        char * name_save = NULL;
+        char * name;
+        name = strtok_r (name_start, "=", & name_save);
+        if (! name)
+          {
+            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: can't parse name\n");
+            sim_printf ("error: cpu_set_config: can't parse name\n");
+            break;
+          }
+
+        // extract value
+        char * value;
+        value = strtok_r (NULL, "", & name_save);
+        if (! value)
+          {
+            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: can't parse value\n");
+            sim_printf ("error: cpu_set_config: can't parse value\n");
+            break;
+          }
+        char * endptr;
+        long int n = strtol (value, & endptr, 0);
+        if (* endptr)
+          {
+            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: can't parse number <%s>\n", value);
+            sim_printf ("error: cpu_set_config: can't parse number <%s>\n", value);
+            break;
+          } 
+
+        if (strcmp (name, "FAULTBASE") == 0)
+          {
+            if (n < 0 || n > 0177)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: FAULTBASE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: FAULTBASE value out of range: %ld\n", n);
+                break;
+              } 
+
+            switches . FLT_BASE = n;
+          }
+	else if (strcmp (name, "NUM") == 0)
+          {
+            if (n < 0 || n > 7)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: NUM value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: NUM value out of range: %ld\n", n);
+                break;
+              } 
+            switches . cpu_num = n;
+          }
+	else if (strcmp (name, "DATA") == 0)
+          {
+            if (n < 0 || n > 0777777777777)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: DATA value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: DATA value out of range: %ld\n", n);
+                break;
+              } 
+            switches . data_switches = n;
+          }
+	else if (strcmp (name, "PORTENABLE") == 0)
+          {
+            if (n < 0 || n > 017)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTENABLE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: PORTENABLE value out of range: %ld\n", n);
+                break;
+              } 
+            switches . port_enable = n;
+          }
+	else if (strcmp (name, "PORTCONFIG") == 0)
+          {
+            if (n < 0 || n > 0777777777777)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTCONFIG value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: PORTCONFIG value out of range: %ld\n", n);
+                break;
+              } 
+            switches . port_config = n;
+          }
+	else if (strcmp (name, "PORTINTERFACE") == 0)
+          {
+            if (n < 0 || n > 017)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTINTERFACE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: PORTINTERFACE value out of range: %ld\n", n);
+                break;
+              } 
+            switches . port_interface = n;
+          }
+	else if (strcmp (name, "MODE") == 0)
+          {
+            if (n < 0 || n > 1)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: MODE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: MODE value out of range: %ld\n", n);
+                break;
+              } 
+            switches . proc_mode = n;
+          }
+	else if (strcmp (name, "SPEED") == 0)
+          {
+            if (n < 0 || n > 017)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: SPEED value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: SPEED value out of range: %ld\n", n);
+                break;
+              } 
+            switches . proc_speed = n;
+          }
+        else
+          {
+            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid switch name <%s>\n", name);
+            sim_printf ("error: cpu_set_config: invalid switch name <%s>\n", name);
+            break;
+          }
+      } // process statements
+    free (copy);
 
     return SCPE_OK;
   }

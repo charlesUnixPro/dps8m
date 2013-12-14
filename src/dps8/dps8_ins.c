@@ -3974,23 +3974,91 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             switch (select)
               {
                 case 0: // data switches
-                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking data switches\n");
-                  rA = 0; // XXX need to put the data switch code in
+                  rA = switches . data_switches;
                   break;
 
                 case 1: // configuration switches for ports A, B, C, D
-                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking configuration switches\n");
-                  rA = 0; // XXX need to put the config. switch code in
+                  rA = switches . port_config;
                   break;
+
+//
+// y = 2:
+//
+//   0     0 0 0 0            1 1 1     1 1 1 2 2 2 2 2 2 2   2 2     3 3   3
+//   0     3 4 5 6            2 3 4     7 8 9 0 1 2 3 4 5 6   8 9     2 3   5
+//  --------------------------------------------------------------------------
+//  |A|B|C|D|   |              | |       | | | |   | | | |     |       |     |
+//  --------- b |   FLT BASE   |c|0 0 0 0|d|e|f|0 0|g|h|i|0 0 0| SPEED | CPU |
+//  |a|a|a|a|   |              | |       | | | |   | | | |     |       |     |
+//  --------------------------------------------------------------------------
+//
+// y = 1:
+//
+//   0               0 0               1 1               2 2               3
+//   0               8 9               7 8               6 7               5
+//  -------------------------------------------------------------------------
+//  |      PORT A     |     PORT B      |     PORT C      |     PORT D      |
+//  -------------------------------------------------------------------------
+//  | ADR |j|k|l| MEM | ADR |j|k|l| MEM | ADR |j|k|l| MEM | ADR |j|k|l| MEM |
+//  -------------------------------------------------------------------------
+//
+//   
+//   a: port A-D is 0: 4 word or 1: 2 word 
+//   b: processor type 0:L68 or DPS, 1: DPS8M, 2,3: reserved for future use
+//   c: id prom 0: not installed, 1: installed
+//   d: 1: bcd option installed (marketing designation)
+//   e: 1: dps option installed (marketing designation)
+//   f: 1: 8k cache installed
+//   g: processor type designation: 0: dps8/xx, 1: dps8m/xx
+//   h: gcos/vms switch position: 0:GCOS mode 1: virtual mode
+//   i: current or new product line peripheral type: 0:CPL, 1:NPL
+//   SPEED: 0000 = 8/70, 0100 = 8/52
+//   CPU: Processor number
+//   ADR: Address assignment switch setting for port
+//   j: port enabled flag
+//   k: system initialize enabled flag
+//   l: interface enabled flag
+//   MEM coded memory size
+//     000 32K
+//     001 64K
+//     010 128K
+//     011 256K
+//     100 512K
+//     101 1024K
+//     110 2048K
+//     111 4096K
 
                 case 2: // fault base and processor number  switches
-                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking port interface, processor mode and processor speed  switches\n");
-                  rA = 0010020712000 | (switches . FLT_BASE & 077) << 24 | (switches . cpu_num & 3); // | proc. ID 
-                  break;
 
-                case 3: // configuration switches for ports E, F, G, H
-                  sim_debug (DBG_ERR, & cpu_dev, "RSW faking configuration switches\n");
-                  rA = 0; // XXX need to put the config. switch code in
+// DPS 8M processors:
+// C(Port interface, Ports A-D) → C(A) 0,3
+// 01 → C(A) 4,5
+// C(Fault base switches) → C(A) 6,12
+// 1 → C(A) 13
+// 0000 → C(A) 14,17
+// 111 → C(A) 18,20
+// 00 → C(A) 21,22
+// 1 → C(A) 23
+// C(Processor mode sw) → C(A) 24
+// 1 → C(A) 25
+// 000 → C(A) 26,28
+// C(Processor speed) → C (A) 29,32
+// C(Processor number switches) → C(A) 33,35
+
+                  rA = 0;
+                  rA |= (switches . port_interface & 017L) << (35 -  3);
+                  rA |= (0b01L)                            << (35 -  5);
+                  rA |= (switches . FLT_BASE & 0177L)      << (35 - 12);
+                  rA |= (0b1L)                             << (35 - 13);
+                  rA |= (0b0000L)                          << (35 - 17);
+                  rA |= (0b111L)                           << (35 - 20);
+                  rA |= (0b00L)                            << (35 - 22);
+                  rA |= (0b1L)                             << (35 - 23);
+                  rA |= (switches . proc_mode & 01L)       << (35 - 24);
+                  rA |= (0b1L)                             << (35 - 25);
+                  rA |= (0b000L)                           << (35 - 28);
+                  rA |= (switches . proc_speed & 017L)     << (35 - 32);
+                  rA |= (switches . cpu_num & 07L)         << (35 - 35);
                   break;
 
                 default:

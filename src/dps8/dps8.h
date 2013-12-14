@@ -2044,8 +2044,14 @@ typedef struct {
 // Physical Switches
 typedef struct {
     // Switches on the Processor's maintenance and configuration panels
-    int FLT_BASE; // normally 7 MSB of 12bit fault base addr
-    int cpu_num;  // zero for CPU 'A', one for 'B' etc.
+    uint FLT_BASE; // normally 7 MSB of 12bit fault base addr
+    uint cpu_num;  // zero for CPU 'A', one for 'B' etc.
+    word36 data_switches;
+    uint port_enable; // 4 bits; enable ports A-D
+    word36 port_config; // Read by rsw instruction; format unknown
+    uint port_interface; // 4 bits  Read by rsw instruction; 
+    uint proc_mode; // 1 bit  Read by rsw instruction; format unknown
+    uint proc_speed; // 4 bits Read by rsw instruction; format unknown
 } switches_t;
 
 
