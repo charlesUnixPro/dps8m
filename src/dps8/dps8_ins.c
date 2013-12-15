@@ -897,6 +897,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// The contents of the indicator register after address preparation are stored in C(Y)18,31  C(Y)18,31 reflects the state of the tally runout indicator prior to address preparation. The relation between C(Y)18,31 and the indicators is given in Table 4-5.
             
             SETLO(CY, ((rIR | i->stiTally) & 0000000777760LL));
+// XXX [CAC] hack for t4d tape
+CY ^= 020;
             break;
             
         case 0756: ///< stq
@@ -4046,7 +4048,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 // C(Processor number switches) → C(A) 33,35
 
                   rA = 0;
-                  rA |= (switches . port_interface & 017L) << (35 -  3);
+                  rA |= (switches . port_interlace & 017L) << (35 -  3);
                   rA |= (0b01L)                            << (35 -  5);
                   rA |= (switches . FLT_BASE & 0177L)      << (35 - 12);
                   rA |= (0b1L)                             << (35 - 13);
@@ -4073,7 +4075,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         // Privileged -- System Control
 
         case 0015:  ///< cioc
-            return STOP_UNIMP;
+          {
+            // cioc The system controller addressed by Y (i.e., contains 
+            // the word at Y) sends a connect signal to the port specified 
+            // by C(Y) 33,35 .
+
+            // XXX ASSUME0
+            // [CAC] I'm still unclear on the mechanics of SCU addressing
+            // so I will assmue SCU0 here
+            uint scu_unit_num = 0;
+            uint scu_port_num = CY & 03;
+            scu_cioc (scu_unit_num, scu_port_num);
+          }
+          break;
+   
         case 0553:  ///< smcm
             return STOP_UNIMP;
         case 0451:  ///< smic

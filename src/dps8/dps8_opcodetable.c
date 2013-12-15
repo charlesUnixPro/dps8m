@@ -36,7 +36,7 @@ struct opCode NonEISopcodes[01000] = {
     {"puls1", NO_RPT, 0},
     {"puls2", NO_RPT, 0},
     {},
-    {"cioc", PRIV_INS | NO_RPT, 0},
+    {"cioc", READ_OPERAND | PRIV_INS | NO_RPT, 0},
     {},
     {},
     {"adlx0", READ_OPERAND, NO_CSS, 0},

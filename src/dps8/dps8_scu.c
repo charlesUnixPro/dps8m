@@ -1303,53 +1303,47 @@ static int scu_get_calendar(t_uint64 addr)
 
 // =============================================================================
 
-#ifndef QUIET_UNUSED
-static int scu_cioc(t_uint64 addr)
+//int scu_cioc(t_uint64 addr)
+int scu_cioc (uint scu_unit_num, uint scu_port_num)
 {
     // BUG: addr should determine which SCU is selected
     
-    if (scu_hw_arg_check("cioc", addr, 0) != 0)
-        return 1;
-#ifndef QUIET_UNUSED
-    // XXX these needs to be indexed by scu_unit_num
-// XXX ASSUME0
-    int rcv_port = cpu_ports.scu_port;  // port-no that instr came in on
-#endif
+    // if (scu_hw_arg_check("cioc", addr, 0) != 0)
+       //  return 1;
+
 // XXX ASSUME0
     // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
 // XXX ASSUME0
     // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
     
-    t_uint64 word;
-    int ret;
+    //t_uint64 word;
+    int ret = 0;
     //if ((ret = fetch_word(TPR.CA, &word)) != 0) {
-    if ((ret = Read(NULL, TPR.CA, &word, DataRead, 0)) != 0) { // HWR
-        cancel_run(STOP_BUG);
-        return ret;
-    }
-    int port = word & 7;
-    sim_debug (DBG_INFO, &scu_dev, "\n");
-    sim_debug (DBG_DEBUG, &scu_dev, "scu_cioc: Contents of %llo are: %llo => port %d\n", addr, word, port);
+    //if ((ret = Read(NULL, TPR.CA, &word, DataRead, 0)) != 0) { // HWR
+    //    cancel_run(STOP_BUG);
+    //    return ret;
+    //}
+    //int port = word & 7;
+    //sim_debug (DBG_INFO, &scu_dev, "\n");
+    //sim_debug (DBG_DEBUG, &scu_dev, "scu_cioc: Contents of %llo are: %llo => port %d\n", addr, word, port);
+
     // OK ... what's a connect signal (as opposed to an interrupt?
     // [CAC] Connects come from a CPU, interrupts from peripherals???
     // A connect signal does the following (AN70, 8-7):
     //  IOM target: connect strobe to IOM
     //  CPU target: connect fault
     
-    // todo: check if enabled & not masked
+    // TODO: check if enabled & not masked
     
-    static int n_cioc = 0;
-    {
-        //static int n_cioc = 0;
-        sim_debug (DBG_NOTIFY, &scu_dev, "scu_cioc: CIOC # %d\n", ++ n_cioc);
-        if (n_cioc >= 306) {        // BUG: temp hack to increase debug level
-            /* XXX Evil: ++ cpu_dev.dctrl */;
-        }
-    }
-    sim_debug (DBG_DEBUG, &scu_dev, "scu_cioc: Connect sent to port %d => %d\n", port, scu[ASSUME0].ports[port]);
+    //static int n_cioc = 0;
+    //{
+    //    //static int n_cioc = 0;
+    //    sim_debug (DBG_NOTIFY, &scu_dev, "scu_cioc: CIOC # %d\n", ++ n_cioc);
+   // }
+    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc: Connect sent to port %d => %d\n", scu_port_num, scu[scu_unit_num].ports[scu_port_num]);
     
     // we only have one IOM, so signal it
-    // todo: sanity check port connections
+    // TODO: sanity check port connections
     if (sys_opts.iom_times.connect < 0)
         iom_interrupt(ASSUME0);
     else {
@@ -1360,13 +1354,8 @@ static int scu_cioc(t_uint64 addr)
         }
     }
     
-    if (n_cioc >= 306) {
-        /* XXX Evil: -- cpu_dev.dctrl */;
-    }
-    
     return ret;
 }
-#endif
 
 // =============================================================================
 

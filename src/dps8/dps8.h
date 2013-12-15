@@ -2049,7 +2049,7 @@ typedef struct {
     word36 data_switches;
     uint port_enable; // 4 bits; enable ports A-D
     word36 port_config; // Read by rsw instruction; format unknown
-    uint port_interface; // 4 bits  Read by rsw instruction; 
+    uint port_interlace; // 4 bits  Read by rsw instruction; 
     uint proc_mode; // 1 bit  Read by rsw instruction; format unknown
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
 } switches_t;
@@ -2937,6 +2937,7 @@ t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);
 t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
+int scu_cioc (uint scu_unit_num, uint scu_port_num);
 
 /* dps8_sys.c */
 

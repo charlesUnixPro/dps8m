@@ -23,7 +23,8 @@ void cpu_reset_array (void);
  */
 
 #define N_CPU_UNITS 1
-#define N_CPU_PORTS 8
+// The DPS8M had only 4 ports
+#define N_CPU_PORTS 4
 
 UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
@@ -85,7 +86,7 @@ const char *sim_stop_messages[] = {
  * From AM81-04 Multics System Maintainance Procedures
  *
  * "A level 68 IOM system may containa maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
- * [CAC: but AN87 says multics only supports two IOMs
+ * [CAC]: but AN87 says multics only supports two IOMs
  * 
  * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
  * to the port. The base address (in KW) is the product of this number and the value
@@ -1622,7 +1623,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Data switches:            %012llo(8)\n", switches . data_switches);
     sim_printf("Port enable:              %01o(8)\n", switches . port_enable);
     sim_printf("Port configuration:       %012llo(8)\n", switches . port_config);
-    sim_printf("Port interface:           %02o(8)\n", switches . port_interface);
+    sim_printf("Port interlace:           %02o(8)\n", switches . port_interlace);
     sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
 
@@ -1638,7 +1639,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           data = n
 //           portenable = n
 //           portconfig = n
-//           portinterface = n
+//           portinterlace = n
 //           mode = n
 //           speed = n
 
@@ -1748,15 +1749,15 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
               } 
             switches . port_config = n;
           }
-	else if (strcmp (name, "PORTINTERFACE") == 0)
+	else if (strcmp (name, "PORTINTERLACE") == 0)
           {
             if (n < 0 || n > 017)
               {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTINTERFACE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: PORTINTERFACE value out of range: %ld\n", n);
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTINTERLACE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: PORTINTERLACE value out of range: %ld\n", n);
                 break;
               } 
-            switches . port_interface = n;
+            switches . port_interlace = n;
           }
 	else if (strcmp (name, "MODE") == 0)
           {
