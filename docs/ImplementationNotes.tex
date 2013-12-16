@@ -549,4 +549,15 @@ that is configured in MANUAL (not PROGRAM mode)? According to AL39, a
  \textbf{sscr} that tries 
 to set an unassigned mask register generates a STORE FAULT.
  (dps8\_scu.c/scu\_sscr()).
+
+\section {t4d_b.2.tap issues}
+
+t4d seems to require the carry bit sense to be inverted after subtract 
+operations; i.e. carry &=&&=& not borrow.
+
+t4d seems to require that the IR register ABSOLUTE mode bit sense be inverted;
+i.e. 0 is ABSOLUTE mode.
+
+I would have thought that DIS with interrupt inhibit would be an absolute halt, but t4d issues it after a CIOC.
+
 \end{document}
