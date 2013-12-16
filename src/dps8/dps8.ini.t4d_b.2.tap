@@ -26,7 +26,7 @@ set cpu config=portenable=3
 ;   each is 3 bits adr assignment
 ;           1 bit enabled 
 ;           1 bit sysinit enabled
-;           1 bit interface enabled (interlace?)
+;           1 bit interlace enabled (interlace?)
 ;           3 bit memory size
 ; thus:
 ;   A: 000 1 1 0 111 : 047
@@ -34,7 +34,7 @@ set cpu config=portenable=3
 ;   C: 000 0 0 0 000 : 000
 ;   D: 000 0 0 0 000 : 000
 set cpu config=portconfig=0047147000000
-set cpu config=portinterface=0
+set cpu config=portinterlace=0
 ; 0 = GCOS 1 = VMS
 set cpu config=mode=1
 ; 0 = 8/70
@@ -72,8 +72,8 @@ sh iom1 config
 echo
 
 set scu0 config=mode=program
-set scu0 config=port0=disable
-set scu0 config=port1=disable
+set scu0 config=port0=enable
+set scu0 config=port1=enable
 set scu0 config=port2=disable
 set scu0 config=port3=disable
 set scu0 config=port4=disable
@@ -84,8 +84,8 @@ set scu0 config=maska=7
 set scu0 config=maskb=off
 
 set scu1 config=mode=program
-set scu1 config=port0=disable
-set scu1 config=port1=disable
+set scu1 config=port0=enable
+set scu1 config=port1=enable
 set scu1 config=port2=disable
 set scu1 config=port3=disable
 set scu1 config=port4=disable
@@ -135,7 +135,8 @@ cable scu,1,7,0,0
 ;cable show
 ;cable verify
 
-set CPU DEBUG=TRACE;REGDUMPAQI
+set CPU DEBUG=ALL
+;set CPU DEBUG=TRACE;REGDUMPAQI
 ;set CPU DEBUG=TRACE
 ;set CPU DEBUG=REGDUMPDSBR
 set IOM DEBUG
@@ -152,6 +153,7 @@ set TAPE WATCH
 ;set tape1 rewind
 ;boot iom1
 
-;set debug dps8.log
+set CPU debug=appending
+set debug dps8.log
 attach -r TAPE1 t4d_b.2.tap
 boot iom1

@@ -1028,8 +1028,10 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
 // XXX
 // Since interrupts aren't working yet....
 //PPR.IC = 0330;
-PPR.IC = 030;
-sim_printf ("Faking interrupt\n");
+//PPR.IC = 030;
+//sim_printf ("Faking interrupt\n");
+sim_printf ("Faking DIS\n");
+cpu . cycle = DIS_cycle;
 
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;
@@ -2949,6 +2951,12 @@ enum iom_imw_pics {
  * 6 - IOM 2 channels 0-31
  * 7 - IOM 3 channels 0-31
  *
+ *   3  3     3   3   3
+ *   1  2     3   4   5
+ *  ---------------------
+ *  | pic | group | iom |
+ *  -----------------------------
+ *       2       1     2
  */
 
 enum iom_imw_pics
@@ -3007,7 +3015,7 @@ static int send_general_interrupt(int iom_unit_num, int chan, int pic)
 #ifdef AN70
     uint chan_group = chan < 32 ? 1 : 0;
     uint chan_in_group = chan & 037;
-    uint interrupt_num = iom_unit_num | (chan_group << 2);
+    uint interrupt_num = iom_unit_num | (chan_group << 2) | (pic << 3);
 #else
     imw_addr = iom [iom_unit_num] . iom_num; // 2 bits
     imw_addr |= pic << 2;   // 3 bits

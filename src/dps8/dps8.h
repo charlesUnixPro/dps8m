@@ -1666,9 +1666,11 @@ extern bool apndTrace;  ///< when true do appending unit tracing
 #define cpuCycles sys_stats.total_cycles
 
 extern jmp_buf jmpMain;     ///< This is where we should return to from a fault to retry an instruction
+extern int stop_reason;     ///< sim_instr return value for JMP_STOP
 #define JMP_RETRY       1   ///< retry instruction
 #define JMP_NEXT        2   ///< goto next sequential instruction
 #define JMP_TRA         3   ///< treat return as if it were a TRA instruction with rIC already set to where to jump to
+#define JMP_STOP        4   ///< treat return as if it were an attempt to unravel the stack and gracefully exit out of sim_instr
 
 /*
  * Stuff to do with the local loader/binder/linker
@@ -1873,6 +1875,8 @@ typedef struct {
     struct {
         flag_t fhld; // An access violation or directed fault is waiting. AL39 mentions that the APU has this flag, but not where scpr stores it
     } apu_state;
+
+    bool interrupt_flag;
 } cpu_state_t;
 
 /* Indicator register (14 bits [only positions 18..32 have meaning]) */
@@ -2871,6 +2875,11 @@ void set_addr_mode(addr_modes_t mode);
 
 void ic_history_init(void);
 t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
+
+/* dps8_append.c */
+
+void do_ldbr (word36 * Ypair);
+void do_sdbr (word36 * Ypair);
 
 /* dps8_decimal.c */
 

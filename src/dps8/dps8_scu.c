@@ -693,7 +693,7 @@ static scu_t scu [N_SCU_UNITS_MAX];
 
 static t_stat scu_reset (DEVICE *dptr)
   {
-    memset (& scu, 0, sizeof (scu));
+    //memset (& scu, 0, sizeof (scu));
 
     // On reset, instantiate the config switch settings
 
@@ -705,9 +705,9 @@ static t_stat scu_reset (DEVICE *dptr)
         for (int i = 0; i < N_SCU_PORTS; i ++)
           {
             up ->  ports [i] . is_enabled = sw -> port_enable [i]; // port is enabled
-            up ->  ports [i] . type = ADEV_NONE;   // type of connected device
-            up ->  ports [i] . idnum = 0;        // id # of connected dev, 0..7
-            up ->  ports [i] . dev_port = 0;     // which port on the connected device?
+            //up ->  ports [i] . type = ADEV_NONE;   // type of connected device
+            //up ->  ports [i] . idnum = 0;        // id # of connected dev, 0..7
+            //up ->  ports [i] . dev_port = 0;     // which port on the connected device?
          }
    
 // CAC - These settings were reversed engineer from the code instead
@@ -717,18 +717,20 @@ static t_stat scu_reset (DEVICE *dptr)
 
         for (int i = 0; i < N_ASSIGNMENTS; i ++)
           {
-            up ->  interrupts [i] . exec_intr_mask = 0;
+// XXX Hack for t4d
+            //up ->  interrupts [i] . exec_intr_mask = 0;
+            up ->  interrupts [i] . exec_intr_mask = 037777777777;
             up ->  interrupts [i] . mask_assign . raw = 0 /* 0720 */;
             up ->  interrupts [i] . mask_assign . unassigned = 
               sw -> mask_enable [i] ? 0 : 1;
             up ->  interrupts [i] . mask_assign . port = 
               sw -> mask_assignment [i];
 
-            if (sw -> mask_enable [i])
-              {
-                int port = sw -> mask_assignment [i];
-                up -> ports [port] . type = ADEV_CPU;
-              }
+            //if (sw -> mask_enable [i])
+              //{
+                //int port = sw -> mask_assignment [i];
+                //up -> ports [port] . type = ADEV_CPU;
+              //}
           }
       }
     return SCPE_OK;
@@ -1340,15 +1342,36 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
     //    //static int n_cioc = 0;
     //    sim_debug (DBG_NOTIFY, &scu_dev, "scu_cioc: CIOC # %d\n", ++ n_cioc);
    // }
-    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc: Connect sent to port %d => %d\n", scu_port_num, scu[scu_unit_num].ports[scu_port_num]);
-    
+    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc: Connect sent to unit %d port %d\n", scu_unit_num, scu_port_num);
+
     // we only have one IOM, so signal it
     // TODO: sanity check port connections
+
+    struct ports * portp = & scu [scu_unit_num] . ports [scu_port_num];
+
+    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc:      enabled: %d\n", portp -> is_enabled);
+    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc:      type: %d\n", portp -> type);
+    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc:      idnum: %d\n", portp -> idnum);
+    sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc:      dev_port: %d\n", portp -> dev_port);
+
+    if (! portp -> is_enabled)
+      {
+        sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc: Connect sent to disabled port; dropping\n");
+        return 1;
+      }
+    if (portp -> type != ADEV_IOM)
+      {
+        sim_debug (DBG_DEBUG, & scu_dev, "scu_cioc: Connect sent to not-an-IOM; dropping\n");
+        return 1;
+      }
+    int iom_unit_num = portp -> idnum;
+    //int iom_port_num = portp -> dev_port;
+
     if (sys_opts.iom_times.connect < 0)
-        iom_interrupt(ASSUME0);
+        iom_interrupt(iom_unit_num);
     else {
         sim_debug (DBG_INFO, &scu_dev, "scu_cioc: Queuing an IOM in %d cycles (for the connect channel)\n", sys_opts.iom_times.connect);
-        if (sim_activate(&iom_dev.units[0], sys_opts.iom_times.connect) != SCPE_OK) {
+        if (sim_activate(&iom_dev.units[iom_unit_num], sys_opts.iom_times.connect) != SCPE_OK) {
             cancel_run(STOP_UNK);
             ret = 1;
         }
@@ -1413,7 +1436,7 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
         return 1;
     }
     
-    for (int pima = 0; pima < N_CELL_INTERRUPTS; ++pima) {
+    for (int pima = 0; pima < N_ASSIGNMENTS; ++pima) {
         if (scu[scu_unit_num].interrupts[pima].mask_assign.unassigned) {
             sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: Mask is not assigned.\n",
                     moi, pima + 'A');
@@ -1721,6 +1744,7 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num)
   {
+    sim_debug (DBG_DEBUG, & scu_dev, "cable_scu: scu_unit_num: %d, scu_port_num: %d, cpu_unit_num: %d, cpu_port_num: %d\n", scu_unit_num, scu_port_num, cpu_unit_num, cpu_port_num);
     if (scu_unit_num < 0 || scu_unit_num >= scu_dev . numunits)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
@@ -1750,6 +1774,11 @@ t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_
     cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_unit_num = cpu_unit_num;
     cables_from_cpus [scu_unit_num] [scu_port_num] . cpu_port_num = cpu_port_num;
 
+    scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
+    scu [scu_unit_num] . ports [scu_port_num] . idnum = cpu_unit_num;
+    scu [scu_unit_num] . ports [scu_port_num] . dev_port = cpu_port_num;
+    scu [scu_unit_num] . ports [scu_port_num] . devp = & cpu_dev;
+    scu [scu_unit_num] . ports [scu_port_num] . unitp = & cpu_unit [cpu_unit_num];
     return SCPE_OK;
   }
 
@@ -1760,6 +1789,8 @@ t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_
 
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num)
   {
+    sim_debug (DBG_DEBUG, & scu_dev, "cable_to_scu: scu_unit_num: %d, scu_port_num: %d, iom_unit_num: %d, iom_port_num: %d\n", scu_unit_num, scu_port_num, iom_unit_num, iom_port_num);
+
     if (scu_unit_num < 0 || scu_unit_num >= scu_dev . numunits)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_to_scu: scu_unit_num out of range <%d>\n", scu_unit_num);
@@ -1785,7 +1816,8 @@ t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
     UNIT * unitp = & iom_unit [iom_unit_num];
      
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_IOM;
-    scu [scu_unit_num] . ports [scu_port_num] . dev_port = iom_unit_num;
+    scu [scu_unit_num] . ports [scu_port_num] . idnum = iom_unit_num;
+    scu [scu_unit_num] . ports [scu_port_num] . dev_port = iom_port_num;
 
     scu [scu_unit_num] . ports [scu_port_num] . devp = devp;
     scu [scu_unit_num] . ports [scu_port_num] . unitp  = unitp;

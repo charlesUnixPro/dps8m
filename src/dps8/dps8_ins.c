@@ -371,7 +371,8 @@ t_stat executeInstruction(DCDstruct *ci)
             
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
-            set_addr_mode(APPEND_mode);
+            // XXX [CAC] I disagres. See AL39, pg 311.
+            // set_addr_mode(APPEND_mode);
         }
         
         // if instructions need an operand (CY) to operate, read it now. Else defer AM calcs until instruction execution
@@ -655,7 +656,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             SCF(tmp18 & I_OMASK, rIR, I_OMASK);
             SCF(tmp18 & I_TALLY, rIR, I_TALLY);
             SCF(tmp18 & I_PERR,  rIR, I_PERR);
-            SCF(bAbsPriv && (rIR & I_PMASK), rIR, I_PMASK);
+            // [CAC] I read this as "set PMASK iff PMASK is et"
+            //SCF(bAbsPriv && (rIR & I_PMASK), rIR, I_PMASK);
+            SCF(bAbsPriv && (tmp18 & I_PMASK), rIR, I_PMASK);
             SCF(tmp18 & I_TRUNC, rIR, I_TRUNC);
             SCF(bAbsPriv && (rIR & I_MIIF), rIR, I_MIIF);
             //SCF(tmp18 & I_HEX,  rIR, I_HEX);
@@ -3157,20 +3160,34 @@ CY ^= 020;
             if ((CY & 3) != 3)
                 PR[n].BITNO = (CY >> 30) & 077;
             else
-                // generate command fault
-                ;
+              doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+
+// [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, 
+// then a store fault (illegal pointer) will occur and C(Y) will not be changed.
+// I interpret this has meaning that only the high bits should be set here
+
+#if 0
             //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
             if ((CY & 07777000000LL) == 07777000000LL)
                 PR[n].SNR = 070000; // XXX check to see if this is correct
             else // otherwise, 000 → C(PRn.SNR)0,2
                 PR[n].SNR = 0;  //&= 07777;
+#else
+            //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
+            if ((CY & 07777000000LL) == 07777000000LL)
+                PR[n].SNR |= 070000; // XXX check to see if this is correct
+            else // otherwise, 000 → C(PRn.SNR)0,2
+                PR[n].SNR &= 007777;
+#endif
+
             // XXX completed, but needs testing
             //C(Y)6,17 → C(PRn.SNR)3,14
             //PR[n].SNR &= 3; -- huh? Never code when tired
-            PR[n].SNR |= GETHI(CY) & 07777;
+            PR[n].SNR &=             070000; // [CAC] added this
+            PR[n].SNR |= GETHI(CY) & 007777;
             //C(Y)18,35 → C(PRn.WORDNO)
             PAR[n].WORDNO = GETLO(CY);
-            
+            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PAR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PAR[n].WORDNO);
             break;
          
         case 0251:  ///< spbp1
@@ -3374,13 +3391,13 @@ CY ^= 020;
             
             //If C(PRn.SNR)0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, then a store fault (illegal pointer) will occur and C(Y) will not be changed.
             
+            // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
             if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
-                // store fault (illegal pointer)
-                ;
+              doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
-            CY  =  PR[n].BITNO << 30;
-            CY |= (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
-            CY |=  PR[n].WORDNO;
+            CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
+            CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
+            CY |=  PR[n].WORDNO & PAMASK;
             
             CY &= DMASK;    // keep to 36-bits
             
@@ -3882,7 +3899,8 @@ CY ^= 020;
             break;
 
         case 0232:  ///< ldbr
-            return STOP_UNIMP;
+            do_ldbr (Ypair);
+            break;
 
         case 0637:  ///< ldt
             rTR = (CY << 9) && 0777777777000LL;
@@ -3904,7 +3922,9 @@ CY ^= 020;
             break;
             
         case 0154:  ///< sdbr
-            return STOP_UNIMP;
+            do_sdbr (Ypair);
+            break;
+
         case 0557:  ///< sdp
             return STOP_UNIMP;
         case 0532:  ///< cams
@@ -4049,13 +4069,13 @@ CY ^= 020;
 
                   rA = 0;
                   rA |= (switches . port_interlace & 017L) << (35 -  3);
-                  rA |= (0b01L)                            << (35 -  5);
+                  rA |= (0b01L)  /* DPS8M */               << (35 -  5);
                   rA |= (switches . FLT_BASE & 0177L)      << (35 - 12);
                   rA |= (0b1L)                             << (35 - 13);
                   rA |= (0b0000L)                          << (35 - 17);
                   rA |= (0b111L)                           << (35 - 20);
                   rA |= (0b00L)                            << (35 - 22);
-                  rA |= (0b1L)                             << (35 - 23);
+                  rA |= (0b1L)  /* DPS8M */                << (35 - 23);
                   rA |= (switches . proc_mode & 01L)       << (35 - 24);
                   rA |= (0b1L)                             << (35 - 25);
                   rA |= (0b000L)                           << (35 - 28);
@@ -4138,18 +4158,37 @@ CY ^= 020;
 
         // Privileged - Miscellaneous
         case 0212:  ///< absa
-            rA = finalAddress;
+            // XXX 
+            rA = finalAddress; // XXX This is correct, but doAppend is not setting it correctly
+            //rA = TPR.CA;
+            SCF (rA == 0, rIR, I_ZERO);
+            SCF (rA & SIGN36, rIR, I_NEG);
             break;
             
         case 0616:  ///< dis
             if (i->i) {
                 sim_debug (DBG_WARN, & cpu_dev, "OPU dis: DIS with inhibit set\n");
-            } else {
-                sim_debug (DBG_WARN, & cpu_dev, "OPU dis: DIS\n");
-            }
-            cpu.cycle = DIS_cycle;
+                // [CAC] XXX t4d requires this to be interruptable.
+                //return STOP_DIS;
+            } 
 
-            return STOP_DIS;
+// XXX "return STOP_DIS" fails in the case of a DIS instruction in the fault 
+// doXED(); doFault doesn't check for the STOP_ case, and places that call 
+// doFault don't reliably check it's return value
+            //sim_printf ("events . int_pending %d, sim_qcount %d\n", events . int_pending, sim_qcount ());
+            if (events . int_pending == 0 &&
+                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+                                     // break this logic
+              {
+                sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", rIC);
+                //return STOP_DIS;
+                stop_reason = STOP_DIS;
+                longjmp (jmpMain, JMP_STOP);
+              }
+            sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
+            sim_printf ("entered DIS_cycle\n");
+            cpu.cycle = DIS_cycle;
+            break;
  
             
         default:
@@ -4287,6 +4326,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].WORDNO = TPR.CA;
             PR[7].BITNO = TPR.TBR;
             break;        
+// XXX [CAC] collaped code to generic case for ease of debugging
+#if 0
         case 0350:  ///< epbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.TRR) → C(PRn.RNR)
@@ -4377,6 +4418,38 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].WORDNO = TPR.CA;
             PR[7].BITNO = TPR.TBR;
             break;
+#else
+        // AL39 refers to the even numbered register as eppN in section 4,
+        // but calls them epbpN in Appendix A. as8 and dps8 use epbp.
+        case 0350:  ///< epbp0 aka epp0
+        case 0351:  ///< epp1
+        case 0352:  ///< epbp2 aka epp2
+        case 0353:  ///< epp3
+        case 0370:  ///< epbp4 aka epp4
+        case 0371:  ///< epp5
+        case 0372:  ///< epbp6 aka epp6
+        case 0373:  ///< epp7
+          {
+            // eppn 0350 0351 0352 0353 0370 0371 0372 0373
+            //  &3     0    1    2    3    0    1    2    3
+            //  &20    0    0    0    0   20   20   20   20
+            //  &20>>4 0    0    0    0    4    4    4    4
+            //  (opcode & 03) | ((opcode * 020) >> 4)
+            //         0    1    2    3    4    5    6    7
+            int n = (opcode & 03) | ((opcode & 020) >> 4);
+            sim_debug (DBG_APPENDING, & cpu_dev, "epp%d (%o) TPR.TRR 0%o, TPR.TSR 0%o, TPR.CA 0%o, TPR.TBR 0%o\n", n, opcode, TPR.TRR, TPR.TSR, TPR.CA, TPR.TBR);
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///   C(TPR.TRR) → C(PRn.RNR)
+            ///   C(TPR.TSR) → C(PRn.SNR)
+            ///   C(TPR.CA) → C(PRn.WORDNO)
+            ///   C(TPR.TBR) → C(PRn.BITNO)
+            PR[n].RNR = TPR.TRR;
+            PR[n].SNR = TPR.TSR;
+            PR[n].WORDNO = TPR.CA;
+            PR[n].BITNO = TPR.TBR;
+          }
+          break;
+#endif
         
         case 0250:  ///< spbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code

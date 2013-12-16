@@ -50,6 +50,7 @@ static DEBTAB cpu_dt[] = {
     { "TRACE",      DBG_TRACE       },
     { "TRACEEX",    DBG_TRACEEXT    },
     { "MESSAGES",   DBG_MSG         },
+
     { "REGDUMPAQI", DBG_REGDUMPAQI  },
     { "REGDUMPIDX", DBG_REGDUMPIDX  },
     { "REGDUMPPR",  DBG_REGDUMPPR   },
@@ -58,12 +59,16 @@ static DEBTAB cpu_dt[] = {
     { "REGDUMPDSBR",DBG_REGDUMPDSBR },
     { "REGDUMPFLT", DBG_REGDUMPFLT  },
     { "REGDUMP",    DBG_REGDUMP     }, // don't move as it messes up DBG message
+
     { "ADDRMOD",    DBG_ADDRMOD     },
     { "APPENDING",  DBG_APPENDING   },
+
     { "WARN",       DBG_WARN        },
     { "DEBUG",      DBG_DEBUG       },
     { "INFO",       DBG_INFO        },
     { "NOTIFY",     DBG_NOTIFY      },
+    { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
+
     { NULL,         0               }
 };
 
@@ -793,6 +798,8 @@ ctl_unit_data_t cu;
 // to register a fault.
 flag_t fault_gen_no_fault;
 
+int stop_reason; // sim_instr return value for JMP_STOP
+
 /*
  *  cancel_run()
  *
@@ -813,6 +820,34 @@ void cancel_run(t_stat reason)
     //sim_debug (DBG_DEBUG, & cpu_dev, "CU: Cancel requested: %d\n", reason);
 }
 
+static uint get_highest_intr (void)
+  {
+// XXX In theory there needs to be interlocks on this?
+    for (int int_num = 32 - 1; int_num >= 0; int_num --) // XXX Magic number
+      if (events . interrupts [int_num])
+        {
+          events . interrupts [int_num] = 0;
+
+          int cnt = 0;
+          for (int i = 0; i < 32; i ++) // XXX Magic number
+            if (events . interrupts [i])
+              cnt ++;
+          events . int_pending = !!cnt;
+
+          for (int i = 0; i < 7; i ++) // XXX Magic number
+            if (events . fault [i])
+              cnt ++;
+          events . any = !! cnt;
+
+          return int_num * 2;
+        }
+    return 1;
+  }
+
+static bool sample_interrupts (void)
+  {
+    return events . int_pending;
+  }
 
 // This is part of the simh interface
 t_stat sim_instr (void)
@@ -823,6 +858,8 @@ t_stat sim_instr (void)
     adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
     apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
     
+    cpu . interrupt_flag = false;
+
     //currentInstruction = &_currentInstruction;
     currentInstruction->e = &E;
     
@@ -839,6 +876,9 @@ t_stat sim_instr (void)
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
+        case JMP_STOP:
+            return stop_reason;
+
     }
 //    if (val)
 //    {
@@ -857,12 +897,18 @@ jmpRetry:;
                 break;
         }
         
+        sim_interval --;
         if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
             reason = STOP_BKPT;                        /* stop simulation */
             break;
         }
         
-        
+        if (cpu . cycle == DIS_cycle)
+          {
+            cpu . interrupt_flag = sample_interrupts ();
+            goto dis_entry;
+          }
+
         // do group 7 fault processing
         if (G7Pending && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
             doG7Faults();
@@ -871,8 +917,17 @@ jmpRetry:;
         // fetch instruction
         processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
         
+
+
         ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
         
+// XXX The conditions are more rigorous: see AL39, pg 327
+        if (rIC % 1 == 0 && // Even address
+            ci -> i == 0) // Not inhibited
+          cpu . interrupt_flag = sample_interrupts ();
+        else
+          cpu . interrupt_flag = false;
+
         // XXX: what if sim stops during XEC/XED? if user wants to re-step
         // instruc, is this logic OK?
         if(XECD == 1) {
@@ -883,6 +938,64 @@ jmpRetry:;
         
         t_stat ret = executeInstruction(ci);
         
+        if (! ret)
+         {
+dis_entry:
+           if (cpu . interrupt_flag)
+              {
+                // We should do this later, but doing it now allows us to
+                // avoid clean up for no interrupt pending.
+
+                uint intr_pair_addr = get_highest_intr ();
+                if (intr_pair_addr != 1) // no interrupts 
+                  {
+
+		    // In the INTERRUPT CYCLE, the processor safe-stores the
+		    // Control Unit Data (see Section 3) into program-invisible
+		    // holding registers in preparation for a Store Control
+		    // Unit (scu) instruction, enters temporary absolute mode,
+		    // and forces the current ring of execution C(PPR.PRR) to
+		    // 0. It then issues an XEC system controller command to
+		    // the system controller on the highest priority port for
+		    // which there is a bit set in the interrupt present
+		    // register.  
+
+                    // XXX safe store
+                    // safe_store ()
+
+                    addr_modes_t am = get_addr_mode();  // save address mode
+
+		    // Temporary absolute mode
+		    set_addr_mode (ABSOLUTE_mode);
+
+		    // Set to ring 0
+		    PPR . PRR = 0;
+
+                    // get intr_pair_addr
+
+                    // get interrupt pair
+                    word36 faultPair[2];
+                    core_read2(intr_pair_addr, faultPair, faultPair+1);
+
+                    t_stat xrv = doXED(faultPair);
+
+                    cpu . interrupt_flag = false;
+
+                    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
+
+                    sim_debug (DBG_MSG, & cpu_dev, "leaving DIS_cycle\n");
+                    sim_printf ("leaving DIS_cycle\n");
+                    cpu . cycle = FETCH_cycle;
+
+                    if (xrv == 0)
+                        longjmp(jmpMain, JMP_NEXT);     // execute next instruction
+                    else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
+                        longjmp(jmpMain, JMP_RETRY);    // retry instruction
+                    ret = xrv;
+                } // int_pair != 1
+            } // interrupt_flag
+        } // if (!ret)
+
         if (ret)
         {
             if (ret > 0)
@@ -903,11 +1016,13 @@ jmpTra:                 continue;   // don't bump rIC, instruction already did i
             }
         }
         
+#if 0
         // XXX Remove this when we actually can wait for an interrupt
         if (ci->opcode == 0616) { // DIS
             reason = STOP_DIS;
             break;
         }
+#endif
 
 jmpNext:;
         // doesn't seem to work as advertized
@@ -920,7 +1035,7 @@ jmpNext:;
           XECD = 2;
         } else if(XECD == 2) {
           XECD = 0;
-        } else
+        } else if (cpu . cycle != DIS_cycle) // XXX maybe cycle == FETCH_cycle
           rIC += 1;
         
         // is this a multiword EIS?

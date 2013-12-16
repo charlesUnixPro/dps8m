@@ -79,6 +79,70 @@ void doPtrReg(DCDstruct *i)
 }
 
 /**
+ * implement ldbr instruction
+ */
+
+void do_ldbr (word36 * Ypair)
+  {
+    // XXX is it enabled?
+    // XXX Assuming 16 is 64 for the DPS8M
+
+    // If SDWAM is enabled, then
+    //   0 → C(SDWAM(i).FULL) for i = 0, 1, ..., 15
+    //   i → C(SDWAM(i).USE) for i = 0, 1, ..., 15
+    for (int i = 0; i < 64; i ++)
+      {
+        SDWAM [i] . F = 0;
+        SDWAM [i] . USE = i;
+      }
+
+    // If PTWAM is enabled, then
+    //   0 → C(PTWAM(i).FULL) for i = 0, 1, ..., 15
+    //   i → C(PTWAM(i).USE) for i = 0, 1, ..., 15
+    for (int i = 0; i < 64; i ++)
+      {
+        PTWAM [i] . F = 0;
+        PTWAM [i] . USE = i;
+      }
+
+    // If cache is enabled, reset all cache column and level full flags
+    // XXX no cache
+
+    // C(Y-pair) 0,23 → C(DSBR.ADDR)
+    DSBR . ADDR = (Ypair [0] >> (35 - 23)) & PAMASK;
+
+    // C(Y-pair) 37,50 → C(DSBR.BOUND)
+    DSBR . BND = (Ypair [1] >> (71 - 50)) & 037777;
+
+    // C(Y-pair) 55 → C(DSBR.U)
+    DSBR . U = (Ypair [1] >> (71 - 55)) & 01;
+
+    // C(Y-pair) 60,71 → C(DSBR.STACK)
+    DSBR . STACK = (Ypair [1] >> (71 - 71)) & 07777;
+    sim_debug (DBG_APPENDING, &cpu_dev, "ldbr 0 -> SDWAM/PTWAM[*].F, i -> SDWAM/PTWAM[i].USE, DSBR.ADDR 0%o, DSBR.BND 0%o, DSBR.U 0%o, DSBR.STACK 0%o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK); 
+  }
+
+/**
+ * implement sdbr instruction
+ */
+
+void do_sdbr (word36 * Ypair)
+  {
+    // C(DSBR.ADDR) → C(Y-pair) 0,23
+    // 00...0 → C(Y-pair) 24,36
+    Ypair [0] = ((word36) (DSBR . ADDR & PAMASK)) << (35 - 23); 
+
+    // C(DSBR.BOUND) → C(Y-pair) 37,50
+    // 0000 → C(Y-pair) 51,54
+    // C(DSBR.U) → C(Y-pair) 55
+    // 000 → C(Y-pair) 56,59
+    // C(DSBR.STACK) → C(Y-pair) 60,71
+    Ypair [1] = ((word36) (DSBR . BND & 037777)) << (71 - 50) |
+                ((word36) (DSBR . U & 1)) << (71 - 55) |
+                ((word36) (DSBR . STACK & 07777)) << (71 - 71);
+  }
+
+/**
  * fetch descriptor segment PTW ...
  */
 static _ptw0* fetchDSPTW(word15 segno)
@@ -224,7 +288,7 @@ static _sdw0 *fetchNSDW(word15 segno)
     {
         if (apndTrace)
         {
-            sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DBSR.BND=%d\n", segno, DSBR.BND);
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
         }
         // XXX: generate access violation, out of segment bounds fault
         ;
