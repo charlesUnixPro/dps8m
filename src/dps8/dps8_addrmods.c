@@ -182,7 +182,7 @@ R_MOD1:;
 #if 0 // XXX Breaks UnitTests
       else if (operType == prepareCA)
     {
-      if (i -> a)
+      if (i -> a && switches . b29_test)
         {
           word36 appended_address;
           doAppendCycle(i, DataRead, TM_R, -1, & appended_address);

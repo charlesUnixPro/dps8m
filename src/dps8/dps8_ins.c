@@ -372,9 +372,8 @@ t_stat executeInstruction(DCDstruct *ci)
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
             // XXX [CAC] I disagres. See AL39, pg 311.
-#if 1 // XXX Needed for UnitTests
-             set_addr_mode(APPEND_mode);
-#endif
+             if (switches . auto_append_disable == 0)
+               set_addr_mode(APPEND_mode);
         }
 // XXX Experimental code
         if (a && (iwb->flags & TRANSFER_INS))
@@ -908,7 +907,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             SETLO(CY, ((rIR | i->stiTally) & 0000000777760LL));
 // XXX [CAC] hack for t4d tape
-//CY ^= 020;
+            if (switches . invert_absolute)
+              CY ^= 020;
             break;
             
         case 0756: ///< stq
@@ -3167,13 +3167,18 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if ((CY & 3) != 3)
                 PR[n].BITNO = (CY >> 30) & 077;
             else
+#if 1
+              ;
+#else
               doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+#endif
 
 // [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, 
 // then a store fault (illegal pointer) will occur and C(Y) will not be changed.
 // I interpret this has meaning that only the high bits should be set here
 
-#if 0
+// XXX Making the change causes TestAppendA to crash
+#if 1
             //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
             if ((CY & 07777000000LL) == 07777000000LL)
                 PR[n].SNR = 070000; // XXX check to see if this is correct
@@ -3190,7 +3195,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // XXX completed, but needs testing
             //C(Y)6,17 → C(PRn.SNR)3,14
             //PR[n].SNR &= 3; -- huh? Never code when tired
+#if 0
             PR[n].SNR &=             070000; // [CAC] added this
+#endif
             PR[n].SNR |= GETHI(CY) & 007777;
             //C(Y)18,35 → C(PRn.WORDNO)
             PAR[n].WORDNO = GETLO(CY);
@@ -3402,9 +3409,15 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
               doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
+#if 0
             CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
             CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
             CY |=  PR[n].WORDNO & PAMASK;
+#else
+            CY  =  PR[n].BITNO << 30;
+            CY |=  (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
+            CY |=  PR[n].WORDNO;
+#endif
             
             CY &= DMASK;    // keep to 36-bits
             
@@ -4191,19 +4204,24 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 // doXED(); doFault doesn't check for the STOP_ case, and places that call 
 // doFault don't reliably check it's return value
             //sim_printf ("events . int_pending %d, sim_qcount %d\n", events . int_pending, sim_qcount ());
-            if (events . int_pending == 0 &&
-                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
-                                     // break this logic
+            if (switches . dis_enable)
               {
-                sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", rIC);
-                //return STOP_DIS;
-                stop_reason = STOP_DIS;
-                longjmp (jmpMain, JMP_STOP);
+                if (events . int_pending == 0 &&
+                    sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+                                         // break this logic
+                  {
+                    sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", rIC);
+                    //return STOP_DIS;
+                    stop_reason = STOP_DIS;
+                    longjmp (jmpMain, JMP_STOP);
+                  }
+                sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
+                sim_printf ("entered DIS_cycle\n");
+                cpu.cycle = DIS_cycle;
+                break;
               }
-            sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
-            sim_printf ("entered DIS_cycle\n");
-            cpu.cycle = DIS_cycle;
-            break;
+            else
+              return STOP_DIS;
  
             
         default:
@@ -4342,7 +4360,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].BITNO = TPR.TBR;
             break;        
 // XXX [CAC] collaped code to generic case for ease of debugging
-#if 0
+// XXX Breaks TestFXE
+#if 1
         case 0350:  ///< epbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.TRR) → C(PRn.RNR)

@@ -1741,6 +1741,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Port interlace:           %02o(8)\n", switches . port_interlace);
     sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
+    sim_printf("Invert Absolute:          %02o(8)\n", switches . invert_absolute);
+    sim_printf("Bit 29 test code:         %02o(8)\n", switches . b29_test);
+    sim_printf("DIS enable:               %02o(8)\n", switches . dis_enable);
+    sim_printf("AutoAppend disable:       %02o(8)\n", switches . auto_append_disable);
 
     return SCPE_OK;
 }
@@ -1757,6 +1761,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           portinterlace = n
 //           mode = n
 //           speed = n
+//           invertabsolute = n
+//           b29test = n
+//           dis_enable = n
+//           auto_append_disable = n
 
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
@@ -1893,6 +1901,46 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 break;
               } 
             switches . proc_speed = n;
+          }
+	else if (strcmp (name, "INVERTABSOLUTE") == 0)
+          {
+            if (n < 0 || n > 01)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: INVERTABSOLUTE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: INVERTABSOLUTE value out of range: %ld\n", n);
+                break;
+              } 
+            switches . invert_absolute = n;
+          }
+	else if (strcmp (name, "B29TEST") == 0)
+          {
+            if (n < 0 || n > 01)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: B29TEST value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: B29TEST value out of range: %ld\n", n);
+                break;
+              } 
+            switches . b29_test = n;
+          }
+	else if (strcmp (name, "DIS_ENABLE") == 0)
+          {
+            if (n < 0 || n > 01)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: DIS_ENABLE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: DIS_ENABLE value out of range: %ld\n", n);
+                break;
+              } 
+            switches . dis_enable = n;
+          }
+	else if (strcmp (name, "AUTO_APPEND_DISABLE") == 0)
+          {
+            if (n < 0 || n > 01)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: AUTO_APPEND_DISABLE value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: AUTO_APPEND_DISABLE value out of range: %ld\n", n);
+                break;
+              } 
+            switches . auto_append_disable = n;
           }
         else
           {

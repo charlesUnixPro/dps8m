@@ -2056,6 +2056,10 @@ typedef struct {
     uint port_interlace; // 4 bits  Read by rsw instruction; 
     uint proc_mode; // 1 bit  Read by rsw instruction; format unknown
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
+    uint invert_absolute; // If non-zero, invert the sense of the ABSOLUTE bit in the STI instruction
+    uint b29_test; // If non-zero, enable untested code
+    uint dis_enable; // If non-zero, DIS works
+    uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
 } switches_t;
 
 
