@@ -2880,6 +2880,8 @@ t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
 
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
+void do_camp (word36 Y);
+void do_cams (word36 Y);
 
 /* dps8_decimal.c */
 

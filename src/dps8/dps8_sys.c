@@ -33,12 +33,11 @@ static t_stat sys_cable (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
-    {"DPSINIT", dpsCmd_Init,        0, "dpsinit dps8/m initialize stuff ...\n"},
-    {"DPSDUMP", dpsCmd_Dump,        0, "dpsdump dps8/m dump stuff ...\n"},
-    {"SEGMENT", dpsCmd_Segment,     0, "segment dps8/m segment stuff ...\n"},
-    {"SEGMENTS", dpsCmd_Segments,   0, "segments dps8/m segments stuff ...\n"},
-    { "CABLE", sys_cable, 0, "String a cable" },
-
+    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n"},
+    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n"},
+    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n"},
+    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n"},
+    { "CABLE",   sys_cable,       0, "String a cable\n" },
     { NULL, NULL, 0, NULL}
 };
 

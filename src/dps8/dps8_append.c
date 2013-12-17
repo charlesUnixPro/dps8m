@@ -143,6 +143,45 @@ void do_sdbr (word36 * Ypair)
   }
 
 /**
+ * implement camp instruction
+ */
+
+void do_camp (word36 Y)
+  {
+    // C(TPR.CA) 16,17 control disabling or enabling the associative memory.
+    // This may be done to either or both halves.
+    // The full/empty bit of cache PTWAM register is set to zero and the LRU
+    // counters are initialized.
+    // XXX enable/disable and LRU don't seem to be implemented; punt
+    for (int i = 0; i < 64; i ++)
+      {
+        PTWAM [i] . F = 0;
+      }
+    sim_debug (DBG_ERR, & cpu_dev, "do_camp: punt\n");
+  }
+
+/**
+ * implement cams instruction
+ */
+
+void do_cams (word36 Y)
+  {
+    // The full/empty bit of each SDWAM register is set to zero and the LRU
+    // counters are initialized. The remainder of the contents of the registers
+    // are unchanged. If the associative memory is disabled, F and LRU are
+    // unchanged.
+    // C(TPR.CA) 16,17 control disabling or enabling the associative memory.
+    // This may be done to either or both halves.
+    // XXX enable/disable and LRU don't seem to be implemented; punt
+    for (int i = 0; i < 64; i ++)
+      {
+        SDWAM [i] . F = 0;
+      }
+    sim_debug (DBG_ERR, & cpu_dev, "do_cams: punt\n");
+  }
+
+    
+/**
  * fetch descriptor segment PTW ...
  */
 static _ptw0* fetchDSPTW(word15 segno)
@@ -243,7 +282,7 @@ static _sdw0* fetchPSDW(word15 segno)
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
     }
     
-    _ptw0 *p = fetchDSPTW(segno);
+    _ptw0 *p = fetchDSPTW(segno); // XXX [CAC] is this redundant??
 
     //if (apndTrace)
     //    sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(1):PTW:%s\n",
@@ -668,7 +707,7 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                doFault(i, dir_flt0_fault, 0, "!PTW0.F");
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "!PTW0.F");
                 // XXX what if they ignore the fault? Can it be ignored?
             
             if (!PTW0.U)
@@ -694,7 +733,7 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
             }
             
             // XXX initiate a directed fault ...
-            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
             // XXX what if they ignore the fault? Can it be ignored?
             
         }
@@ -786,7 +825,7 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            doFault(i, dir_flt0_fault, 0, "PTW0.F == 0");
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
             // XXX what if they ignore the fault? Can it be ignored?
         
         
@@ -936,7 +975,7 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                doFault(i, dir_flt0_fault, 0, "PTW0.F == 0");
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
                 // XXX what if they ignore the fault? Can it be ignored?
             
             if (!PTW0.U)
@@ -962,7 +1001,7 @@ A:;
             }
             
             // initiate a directed fault ...
-            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
             // XXX what if they ignore the fault? Can it be ignored?
             
         }
@@ -1147,7 +1186,7 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                doFault(i, dir_flt0_fault, 0, "PTW0.F == 0");
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
                 // XXX what if they ignore the fault? Can it be ignored?
             
             if (!PTW0.U)
@@ -1172,7 +1211,7 @@ A:;
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):SDW0.F == 0! Initiating directed fault\n");
             }
             // initiate a directed fault ...
-            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
             // XXX what if they ignore the fault? Can it be ignored?
             
         }
@@ -1245,7 +1284,7 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            doFault(i, dir_flt0_fault, 0, "PTW0.F != 0");
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F != 0");
             // XXX what if they ignore the fault? Can it be ignored?
         
         
@@ -1502,7 +1541,7 @@ A:;
             }
             
             // initiate a directed fault ...
-            doFault(i, dir_flt0_fault, 0, "SDW0.F == 0");
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
 
         }
         else
@@ -1573,7 +1612,7 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            doFault(i, dir_flt0_fault, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
 
         
         loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM

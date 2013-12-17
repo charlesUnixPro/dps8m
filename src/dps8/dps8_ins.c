@@ -372,7 +372,14 @@ t_stat executeInstruction(DCDstruct *ci)
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
             // XXX [CAC] I disagres. See AL39, pg 311.
-            // set_addr_mode(APPEND_mode);
+#if 1 // XXX Needed for UnitTests
+             set_addr_mode(APPEND_mode);
+#endif
+        }
+// XXX Experimental code
+        if (a && (iwb->flags & TRANSFER_INS))
+        {
+            set_addr_mode(APPEND_mode);
         }
         
         // if instructions need an operand (CY) to operate, read it now. Else defer AM calcs until instruction execution
@@ -901,7 +908,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             SETLO(CY, ((rIR | i->stiTally) & 0000000777760LL));
 // XXX [CAC] hack for t4d tape
-CY ^= 020;
+//CY ^= 020;
             break;
             
         case 0756: ///< stq
@@ -3928,7 +3935,8 @@ CY ^= 020;
         case 0557:  ///< sdp
             return STOP_UNIMP;
         case 0532:  ///< cams
-            return STOP_UNIMP;
+            do_cams (TPR.CA);
+            break;
             
         // Privileged - Configuration and Status
             
@@ -4117,6 +4125,8 @@ CY ^= 020;
         case 0057:  ///< sscr
             {
               t_stat rc = scu_sscr (CPU_UNIT_NUM, TPR.CA, reg_A, reg_Q);
+              if (rc == CONT_FAULT)
+                doFault(i, store_fault, 0, "(sscr)");
               if (rc)
                 return rc;
             }
@@ -4158,9 +4168,14 @@ CY ^= 020;
 
         // Privileged - Miscellaneous
         case 0212:  ///< absa
-            // XXX 
-            rA = finalAddress; // XXX This is correct, but doAppend is not setting it correctly
-            //rA = TPR.CA;
+#if 0
+            if (get_addr_mode () == ABSOLUTE_mode)
+              // XXX t4d implies that the definition of undefined is 400000000000;
+              rA = 0400000000000;
+            else
+#endif
+              //rA = finalAddress; // XXX This is correct, but doAppend is not setting it correctly
+              rA = TPR.CA;
             SCF (rA == 0, rIR, I_ZERO);
             SCF (rA & SIGN36, rIR, I_NEG);
             break;
@@ -5473,6 +5488,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         // Privileged - Clear Associative Memory
         case 0532:  ///< camp
+            do_camp (TPR.CA);
+            break;
             
         default:
             return STOP_UNIMP;

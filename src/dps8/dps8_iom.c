@@ -1032,7 +1032,6 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
 //sim_printf ("Faking interrupt\n");
 sim_printf ("Faking DIS\n");
 cpu . cycle = DIS_cycle;
-
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;
   }

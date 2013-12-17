@@ -1109,7 +1109,8 @@ t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
         case 00062: // Set mask register port 6
         case 00072: // Set mask register port 7
           {
-            uint port_num = (function >> 3) & 03;
+            uint port_num = (function >> 3) & 07;
+            sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to %012o,%012o\n", port_num, rega, regq);
             uint rcv_port;
             // Determine which SCU port the indicated CPU is attached to
             for (rcv_port = 0; rcv_port < N_SCU_PORTS; rcv_port ++)
@@ -1141,7 +1142,8 @@ t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
 // According to bootload_tape_label.alm, this condition is aok
                 //sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", moi, rcv_port);
                 //fault_gen (FAULT_STR); // XXX we are the SCU, we can't do fault gen.
-                return CONT_FAULT;
+                //return CONT_FAULT;
+                return SCPE_OK;
               }
             if (n_masks_found > 1)
               {
@@ -1154,7 +1156,7 @@ t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
             scup -> interrupts[mask_num].exec_intr_mask = 0;
             scup -> interrupts[mask_num].exec_intr_mask |= (getbits36(rega, 0, 16) << 16);
             scup -> interrupts[mask_num].exec_intr_mask |= getbits36(regq, 0, 16);
-            //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, mask_num + 'A', bin2text(scup -> interrupts[mask_num].exec_intr_mask, N_CELL_INTERRUPTS));
+            sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, mask_num + 'A', bin2text(scup -> interrupts[mask_num].exec_intr_mask, N_CELL_INTERRUPTS));
           }
           break;
 
