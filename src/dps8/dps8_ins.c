@@ -4234,6 +4234,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                                          // break this logic
                   {
                     sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", rIC);
+                    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
                     //return STOP_DIS;
                     stop_reason = STOP_DIS;
                     longjmp (jmpMain, JMP_STOP);
