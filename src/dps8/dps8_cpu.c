@@ -1742,9 +1742,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
     sim_printf("Invert Absolute:          %02o(8)\n", switches . invert_absolute);
-    sim_printf("Bit 29 test code:         %02o(8)\n", switches . b29_test);
-    sim_printf("DIS enable:               %02o(8)\n", switches . dis_enable);
-    sim_printf("AutoAppend disable:       %02o(8)\n", switches . auto_append_disable);
+    sim_printf("Bit 29 test code:         %01o(8)\n", switches . b29_test);
+    sim_printf("DIS enable:               %01o(8)\n", switches . dis_enable);
+    sim_printf("AutoAppend disable:       %01o(8)\n", switches . auto_append_disable);
+    sim_printf("LPRPn set high bits only: %01o(8)\n", switches . lprp_highonly);
 
     return SCPE_OK;
 }
@@ -1765,6 +1766,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           b29test = n
 //           dis_enable = n
 //           auto_append_disable = n
+//           lprp_highonly = n
 
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
@@ -1941,6 +1943,16 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                 break;
               } 
             switches . auto_append_disable = n;
+          }
+	else if (strcmp (name, "LPRP_HIGHONLY") == 0)
+          {
+            if (n < 0 || n > 01)
+              {
+                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: LPRP_HIGHONLY value out of range: %ld\n", n);
+                sim_printf ("error: cpu_set_config: LPRP_HIGHONLY value out of range: %ld\n", n);
+                break;
+              } 
+            switches . lprp_highonly = n;
           }
         else
           {

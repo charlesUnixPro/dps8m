@@ -3164,43 +3164,52 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             n = opcode & 07;  // get n
             PR[n].RNR = TPR.TRR;
-            if ((CY & 3) != 3)
-                PR[n].BITNO = (CY >> 30) & 077;
-            else
-#if 1
-              ;
-#else
-              doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
-#endif
 
 // [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, 
 // then a store fault (illegal pointer) will occur and C(Y) will not be changed.
 // I interpret this has meaning that only the high bits should be set here
 
 // XXX Making the change causes TestAppendA to crash
-#if 1
-            //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
-            if ((CY & 07777000000LL) == 07777000000LL)
-                PR[n].SNR = 070000; // XXX check to see if this is correct
-            else // otherwise, 000 → C(PRn.SNR)0,2
-                PR[n].SNR = 0;  //&= 07777;
-#else
-            //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
-            if ((CY & 07777000000LL) == 07777000000LL)
-                PR[n].SNR |= 070000; // XXX check to see if this is correct
-            else // otherwise, 000 → C(PRn.SNR)0,2
-                PR[n].SNR &= 007777;
-#endif
 
-            // XXX completed, but needs testing
-            //C(Y)6,17 → C(PRn.SNR)3,14
-            //PR[n].SNR &= 3; -- huh? Never code when tired
-#if 0
-            PR[n].SNR &=             070000; // [CAC] added this
-#endif
-            PR[n].SNR |= GETHI(CY) & 007777;
-            //C(Y)18,35 → C(PRn.WORDNO)
-            PAR[n].WORDNO = GETLO(CY);
+            if (switches . lprp_highonly)
+              {
+                if (((CY >> 34) & 3) != 3)
+                    PR[n].BITNO = (CY >> 30) & 077;
+                else
+                  doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+
+                //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
+                if ((CY & 07777000000LLU) == 07777000000LLU)
+                    PR[n].SNR |= 070000; // XXX check to see if this is correct
+                else // otherwise, 000 → C(PRn.SNR)0,2
+                    PR[n].SNR &= 007777;
+                // XXX completed, but needs testing
+                //C(Y)6,17 → C(PRn.SNR)3,14
+                //PR[n].SNR &= 3; -- huh? Never code when tired
+                PR[n].SNR &=             070000; // [CAC] added this
+                PR[n].SNR |= GETHI(CY) & 007777;
+                //C(Y)18,35 → C(PRn.WORDNO)
+                PAR[n].WORDNO = GETLO(CY);
+              }
+            else
+              {
+                if ((CY & 3) != 3)
+                    PR[n].BITNO = (CY >> 30) & 077;
+                else
+                  ;
+                //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
+                if ((CY & 07777000000LL) == 07777000000LL)
+                    PR[n].SNR = 070000; // XXX check to see if this is correct
+                else // otherwise, 000 → C(PRn.SNR)0,2
+                    PR[n].SNR = 0;  //&= 07777;
+                // XXX completed, but needs testing
+                //C(Y)6,17 → C(PRn.SNR)3,14
+                //PR[n].SNR &= 3; -- huh? Never code when tired
+                PR[n].SNR |= GETHI(CY) & 007777;
+                //C(Y)18,35 → C(PRn.WORDNO)
+                PAR[n].WORDNO = GETLO(CY);
+              }
+
             sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PAR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PAR[n].WORDNO);
             break;
          
@@ -3409,15 +3418,18 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
               doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
-#if 0
-            CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
-            CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
-            CY |=  PR[n].WORDNO & PAMASK;
-#else
-            CY  =  PR[n].BITNO << 30;
-            CY |=  (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
-            CY |=  PR[n].WORDNO;
-#endif
+            if (switches . lprp_highonly)
+              {
+                CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
+                CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
+                CY |=  PR[n].WORDNO & PAMASK;
+              }
+            else
+              {
+                CY  =  PR[n].BITNO << 30;
+                CY |=  (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
+                CY |=  PR[n].WORDNO;
+              }
             
             CY &= DMASK;    // keep to 36-bits
             
