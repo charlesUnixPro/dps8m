@@ -12,6 +12,7 @@
 word36 Ypair[2];        ///< 2-words
 static word36 Yblock8[8];      ///< 8-words
 static word36 Yblock16[16];    ///< 16-words
+static int testABSA (DCDstruct * i, word36 * result);
 
 static t_stat doInstruction(DCDstruct *i);
 
@@ -4194,16 +4195,26 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         // Privileged - Miscellaneous
         case 0212:  ///< absa
 #if 0
+#if 0
             if (get_addr_mode () == ABSOLUTE_mode)
               // XXX t4d implies that the definition of undefined is 400000000000;
               rA = 0400000000000;
             else
 #endif
-              //rA = finalAddress; // XXX This is correct, but doAppend is not setting it correctly
-              rA = TPR.CA;
+              rA = 0;
+              SETHI(rA, finalAddress);
+              rA |= ((word36) PTW0.OSDATA) << 12;
+#endif
+          {
+            word36 result;
+            int rc = testABSA (i, & result);
+            if (rc)
+              return rc;
+            rA = result;
             SCF (rA == 0, rIR, I_ZERO);
             SCF (rA & SIGN36, rIR, I_NEG);
-            break;
+          }
+          break;
             
         case 0616:  ///< dis
             if (i->i) {
@@ -5645,4 +5656,46 @@ emCall(DCDstruct *i)
             
     }
 }
+
+static int testABSA (DCDstruct * i, word36 * result)
+  {
+#if 0
+    // Code pattern is
+    //  absa pr0|00
+    //  sta xx
+    //  lda yy "contains the expected answer
+    // Fetch the  LDA instruction
+    word36 lda = M [PPR . IC + 2];
+    //sim_printf ("lda %012llo\n",  lda);
+    // Extract the address
+    word18 addr = GETHI (lda);
+    // Get the answer
+    word36 ans = M [addr];
+    //sim_printf ("addr %06o\n", addr);
+    sim_printf ("ABSA addr: %06o tag: %02o PR0.SNR: %05o DSBR.ADDR: %06o M[0..2]: %012llo %012llo %012llo ANS: %012llo\n",
+       i -> address, i -> tag, PR [0] . SNR, DSBR . ADDR, M [0], M [1], M [2], ans);
+#endif
+    if (! i -> a)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
+        doFault (i, ill_proc, 0, "ABSA in absolute mode.\n");
+        return CONT_FAULT;
+      }
+
+    // AL39, fig 6-7.
+    word3 n = (i -> address >> 15) & 07;
+    //word15 offset = i -> address & 077777;
+
+    word15 segno = PR [n] . SNR;
+    word24 y1 = (2 * segno) % 1024;
+    word24 x1 = (2 * segno - y1) / 1024;
+
+    word36 sdw;
+    core_read (DSBR . ADDR + x1, & sdw);
+
+    word36 res = sdw & 0777777600000;
+    
+    * result = res;
+    return SCPE_OK;
+  }
 

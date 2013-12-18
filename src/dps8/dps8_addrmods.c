@@ -178,18 +178,7 @@ R_MOD1:;
         {
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
         }
-    } 
-#if 0 // XXX Breaks UnitTests
-      else if (operType == prepareCA)
-    {
-      if (i -> a && switches . b29_test)
-        {
-          word36 appended_address;
-          doAppendCycle(i, DataRead, TM_R, -1, & appended_address);
-          i -> address = TPR.CA = appended_address;
-        }
     }
-#endif
     return;
 
 //! Figure 6-4. Register Then Indirect Modification Flowchart

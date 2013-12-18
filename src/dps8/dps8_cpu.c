@@ -1741,7 +1741,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Port interlace:           %02o(8)\n", switches . port_interlace);
     sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
-    sim_printf("Invert Absolute:          %02o(8)\n", switches . invert_absolute);
+    sim_printf("Invert Absolute:          %01o(8)\n", switches . invert_absolute);
     sim_printf("Bit 29 test code:         %01o(8)\n", switches . b29_test);
     sim_printf("DIS enable:               %01o(8)\n", switches . dis_enable);
     sim_printf("AutoAppend disable:       %01o(8)\n", switches . auto_append_disable);
