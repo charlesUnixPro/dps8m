@@ -332,7 +332,7 @@ t_stat executeInstruction(DCDstruct *ci)
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((iwb->flags & PRIV_INS) && !is_priv_mode())
-        doFault(ci, ill_proc, 0, "Attempted execution of priveledged instruction.");
+        doFault(ci, illproc_fault, 0, "Attempted execution of priveledged instruction.");
     
     // check for illegal addressing mode(s) ...
     
@@ -340,25 +340,25 @@ t_stat executeInstruction(DCDstruct *ci)
     if (iwb->mods == NO_CSS)
     {
         if (_nocss[tag])
-            doFault(ci, ill_proc, 0, "Illegal CI/SC/SCR modification");
+            doFault(ci, illproc_fault, 0, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
     else if (iwb->mods == NO_DDCSS)
     {
         if (_noddcss[tag])
-            doFault(ci, ill_proc, 0, "Illegal DU/DL/CI/SC/SCR modification");
+            doFault(ci, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
     else if (iwb->mods == NO_DLCSS)
     {
         if (_nodlcss[tag])
-            doFault(ci, ill_proc, 0, "Illegal DL/CI/SC/SCR modification");
+            doFault(ci, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
     else if (iwb->mods == NO_DUDL)
     {
         if (_nodudl[tag])
-            doFault(ci, ill_proc, 0, "Illegal DU/DL modification");
+            doFault(ci, illproc_fault, 0, "Illegal DU/DL modification");
     }
     
         
@@ -385,7 +385,7 @@ t_stat executeInstruction(DCDstruct *ci)
         // do any address modifications (and fetch operand if necessary)
         
         /*
-         * TODO: make read/write all operands automagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR the store automatically after instruction exec ala STORE_OPERAND, etc.....
+         * TODO: make read/write all operands automagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR then store automatically after instruction exec ala STORE_OPERAND, etc.....
          
          */
         
