@@ -40,6 +40,13 @@ set cpu config=mode=1
 ; 0 = 8/70
 set cpu config=speed=0
 
+; UnitTest compatibility issues
+set cpu config=invertabsolute=1
+set cpu config=b29test=1
+set cpu config=dis_enable=1
+set cpu config=auto_append_disable=1
+set cpu config=lprp_highonly=1
+
 echo
 show cpu config
 echo

@@ -12,6 +12,7 @@
 word36 Ypair[2];        ///< 2-words
 static word36 Yblock8[8];      ///< 8-words
 static word36 Yblock16[16];    ///< 16-words
+static int testABSA (DCDstruct * i, word36 * result);
 
 static t_stat doInstruction(DCDstruct *i);
 
@@ -3164,43 +3165,29 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             n = opcode & 07;  // get n
             PR[n].RNR = TPR.TRR;
-            if ((CY & 3) != 3)
-                PR[n].BITNO = (CY >> 30) & 077;
-            else
-#if 1
-              ;
-#else
-              doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
-#endif
 
 // [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, 
 // then a store fault (illegal pointer) will occur and C(Y) will not be changed.
 // I interpret this has meaning that only the high bits should be set here
 
-// XXX Making the change causes TestAppendA to crash
-#if 1
+            if (((CY >> 34) & 3) != 3)
+                PR[n].BITNO = (CY >> 30) & 077;
+            else
+              doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+
             //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
-            if ((CY & 07777000000LL) == 07777000000LL)
-                PR[n].SNR = 070000; // XXX check to see if this is correct
-            else // otherwise, 000 → C(PRn.SNR)0,2
-                PR[n].SNR = 0;  //&= 07777;
-#else
-            //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
-            if ((CY & 07777000000LL) == 07777000000LL)
+            if ((CY & 07777000000LLU) == 07777000000LLU)
                 PR[n].SNR |= 070000; // XXX check to see if this is correct
             else // otherwise, 000 → C(PRn.SNR)0,2
                 PR[n].SNR &= 007777;
-#endif
-
             // XXX completed, but needs testing
             //C(Y)6,17 → C(PRn.SNR)3,14
             //PR[n].SNR &= 3; -- huh? Never code when tired
-#if 0
             PR[n].SNR &=             070000; // [CAC] added this
-#endif
             PR[n].SNR |= GETHI(CY) & 007777;
             //C(Y)18,35 → C(PRn.WORDNO)
             PAR[n].WORDNO = GETLO(CY);
+
             sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PAR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PAR[n].WORDNO);
             break;
          
@@ -3409,15 +3396,18 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
               doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
-#if 0
-            CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
-            CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
-            CY |=  PR[n].WORDNO & PAMASK;
-#else
-            CY  =  PR[n].BITNO << 30;
-            CY |=  (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
-            CY |=  PR[n].WORDNO;
-#endif
+            if (switches . lprp_highonly)
+              {
+                CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
+                CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
+                CY |=  PR[n].WORDNO & PAMASK;
+              }
+            else
+              {
+                CY  =  PR[n].BITNO << 30;
+                CY |=  (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
+                CY |=  PR[n].WORDNO;
+              }
             
             CY &= DMASK;    // keep to 36-bits
             
@@ -4183,16 +4173,26 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         // Privileged - Miscellaneous
         case 0212:  ///< absa
 #if 0
+#if 0
             if (get_addr_mode () == ABSOLUTE_mode)
               // XXX t4d implies that the definition of undefined is 400000000000;
               rA = 0400000000000;
             else
 #endif
-              //rA = finalAddress; // XXX This is correct, but doAppend is not setting it correctly
-              rA = TPR.CA;
+              rA = 0;
+              SETHI(rA, finalAddress);
+              rA |= ((word36) PTW0.OSDATA) << 12;
+#endif
+          {
+            word36 result;
+            int rc = testABSA (i, & result);
+            if (rc)
+              return rc;
+            rA = result;
             SCF (rA == 0, rIR, I_ZERO);
             SCF (rA & SIGN36, rIR, I_NEG);
-            break;
+          }
+          break;
             
         case 0616:  ///< dis
             if (i->i) {
@@ -4212,6 +4212,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                                          // break this logic
                   {
                     sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", rIC);
+                    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
                     //return STOP_DIS;
                     stop_reason = STOP_DIS;
                     longjmp (jmpMain, JMP_STOP);
@@ -4362,99 +4363,6 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].BITNO = TPR.TBR;
             break;        
 // XXX [CAC] collaped code to generic case for ease of debugging
-// XXX Breaks TestFXE
-#if 1
-        case 0350:  ///< epbp0
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
-            PR[0].RNR = TPR.TRR;
-            PR[0].SNR = TPR.TSR;
-            PR[0].WORDNO = 0;
-            PR[0].BITNO = 0;
-            break;
-        case 0352:  ///< epbp2
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
-            PR[2].RNR = TPR.TRR;
-            PR[2].SNR = TPR.TSR;
-            PR[2].WORDNO = 0;
-            PR[2].BITNO = 0;
-            break;
-        case 0370:  ///< epbp4
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
-            PR[4].RNR = TPR.TRR;
-            PR[4].SNR = TPR.TSR;
-            PR[4].WORDNO = 0;
-            PR[4].BITNO = 0;
-            break;
-        case 0372:  ///< epbp6
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///  C(TPR.TRR) → C(PRn.RNR)
-            ///  C(TPR.TSR) → C(PRn.SNR)
-            ///  00...0 → C(PRn.WORDNO)
-            ///  0000 → C(PRn.BITNO)
-            PR[6].RNR = TPR.TRR;
-            PR[6].SNR = TPR.TSR;
-            PR[6].WORDNO = 0;
-            PR[6].BITNO = 0;
-            break;
-         
-        
-        case 0351:  ///< epp1
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
-            PR[1].RNR = TPR.TRR;
-            PR[1].SNR = TPR.TSR;
-            PR[1].WORDNO = TPR.CA;
-            PR[1].BITNO = TPR.TBR;
-            break;
-        case 0353:  ///< epp3
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
-            PR[3].RNR = TPR.TRR;
-            PR[3].SNR = TPR.TSR;
-            PR[3].WORDNO = TPR.CA;
-            PR[3].BITNO = TPR.TBR;
-            break;
-        case 0371:  ///< epp5
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
-            PR[5].RNR = TPR.TRR;
-            PR[5].SNR = TPR.TSR;
-            PR[5].WORDNO = TPR.CA;
-            PR[5].BITNO = TPR.TBR;
-            break;
-        case 0373:  ///< epp7
-            /// For n = 0, 1, ..., or 7 as determined by operation code
-            ///   C(TPR.TRR) → C(PRn.RNR)
-            ///   C(TPR.TSR) → C(PRn.SNR)
-            ///   C(TPR.CA) → C(PRn.WORDNO)
-            ///   C(TPR.TBR) → C(PRn.BITNO)
-            PR[7].RNR = TPR.TRR;
-            PR[7].SNR = TPR.TSR;
-            PR[7].WORDNO = TPR.CA;
-            PR[7].BITNO = TPR.TBR;
-            break;
-#else
         // AL39 refers to the even numbered register as eppN in section 4,
         // but calls them epbpN in Appendix A. as8 and dps8 use epbp.
         case 0350:  ///< epbp0 aka epp0
@@ -4472,8 +4380,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             //  &20>>4 0    0    0    0    4    4    4    4
             //  (opcode & 03) | ((opcode * 020) >> 4)
             //         0    1    2    3    4    5    6    7
-            int n = (opcode & 03) | ((opcode & 020) >> 4);
-            sim_debug (DBG_APPENDING, & cpu_dev, "epp%d (%o) TPR.TRR 0%o, TPR.TSR 0%o, TPR.CA 0%o, TPR.TBR 0%o\n", n, opcode, TPR.TRR, TPR.TSR, TPR.CA, TPR.TBR);
+            int n = (opcode & 03) | ((opcode & 020) >> 2);
+            //sim_debug (DBG_APPENDING, & cpu_dev, "epp%d (%o) TPR.TRR 0%o, TPR.TSR 0%o, TPR.CA 0%o, TPR.TBR 0%o\n", n, opcode, TPR.TRR, TPR.TSR, TPR.CA, TPR.TBR);
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///   C(TPR.TRR) → C(PRn.RNR)
             ///   C(TPR.TSR) → C(PRn.SNR)
@@ -4485,7 +4393,6 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[n].BITNO = TPR.TBR;
           }
           break;
-#endif
         
         case 0250:  ///< spbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5636,4 +5543,46 @@ emCall(DCDstruct *i)
             
     }
 }
+
+static int testABSA (DCDstruct * i, word36 * result)
+  {
+#if 0
+    // Code pattern is
+    //  absa pr0|00
+    //  sta xx
+    //  lda yy "contains the expected answer
+    // Fetch the  LDA instruction
+    word36 lda = M [PPR . IC + 2];
+    //sim_printf ("lda %012llo\n",  lda);
+    // Extract the address
+    word18 addr = GETHI (lda);
+    // Get the answer
+    word36 ans = M [addr];
+    //sim_printf ("addr %06o\n", addr);
+    sim_printf ("ABSA addr: %06o tag: %02o PR0.SNR: %05o DSBR.ADDR: %06o M[0..2]: %012llo %012llo %012llo ANS: %012llo\n",
+       i -> address, i -> tag, PR [0] . SNR, DSBR . ADDR, M [0], M [1], M [2], ans);
+#endif
+    if (! i -> a)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
+        doFault (i, ill_proc, 0, "ABSA in absolute mode.\n");
+        return CONT_FAULT;
+      }
+
+    // AL39, fig 6-7.
+    word3 n = (i -> address >> 15) & 07;
+    //word15 offset = i -> address & 077777;
+
+    word15 segno = PR [n] . SNR;
+    word24 y1 = (2 * segno) % 1024;
+    word24 x1 = (2 * segno - y1) / 1024;
+
+    word36 sdw;
+    core_read (DSBR . ADDR + x1, & sdw);
+
+    word36 res = sdw & 0777777600000;
+    
+    * result = res;
+    return SCPE_OK;
+  }
 
