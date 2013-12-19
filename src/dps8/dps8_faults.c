@@ -427,8 +427,9 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     nFaultGroup = fault2group[faultNumber];
     nFaultPriority = fault2prio[faultNumber];
     
-    if (bFaultCycle)    // if already in a FAULT CYCLE then signal trouble faule
+    if (bFaultCycle) {  // if already in a FAULT CYCLE then signal trouble faule
         f = &_faults[FAULT_TRB];
+    }
     else
     {
         // TODO: safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
@@ -441,15 +442,13 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         return;
     }
     
-    int fltAddress = rFAULTBASE & 07740;            // (12-bits of which the top-most 7-bits are used)
-    
+    int fltAddress = (rFAULTBASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
     word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
   
     bFaultCycle = true;                 // enter FAULT CYCLE
     
     word36 faultPair[2];
     core_read2(addr, faultPair, faultPair+1);
-    
     // In the FAULT CYCLE, the processor safe-stores the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction, then enters temporary absolute mode, forces the current ring of execution C(PPR.PRR) to 0, and generates a computed address for the fault trap pair by concatenating the setting of the FAULT BASE switches on the processor configuration panel with twice the fault number (see Table 7-1). This computed address and the operation code for the Execute Double (xed) instruction are forced into the instruction register and executed as an instruction. Note that the execution of the instruction is not done in a normal EXECUTE CYCLE but in the FAULT CYCLE with the processor in temporary absolute mode.
     
     addr_modes_t am = get_addr_mode();  // save address mode

@@ -1763,10 +1763,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           mode = n
 //           speed = n
 //           invertabsolute = n
-//           b29test = n
+//           b29test = n // deprecated
 //           dis_enable = n
 //           auto_append_disable = n
-//           lprp_highonly = n
+//           lprp_highonly = n // deprecated
 
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
