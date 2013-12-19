@@ -3914,6 +3914,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0637:  ///< ldt
             //  rTR = (CY << 9) && 0777777777000LL;
+
             rTR = (CY << 9) & 0777777777000LL;
             break;
 
