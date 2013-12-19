@@ -1072,7 +1072,8 @@ t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acct
         //*dat = M[addr];
         rY = addr;
         TPR.CA = addr;  //XXX for APU
-        
+
+
         //switch (processorAddressingMode)
         switch (get_addr_mode())
         {
@@ -1088,7 +1089,11 @@ APPEND_MODE:;
                 //*dat = CY;  // XXX this may be a nasty loop
                 break;
             case ABSOLUTE_MODE:
-                core_read(addr, dat);
+                // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
+                if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
+                    doAppendCycle(i, acctyp, Tag, -1, dat);
+                else
+                    core_read(addr, dat);
                 if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
                 {
                     if (apndTrace)
@@ -1104,6 +1109,8 @@ APPEND_MODE:;
             case BAR_MODE:
                 // XXX probably not right.
                 rY = getBARaddress(addr);
+                finalAddress = rY;
+                
                 core_read(rY, dat);
                 return SCPE_OK;
             default:
@@ -1126,6 +1133,7 @@ t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acct
         rY = addr;
         TPR.CA = addr;  //XXX for APU
         
+       
         //switch (processorAddressingMode)
         switch (get_addr_mode())
         {
@@ -1140,7 +1148,11 @@ APPEND_MODE:;
                 
                 break;
             case ABSOLUTE_MODE:
-                core_write(addr, dat);
+                // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
+                if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
+                    doAppendCycle(i, acctyp, Tag, dat, NULL);
+                else
+                    core_write(addr, dat);
                 //if (doITSITP(dat, GET_TD(Tag)))
                 // XXX what kind of dataop can put a write operation into appending mode?
                 //if (DOITSITP(dat, Tag))

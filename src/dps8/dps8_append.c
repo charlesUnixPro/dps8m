@@ -47,7 +47,7 @@ void doAddrModPtrReg(DCDstruct *i)
     
     TPR.CA = (PR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
     TPR.TBR = PR[n].BITNO;  // TPR.BITNO = PR[n].BITNO;
-    i->address = TPR.CA;
+    i->address = TPR.CA;    // why do I muck with i->address?
     rY = i->address;    // is this right?
     
     if (apndTrace)
@@ -405,7 +405,7 @@ t_stat dumpSDWAM (void)
         
         //if (p->_initialized)
         if (p->F)
-            fprintf(stderr, "SDWAM n:%d %s\n\r", _n, strSDW(p));
+            sim_printf("SDWAM n:%d %s\n\r", _n, strSDW(p));
     }
     return SCPE_OK;
 }
@@ -474,7 +474,7 @@ static void loadSDWAM(word15 segno)
         sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(3) no USE=0 found for segment=%d\n", segno);
     }
     
-    fprintf(stderr, "loadSDWAM(%05o): no USE=0 found!\n", segno);
+    sim_printf("loadSDWAM(%05o): no USE=0 found!\n", segno);
     dumpSDWAM();
 }
 
@@ -555,7 +555,7 @@ static void loadPTWAM(word15 segno, word18 offset)
             return;
         }
     }
-    fprintf(stderr, "loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
+    sim_printf("loadPTWAM(segno=%05o, offset=%012o): no USE=0 found!\n", segno, offset);
 
 }
 
@@ -615,7 +615,7 @@ static char *strAccessType(MemoryAccessType accessType)
     }
 }
 
-static char *strACV(enum enumACV acv)
+static char *strACV(_fault_subtype acv)
 {
     switch (acv)
     {
@@ -639,15 +639,21 @@ static char *strACV(enum enumACV acv)
         case ACDF1: return "Directed fault 1";
         case ACDF2: return "Directed fault 2";
         case ACDF3: return "Directed fault 3";
+        default:
+            break;
     }
   return "unhandled acv in strACV";
 }
 
 static word36 acvFaults = 0;   ///< pending ACV faults
-static void acvFault(enum enumACV acvfault)
+
+static void acvFault(DCDstruct *i, _fault_subtype acvfault)
 {
     
-    fprintf(stderr, "group 6 ACV fault %s(%d)\n", strACV(acvfault), acvfault);
+    char temp[256];
+    sprintf(temp, "group 6 ACV fault %s(%d)\n", strACV(acvfault), acvfault);
+
+    sim_printf(temp);
     
     //acvFaults |= (1 << acvfault);   // or 'em all together
     acvFaults |= acvfault;   // or 'em all together
@@ -656,6 +662,8 @@ static void acvFault(enum enumACV acvfault)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%d) acvFaults=%llu\n", strACV(acvfault), (int)acvFault, acvFaults);
     }
+    
+    doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
 }
 
 /*
@@ -754,7 +762,7 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
-        acvFault(ACV0);
+        acvFault(i, ACV0);
 
 #ifndef QUIET_UNUSED
 F:; ///< transfer or instruction fetch
@@ -767,21 +775,21 @@ F:; ///< transfer or instruction fetch
     
     // C(TPR.TRR) < C(SDW .R1)?
     if (TPR.TRR < SDW->R1)
-        acvFault(ACV1);
+        acvFault(i, ACV1);
     
     //C(TPR.TRR) > C(SDW .R2)?
     if (TPR.TRR > SDW->R2)
-        acvFault(ACV1);
+        acvFault(i, ACV1);
     
     //SDW .E set ON?
     if (!SDW->E)
-        acvFault(ACV2);
+        acvFault(i, ACV2);
     
     //C(PPR.PRR) = C(TPR.TRR)?
     if (PPR.PRR == TPR.TRR)
         goto D;
     
-    acvFault(ACV12);
+    acvFault(i, ACV12);
 
 D:;
     if (apndTrace)
@@ -794,7 +802,7 @@ D:;
     
     // C(PPR.PRR) < RALR?
     if (!(PPR.PRR < rRALR))
-        acvFault(ACV13);
+        acvFault(i, ACV13);
     
     goto G;
 G:;
@@ -804,7 +812,7 @@ G:;
     }
     //C(TPR.CA)0,13 > SDW.BOUND?
     if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
-        acvFault(ACV15);
+        acvFault(i, ACV15);
     
     if (acvFaults)
         // Initiate an access violation fault
@@ -1026,13 +1034,13 @@ B:;
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
-        acvFault(ACV0);
+        acvFault(i, ACV0);
     
     // No
     // C(TPR.TRR) > C(SDW .R2)?
     if (TPR.TRR > SDW->R2)
         //Set fault ACV3 = ORB
-        acvFault(ACV3);
+        acvFault(i, ACV3);
     
     if (SDW->R)
         goto G;
@@ -1040,7 +1048,7 @@ B:;
     //C(PPR.PSR) = C(TPR.TSR)?
     if (PPR.PSR != TPR.TSR)
         //Set fault ACV4 = R-OFF
-        acvFault(ACV4);
+        acvFault(i, ACV4);
     
     goto G;
 
@@ -1053,7 +1061,7 @@ G:;
     
     //C(TPR.CA)0,13 > SDW.BOUND?
     if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
-        acvFault(ACV15);
+        acvFault(i, ACV15);
     
     if (acvFaults)
         // Initiate an access violation fault
@@ -1236,7 +1244,7 @@ B:;
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
-        acvFault(ACV0);
+        acvFault(i, ACV0);
     
     //if (isSTROP(IWB))
     // Yes ...
@@ -1248,11 +1256,11 @@ B:;
     // C(TPR.TRR) > C(SDW .R2)?
     if (TPR.TRR > SDW->R2)
         //Set fault ACV5 = OWB
-        acvFault(ACV5);
+        acvFault(i, ACV5);
         
     if (!SDW->W)
         // Set fault ACV6 = W-OFF
-        acvFault(ACV6);
+        acvFault(i, ACV6);
     goto G;
     
 G:;
@@ -1263,7 +1271,7 @@ G:;
     
     //C(TPR.CA)0,13 > SDW.BOUND?
     if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
-        acvFault(ACV15);
+        acvFault(i, ACV15);
     
     if (acvFaults)
         // Initiate an access violation fault
@@ -1431,7 +1439,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     //if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
     if (get_addr_mode() != APPEND_mode || (TPR.CA & 1))
         // XXX illegal procedure, illegal modifier, fault
-        doFault(i, ill_proc, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
+        doFault(i, illproc_fault, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
 
     
     if (apndTrace)
@@ -1565,13 +1573,13 @@ B:;
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
-        acvFault(ACV0);
+        acvFault(i, ACV0);
     
     // No
     // C(TPR.TRR) > C(SDW .R2)?
     if (TPR.TRR > SDW->R2)
         //Set fault ACV3 = ORB
-        acvFault(ACV3);
+        acvFault(i, ACV3);
     
     if (SDW->R)
         goto G;
@@ -1579,7 +1587,7 @@ B:;
     //C(PPR.PSR) = C(TPR.TSR)?
     if (PPR.PSR != TPR.TSR)
         //Set fault ACV4 = R-OFF
-        acvFault(ACV4);
+        acvFault(i, ACV4);
     
     goto G;
     
@@ -1592,7 +1600,7 @@ G:;
     
     //C(TPR.CA)0,13 > SDW.BOUND?
     if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
-        acvFault(ACV15);
+        acvFault(i, ACV15);
     
     if (acvFaults)
         // Initiate an access violation fault

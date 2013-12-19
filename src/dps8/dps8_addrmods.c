@@ -129,7 +129,7 @@ startCA:;
         case TM_IR:
             goto IR_MOD;
     }
-    fprintf(stderr, "doComputedAddressFormation(startCA): unknown Tm??? %o\n", GET_TM(rTAG));
+    sim_printf("doComputedAddressFormation(startCA): unknown Tm??? %o\n", GET_TM(rTAG));
     return;
     
     
@@ -191,7 +191,8 @@ RI_MOD:;
     
     if (Td == TD_DU || Td == TD_DL)
         // XXX illegal procedure, illegal modifier, fault
-        ;
+        doFault(i, illproc_fault, ill_mod, "Td == TD_DU || Td == TD_DL");
+
     
     if (!Td == 0)
     {
@@ -270,8 +271,18 @@ IR_MOD_2:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
             }
             if (Td == IT_F2 || Td == IT_F3)
+            {
                 // Abort. FT2 or 3
-                ;
+                switch (Td)
+                {
+                    case IT_F2:
+                        doFault(i, dir_flt2_fault, 0, "IT_F2");
+                        break;
+                    case IT_F3:
+                        doFault(i, dir_flt3_fault, 0, "IT_F3");
+                        break;
+                }
+            }
             // fall through to TM_R
             
         case TM_R:
@@ -346,7 +357,7 @@ IR_MOD_2:;
             goto IR_MOD;
             
     }
-    fprintf(stderr, "doComputedAddressFormation(IR_MOD): unknown Tm??? %o\n", GET_TM(rTAG));
+    sim_printf("doComputedAddressFormation(IR_MOD): unknown Tm??? %o\n", GET_TM(rTAG));
     return;
     
 IT_MOD:;
@@ -420,11 +431,12 @@ IT_MOD:;
             
             if (tTB == TB6 && tCF > 5)
                 // generate an illegal procedure, illegal modifier fault
-                ;
+                doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
             
             if (tTB == TB9 && tCF > 3)
                 // generate an illegal procedure, illegal modifier fault
-                ;
+                doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
+            
             
             if (operType == readCY)
             {
@@ -1110,7 +1122,7 @@ IT_MOD:;
                     
                     goto IT_MOD;
             }
-            fprintf(stderr, "IT_DIC: how'd we get here???\n");
+            sim_printf("IT_DIC: how'd we get here???\n");
             return;
             
         case IT_IDC: ///< Increment address, decrement tally, and continue (Td = 17)
@@ -1183,7 +1195,7 @@ IT_MOD:;
                     
                     goto IT_MOD;
             }
-            fprintf(stderr, "IT_IDC: how'd we get here???\n");
+            sim_printf("IT_IDC: how'd we get here???\n");
             return;
     }
     
