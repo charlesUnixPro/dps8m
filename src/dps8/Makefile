@@ -45,6 +45,8 @@ OBJS = \
 ./dps8_decimal.o \
 ./dps8_faults.o 
 
+H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h
+
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
 CFLAGS  = -g -O0
 CFLAGS += -I../decNumber -I../simh 
@@ -76,27 +78,33 @@ LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
 LIBS = $(LOCALLIBS)  -lm -lrt -lpthread -ldl -lefence 
 
-all: locallibs
+all: locallibs_then_dps8 tags
 
 dps8 : $(OBJS) $(LOCALLIBS) 
 	gcc  -o "dps8" $(OBJS) $(CFLAGS) $(LIBS)
 	
-locallibs :
+locallibs_then_dps8 :
 	(cd ../simh; $(MAKE))
 	(cd ../decNumber; $(MAKE))
 	$(MAKE) dps8
 
 # Other Targets
+
+tags : $(C_SRCS) $(H_SRCS)
+	ctags $(C_SRCS) $(H_SRCS) ../simh/*.[ch] ../decNumber/*.[ch]
+
+.PHONY : clean cleaner
+
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) dps8
-	#(cd ../simh; $(MAKE) clean)
-	#(cd ../decNumber; $(MAKE) clean)
+	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) dps8 tags
+
+cleaner: clean
+	(cd ../simh; $(MAKE) clean)
+	(cd ../decNumber; $(MAKE) clean)
 
 dps8.h :  ../simh/sim_defs.h ../simh/sim_tape.h
 dps8_utils.o :  ../simh/sim_defs.h
 dps8_decimal.o : ../decNumber/decNumber.h ../decNumber/decNumberLocal.h
 dps8_loader.o : utlist.h
 $(OBJS) : dps8.h
-
-.SECONDARY:
 
