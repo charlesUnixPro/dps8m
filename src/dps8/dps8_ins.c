@@ -3923,7 +3923,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 
         case 0637:  ///< ldt
-            rTR = (CY << 9) && 0777777777000LL;
+            //  rTR = (CY << 9) && 0777777777000LL;
+            rTR = (CY << 9) & 0777777777000LL;
             break;
 
         case 0257:  ///< lsdp
@@ -4106,7 +4107,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
                 default:
                   // XXX Guessing values; also don't know if this is actually a fault
-                  doFault(i, ill_proc, 0, "Illegal register select value");
+                  doFault(i, illproc_fault, 0, "Illegal register select value");
               }
             SCF (rA == 0, rIR, I_ZERO);
             SCF (rA & SIGN36, rIR, I_NEG);
@@ -4225,7 +4226,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
  
             
         default:
-            return STOP_UNIMP;
+            doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
+            //return STOP_UNIMP;
             
     }
     
@@ -5511,7 +5513,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         default:
-            return STOP_UNIMP;
+            doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
+            //return STOP_UNIMP;
     }
 
     if (i->iwb->flags & STORE_OPERAND)
