@@ -1,6 +1,7 @@
 *.o
 *.a
 as8+
+as8pp
 lex.yy.c
 y.output
 y.tab.c
