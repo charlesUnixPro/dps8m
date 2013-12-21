@@ -31,7 +31,7 @@ LEX = flex
 
 # rules
 
-all: as8+ 
+all: as8+ as8pp
 
 # Tool invocations
 as8+: $(OBJS) y.tab.o lex.yy.o 
@@ -53,7 +53,9 @@ y.tab.h: y.tab.c
 lex.yy.c: as8.l
 	$(LEX) -i as8.l	
 	
-	
+as8pp : as8pp.c
+	gcc as8pp.c -o as8pp $(CFLAGS) -U__STRICT_ANSI__ -O0 -g
+
 # Other Targets
 clean:
 	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) y.tab.c y.tab.h lex.yy.c y.output as8+
