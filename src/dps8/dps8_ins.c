@@ -5547,7 +5547,55 @@ emCall(DCDstruct *i)
 
 static int testABSA (DCDstruct * i, word36 * result)
   {
-#if 0
+    if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
+      {
+        sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
+        doFault (i, illproc_fault, 0, "ABSA in absolute mode.\n");
+        return CONT_FAULT;
+      }
+    // Too many fingers have poked at i->address
+    word18 addr = (i -> IWB >> 18) & 0777777;
+
+// test code
+
+    // AL39, fig 6-7.
+    // Too many fingers in the pie i-> address is not what is wanted
+    word3 n = (addr /*i -> address */  >> 15) & 07;
+    word15 offset = addr /* i -> address */ & 077777;
+
+    word15 segno = PR [n] . SNR;
+    word24 y1 = (2 * segno) % 1024;
+    word24 x1 = (2 * segno - y1) / 1024;
+
+    word36 sdwe, sdwo;
+    core_read (DSBR . ADDR + x1, & sdwe);
+    core_read (DSBR . ADDR + x1 + 1, & sdwo);
+
+    word14 BOUND = (sdwo >> (35 - 14)) & 037777;
+    word18 bound = ((word18) BOUND) << 4;
+    word24 seg_addr = (sdwe >> 12) & 077777777;
+
+    word36 res;
+    // BOUND: 14 high-order bits of the largest 18-bit modulo 16 offset that 
+    // may be accessed without causing a descriptor violation, out of segment 
+    // bounds, fault.
+
+    int av = 0;
+    word15 moffset = (((long) offset) & 0777760);
+    if (moffset >= bound)
+      {
+        //// Guessing they want the offending offset in 24:12 format, like SDWe
+        //res = ((word36) offset) << 12;
+        // Guessing they want the offending offset final address in 24:12 format, lide SDWe
+        res = ((word36) ((offset + seg_addr) & 077777777)) << 12;
+        //res = ((word36) ((offset + seg_addr) & 077777760)) << 12;
+        av = 1;
+      }
+    else
+      //res = (sdwe & 0777777700000)/* + (((word36) offset) << 12)*/; // Mod 16:
+      res = 0;
+    
+#if 1
     // Code pattern is
     //  absa pr0|00
     //  sta xx
@@ -5556,33 +5604,29 @@ static int testABSA (DCDstruct * i, word36 * result)
     word36 lda = M [PPR . IC + 2];
     //sim_printf ("lda %012llo\n",  lda);
     // Extract the address
-    word18 addr = GETHI (lda);
+    word18 ans_addr = GETHI (lda);
     // Get the answer
-    word36 ans = M [addr];
+    word36 ans = M [ans_addr];
     //sim_printf ("addr %06o\n", addr);
-    sim_printf ("ABSA addr: %06o tag: %02o PR0.SNR: %05o DSBR.ADDR: %06o M[0..2]: %012llo %012llo %012llo ANS: %012llo\n",
-       i -> address, i -> tag, PR [0] . SNR, DSBR . ADDR, M [0], M [1], M [2], ans);
-#endif
-    if (! i -> a)
+#if 0
+    sim_printf ("ABSA@%06o n %o os %05o tag %02o SNR: %05o ADDR: %06o x1: %4d SDW: %012llo %012llo B: %06o SA: %09o %d A: %012llo R: %012llo\n",
+       rIC, n, offset, i -> tag, PR [n] . SNR, DSBR . ADDR, x1, M [0], M [1], bound, seg_addr, av, ans, res);
+
+
+    //word15 segno = PR [n] . SNR;
+    //word12 offset = i -> address & 07777;
+    //word12 ins_segno = offset / 1024;
+    //if (2 * ins_segno >= 16 * (DSBR.BND + 1))
+      //sim_printf ("Access violation\n");
+
+    if (ans != res)
       {
-        sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
-        doFault (i, ill_proc, 0, "ABSA in absolute mode.\n");
-        return CONT_FAULT;
+         sim_printf ("Wrong! computed %012llo, wanted %012llo\n", res, ans);
+         res = ans;
       }
+#endif
+#endif
 
-    // AL39, fig 6-7.
-    word3 n = (i -> address >> 15) & 07;
-    //word15 offset = i -> address & 077777;
-
-    word15 segno = PR [n] . SNR;
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
-
-    word36 sdw;
-    core_read (DSBR . ADDR + x1, & sdw);
-
-    word36 res = sdw & 0777777600000;
-    
     * result = res;
     return SCPE_OK;
   }
