@@ -178,6 +178,12 @@ R_MOD1:;
         {
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
         }
+#ifdef BIT29
+    } else if (operType == prepareCa)
+        word36 fa;
+        Read(i, TPR.CA, & fa, PrepareCA, TM_R);
+#endif
+
     }
     return;
 
