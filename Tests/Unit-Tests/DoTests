@@ -12,7 +12,8 @@ AS8=${BASE}/as8+
 
 SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE"
 
-EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
+#EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
+EPOCH=$(date +%s)
 
 echo Epoch is $EPOCH
 
@@ -24,6 +25,6 @@ do
 
 #    $AS8 -Isrc src/"$VARIABLE".as8 -o"$VARIABLE".o8
 	"$DPS8" "$VARIABLE" > $TEST
-	diff $TEST "$VARIABLE".out
+	diff -w $TEST "$VARIABLE".out
 	rm $TEST
 done

@@ -1098,6 +1098,8 @@ APPEND_MODE:;
                 break;
             case ABSOLUTE_MODE:
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
+                // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
+                
                 if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
                     doAppendCycle(i, acctyp, Tag, -1, dat);
                 else

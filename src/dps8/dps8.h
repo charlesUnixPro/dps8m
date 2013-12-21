@@ -1283,7 +1283,8 @@ enum _fault {
     mme2_fault = FAULT_MME2,
     mme3_fault = FAULT_MME3,
     mme4_fault = FAULT_MME4,
-    fault_tag_2_fault = FAULT_F2,
+    f2_fault = FAULT_F2,
+    f3_fault = FAULT_F3,
     trouble_fault = FAULT_TRB
     //
     // oob_fault=32 // out-of-band, simulator only
