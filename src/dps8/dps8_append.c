@@ -611,6 +611,9 @@ static char *strAccessType(MemoryAccessType accessType)
         case OperandWrite:      return "OperandWrite";
         case Call6Operand:      return "Call6Operand";
         case RTCDOperand:       return "RTCDOperand";
+#ifdef BUT29
+        case PrepareCA:         return "PrepareCA";
+#endif
         default:                return "???";
     }
 }
@@ -1733,6 +1736,12 @@ word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word3
         case IndirectRead:
             fa = doAppendIndirectRead(i, readData, Tag);
             break;
+#ifdef BIT29
+        case PrepareCA:
+            // This may be the same as or very similar doAppendInstructionFetch
+            fa = doAppendPrepareCA(i, Tag);
+            break;
+#endif
         default:
             fprintf(stderr,  "doAppendCycle(Entry): unsupported accessType=%s\n", strAccessType(accessType));
             return 0;
