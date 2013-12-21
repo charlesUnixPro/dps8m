@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_utils.h"
 
 // XXX Use this when we assume there is only a single unit
 #define ASSUME0 0
@@ -852,7 +853,8 @@ static bool sample_interrupts (void)
 // This is part of the simh interface
 t_stat sim_instr (void)
 {
-    DCDstruct *ci = NULL;
+    // Heh. This needs to be static; longjmp resets the value to NULL
+    static DCDstruct *ci = NULL;
     
     /* Main instruction fetch/decode loop */
     adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
@@ -906,7 +908,9 @@ jmpRetry:;
         if (cpu . cycle == DIS_cycle)
           {
             cpu . interrupt_flag = sample_interrupts ();
-            goto dis_entry;
+            if (cpu . interrupt_flag)
+              goto dis_entry;
+            continue;
           }
 
         // do group 7 fault processing
@@ -940,13 +944,14 @@ jmpRetry:;
         
         if (! ret)
          {
-dis_entry:
            if (cpu . interrupt_flag)
               {
                 // We should do this later, but doing it now allows us to
                 // avoid clean up for no interrupt pending.
 
-                uint intr_pair_addr = get_highest_intr ();
+                uint intr_pair_addr;
+dis_entry:
+                intr_pair_addr = get_highest_intr ();
                 if (intr_pair_addr != 1) // no interrupts 
                   {
 
@@ -987,10 +992,10 @@ dis_entry:
                     sim_printf ("leaving DIS_cycle\n");
                     cpu . cycle = FETCH_cycle;
 
-                    if (xrv == 0)
-                        longjmp(jmpMain, JMP_NEXT);     // execute next instruction
-                    else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
+                    if (0 && xrv)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
                         longjmp(jmpMain, JMP_RETRY);    // retry instruction
+                    longjmp(jmpMain, JMP_RETRY);     // execute next instruction
+
                     ret = xrv;
                 } // int_pair != 1
             } // interrupt_flag
@@ -1066,9 +1071,12 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
  */
 t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
-    else {
+    else
+#endif
+         {
         //*dat = M[addr];
         rY = addr;
         TPR.CA = addr;  //XXX for APU
@@ -1126,9 +1134,11 @@ APPEND_MODE:;
 
 t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
     else
+#endif
     {
         rY = addr;
         TPR.CA = addr;  //XXX for APU
@@ -1178,9 +1188,12 @@ APPEND_MODE:;
 
 t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
-    else {        
+    else
+#endif
+    {        
         // need to check for even/odd?
         if (addr & 1)
         {
@@ -1197,9 +1210,12 @@ t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eM
 {
     //return SCPE_OK;
     
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
-    else {
+    else
+#endif
+    {
         // need to check for even/odd?
         if (addr & 1)
         {
@@ -1227,9 +1243,12 @@ t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acc
 }
 t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
-    else {
+    else
+#endif
+    {
         // need to check for even/odd?
         if (addr & 1)
             addr &= ~1; /* make it an even address */
@@ -1252,9 +1271,11 @@ t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessTy
  */
 t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
     else
+#endif
         for (int j = 0 ; j < n ; j ++)
             Read(i, addr + j, Yblock + j, acctyp, Tag);
     
@@ -1267,9 +1288,11 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
 // XXX here is where we probably need to to the prepage thang...
 t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
     else
+#endif
         for (int j = 0 ; j < n ; j ++)
             Read(i, addr + j, Yblock + j, acctyp, Tag);
     
@@ -1278,9 +1301,11 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
 
 t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
+#if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
         return STOP_BKPT;
     else
+#endif
         for (int j = 0 ; j < n ; j ++)
             Write(i, addr + j, Yblock[j], acctyp, Tag);
     
@@ -1780,6 +1805,33 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           auto_append_disable = n
 //           lprp_highonly = n // deprecated
 
+static config_value_list_t multics_fault_base [] =
+  {
+    { "multics", 2 },
+    { NULL }
+  };
+
+static config_list_t cpu_config_list [] =
+  {
+    /*  0 */ { "faultbase", 0, 0177, multics_fault_base },
+    /*  1 */ { "num", 0, 07, NULL },
+    /*  2 */ { "data", 0, 0777777777777, NULL },
+    /*  3 */ { "portenable", 0, 017, NULL },
+    /*  4 */ { "portconfig", 0, 0777777777777, NULL },
+    /*  5 */ { "portinterlace", 0, 017, NULL },
+    /*  6 */ { "mode", 0, 01, NULL }, // XXX use keywords
+    /*  7 */ { "speed", 0, 017, NULL }, // XXX use keywords
+
+    // Hacks
+
+    /*  8 */ { "invertabsolute", 0, 1, NULL }, // XXX use keywords
+    /*  9 */ { "b29test", 0, 1, NULL }, // XXX use keywords
+    /* 10 */ { "dis_enable", 0, 1, NULL }, // XXX use keywords
+    /* 11 */ { "auto_append_disable", 0, 1, NULL }, // XXX use keywords
+    /* 12 */ { "lprp_highonly", 0, 1, NULL }, // XXX use keywords
+    { NULL }
+  };
+
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
@@ -1792,189 +1844,84 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
         return SCPE_ARG;
       }
 
-    char * copy = strdup (cptr);
-    char * start = copy;
-    char * statement_save = NULL;
-    for (;;) // process statements
+    config_state_t cfg_state = { NULL };
+
+    for (;;)
       {
-        char * statement;
-        statement = strtok_r (start, ";", & statement_save);
-        start = NULL;
-        if (! statement)
+        int64_t v;
+        int rc = cfgparse ("cpu_set_config", cptr, cpu_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+
+            case -1: // done
+              break;
+
+            case 0: // FAULTBASE
+              switches . FLT_BASE = v;
+              break;
+
+            case 1: // NUM
+              switches . cpu_num = v;
+              break;
+
+            case 2: // DATA
+              switches . data_switches = v;
+              break;
+
+            case 3: // PORTENABLE
+              switches . port_enable = v;
+              break;
+
+            case 4: // PORTCONFIG
+              switches . port_config = v;
+              break;
+
+            case 5: // PORTINTERLACE
+              switches . port_interlace = v;
+              break;
+
+            case 6: // MODE
+              switches . proc_mode = v;
+              break;
+
+            case 7: // SPEED
+              switches . proc_speed = v;
+              break;
+
+            case 8: // INVERTABSOLUTE
+              switches . invert_absolute = v;
+              break;
+
+            case 9: // B29TEST
+              switches . b29_test = v;
+              break;
+
+            case 10: // DIS_ENABLE
+              switches . dis_enable = v;
+              break;
+
+            case 11: // AUTO_APPEND_DISABLE
+              switches . auto_append_disable = v;
+              break;
+
+            case 12: // LPRP_HIGHONLY
+              switches . lprp_highonly = v;
+              break;
+
+            default:
+              sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+          } // switch
+        if (rc < 0)
           break;
-
-        // process statement
-
-        // extract name
-        char * name_start = statement;
-        char * name_save = NULL;
-        char * name;
-        name = strtok_r (name_start, "=", & name_save);
-        if (! name)
-          {
-            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: can't parse name\n");
-            sim_printf ("error: cpu_set_config: can't parse name\n");
-            break;
-          }
-
-        // extract value
-        char * value;
-        value = strtok_r (NULL, "", & name_save);
-        if (! value)
-          {
-            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: can't parse value\n");
-            sim_printf ("error: cpu_set_config: can't parse value\n");
-            break;
-          }
-        char * endptr;
-        long int n = strtol (value, & endptr, 0);
-        if (* endptr)
-          {
-            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: can't parse number <%s>\n", value);
-            sim_printf ("error: cpu_set_config: can't parse number <%s>\n", value);
-            break;
-          } 
-
-        if (strcmp (name, "FAULTBASE") == 0)
-          {
-            if (n < 0 || n > 0177)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: FAULTBASE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: FAULTBASE value out of range: %ld\n", n);
-                break;
-              } 
-
-            switches . FLT_BASE = n;
-          }
-	else if (strcmp (name, "NUM") == 0)
-          {
-            if (n < 0 || n > 7)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: NUM value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: NUM value out of range: %ld\n", n);
-                break;
-              } 
-            switches . cpu_num = n;
-          }
-	else if (strcmp (name, "DATA") == 0)
-          {
-            if (n < 0 || n > 0777777777777)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: DATA value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: DATA value out of range: %ld\n", n);
-                break;
-              } 
-            switches . data_switches = n;
-          }
-	else if (strcmp (name, "PORTENABLE") == 0)
-          {
-            if (n < 0 || n > 017)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTENABLE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: PORTENABLE value out of range: %ld\n", n);
-                break;
-              } 
-            switches . port_enable = n;
-          }
-	else if (strcmp (name, "PORTCONFIG") == 0)
-          {
-            if (n < 0 || n > 0777777777777)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTCONFIG value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: PORTCONFIG value out of range: %ld\n", n);
-                break;
-              } 
-            switches . port_config = n;
-          }
-	else if (strcmp (name, "PORTINTERLACE") == 0)
-          {
-            if (n < 0 || n > 017)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: PORTINTERLACE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: PORTINTERLACE value out of range: %ld\n", n);
-                break;
-              } 
-            switches . port_interlace = n;
-          }
-	else if (strcmp (name, "MODE") == 0)
-          {
-            if (n < 0 || n > 1)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: MODE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: MODE value out of range: %ld\n", n);
-                break;
-              } 
-            switches . proc_mode = n;
-          }
-	else if (strcmp (name, "SPEED") == 0)
-          {
-            if (n < 0 || n > 017)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: SPEED value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: SPEED value out of range: %ld\n", n);
-                break;
-              } 
-            switches . proc_speed = n;
-          }
-	else if (strcmp (name, "INVERTABSOLUTE") == 0)
-          {
-            if (n < 0 || n > 01)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: INVERTABSOLUTE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: INVERTABSOLUTE value out of range: %ld\n", n);
-                break;
-              } 
-            switches . invert_absolute = n;
-          }
-	else if (strcmp (name, "B29TEST") == 0)
-          {
-            if (n < 0 || n > 01)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: B29TEST value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: B29TEST value out of range: %ld\n", n);
-                break;
-              } 
-            switches . b29_test = n;
-          }
-	else if (strcmp (name, "DIS_ENABLE") == 0)
-          {
-            if (n < 0 || n > 01)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: DIS_ENABLE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: DIS_ENABLE value out of range: %ld\n", n);
-                break;
-              } 
-            switches . dis_enable = n;
-          }
-	else if (strcmp (name, "AUTO_APPEND_DISABLE") == 0)
-          {
-            if (n < 0 || n > 01)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: AUTO_APPEND_DISABLE value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: AUTO_APPEND_DISABLE value out of range: %ld\n", n);
-                break;
-              } 
-            switches . auto_append_disable = n;
-          }
-	else if (strcmp (name, "LPRP_HIGHONLY") == 0)
-          {
-            if (n < 0 || n > 01)
-              {
-                sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: LPRP_HIGHONLY value out of range: %ld\n", n);
-                sim_printf ("error: cpu_set_config: LPRP_HIGHONLY value out of range: %ld\n", n);
-                break;
-              } 
-            switches . lprp_highonly = n;
-          }
-        else
-          {
-            sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid switch name <%s>\n", name);
-            sim_printf ("error: cpu_set_config: invalid switch name <%s>\n", name);
-            break;
-          }
       } // process statements
-    free (copy);
-
+    cfgparse_done (& cfg_state);
     return SCPE_OK;
   }
+
 
