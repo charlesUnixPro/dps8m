@@ -126,6 +126,13 @@ rescan:
                     char * where = strstr (expbuf + bufidx, mp -> name);
                     if (where)
                       {
+                        char * end = where + strlen (mp -> name);
+                        size_t extra = strspn (end, CS_NAME);
+                        if (extra)
+                          where = NULL;
+                      }
+                    if (where)
+                      {
                         // Save the start location for rescan
                         int where_idx = where - expbuf;
                         bufidx = where_idx;
@@ -199,6 +206,8 @@ rescan:
                         // paste the body
                         memmove (expbuf + where_idx, body, strlen (body));
                         // printf ("paste <%s>\n", expbuf);
+
+                        free (body);
 
                         // rescan
                         bufidx = where_idx;
