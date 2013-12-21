@@ -23,11 +23,23 @@ sim_tape.o \
 sim_timer.o \
 sim_tmxr.o
 
-# for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
-CFLAGS = -g --std=c99 -U__STRICT_ANSI__  -O0 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so -Wall -DUSE_INT64
+#CC = gcc
+#LD = gcc
+CC = clang
+LD = clang
 
-# Temporary to tidy -Wall
-CFLAGS += -DQUIET_UNUSED
+# for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
+CFLAGS  = -g -O0
+#CFLAGS  = -g -O3
+CFLAGS += -I../decNumber -I../simh 
+CFLAGS += -std=c99 -U__STRICT_ANSI__  
+# CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
+# CFLAGS += -I . 
+CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
+CFLAGS += -Wall 
+CFLAGS += -DUSE_INT64
+
+LDFLAGS = -g
 
 all: simh.a
 

@@ -47,16 +47,23 @@ OBJS = \
 
 H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h
 
+#CC = gcc
+#LD = gcc
+CC = clang
+LD = clang
+
 # for Linux (Ubuntu 12.10 64-bit) or Apple OS/X 10.8
 CFLAGS  = -g -O0
+#CFLAGS  = -g -O3
 CFLAGS += -I../decNumber -I../simh 
 CFLAGS += -std=c99 -U__STRICT_ANSI__  
-CFLAGS += -O0 
 # CFLAGS += -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow -Wno-unused-result 
 # CFLAGS += -I . 
 CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so 
 CFLAGS += -Wall 
 CFLAGS += -DUSE_INT64
+
+LDFLAGS = -g
 
 # Dese make debugging hard; also, I don't belive that -fwhole-program is appropriate
 # CFLAGS += -flto -fwhole-program
@@ -81,7 +88,7 @@ LIBS = $(LOCALLIBS)  -lm -lrt -lpthread -ldl -lefence
 all: locallibs_then_dps8 tags
 
 dps8 : $(OBJS) $(LOCALLIBS) 
-	gcc  -o "dps8" $(OBJS) $(CFLAGS) $(LIBS)
+	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	
 locallibs_then_dps8 :
 	(cd ../simh; $(MAKE))
