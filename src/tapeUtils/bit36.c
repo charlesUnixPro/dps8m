@@ -57,6 +57,43 @@ word36 extr36 (uint8_t * bits, uint woffset)
     return (word36) (w & 0777777777777ULL);
   }
 
+void put36 (word36 val, uint8_t * bits, uint woffset)
+  {
+    uint isOdd = woffset % 2;
+    uint dwoffset = woffset / 2;
+    uint8_t * p = bits + dwoffset * 9;
+
+    if (isOdd)
+      {
+        p [4] &=               0xf0;
+        p [4] |= (val >> 32) & 0x0f;
+        p [5]  = (val >> 24) & 0xff;
+        p [6]  = (val >> 16) & 0xff;
+        p [7]  = (val >>  8) & 0xff;
+        p [8]  = (val >>  0) & 0xff;
+        //w  = ((uint64_t) (p [4] & 0xf)) << 32;
+        //w |=  (uint64_t) (p [5]) << 24;
+        //w |=  (uint64_t) (p [6]) << 16;
+        //w |=  (uint64_t) (p [7]) << 8;
+        //w |=  (uint64_t) (p [8]);
+      }
+    else
+      {
+        p [0]  = (val >> 28) & 0xff;
+        p [1]  = (val >> 20) & 0xff;
+        p [2]  = (val >> 12) & 0xff;
+        p [3]  = (val >>  4) & 0xff;
+        p [4] &=               0x0f;
+        p [4] |= (val <<  4) & 0xf0;
+        //w  =  (uint64_t) (p [0]) << 28;
+        //w |=  (uint64_t) (p [1]) << 20;
+        //w |=  (uint64_t) (p [2]) << 12;
+        //w |=  (uint64_t) (p [3]) << 4;
+        //w |= ((uint64_t) (p [4]) >> 4) & 0xf;
+      }
+    // mask shouldn't be neccessary but is robust
+  }
+
 //
 //   extr9
 //     extract the word9 at coffset
