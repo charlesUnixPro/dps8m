@@ -3,3 +3,5 @@ mfile
 dumpTape
 restore
 scan
+pack
+disasm
