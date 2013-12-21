@@ -5,10 +5,12 @@ MF_OBJS = mfile.o bit36.o simhtapes.o
 DT_OBJS = dumpTape.o bit36.o
 RST_OBJS = restore.o bit36.o 
 SCN_OBJS = scan.o bit36.o
+DIS_OBJS = disasm.o bit36.o
+PK_OBJS = pack.o bit36.o
 
-EXES = extract_tape_files mfile dumpTape restore scan
+EXES = extract_tape_files mfile dumpTape restore scan disasm pack
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(RST_OBJS) $(SCN_OBJS)
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(PK_OBJS)
 
 all : $(EXES)
 
@@ -17,6 +19,8 @@ mfile : $(MF_OBJS)
 dumpTape : $(DT_OBJS)
 restore : $(RST_OBJS)
 scan : $(SCN_OBJS)
+disasm : $(DIS_OBJS)
+pack : $(PK_OBJS)
 
 extract_tape_files.o : extract_tape_files.c bit36.h simhtapes.h mst.h
 bit36.o : bit36.c bit36.h
@@ -25,6 +29,8 @@ simhtapes.o : simhtapes.c simhtapes.h
 dumpTape.o : dumpTape.c bit36.h
 restore.o : restore.c bit36.h mst.h
 scan.o : scan.c bit36.h mst.h
+disasm.o : disasm.c bit36.h
+pack.o : pack.c bit36.h
 
 clean:
 	-rm $(OBJS)  $(EXES)
