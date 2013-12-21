@@ -568,6 +568,7 @@ enum eMemoryAccessType {
     
     // for EIS read operations
     viaPR,      // EIS data access vis PR
+    PrepareCA,
 };
 
 typedef enum eMemoryAccessType MemoryAccessType;
