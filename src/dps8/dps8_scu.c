@@ -519,6 +519,7 @@
 // ============================================================================
 
 #include "dps8.h"
+#include "dps8_utils.h"
 #include <sys/time.h>
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
@@ -1597,10 +1598,58 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //      o  MASK is 'MASK/PORT ASSIGNMENT' analagous to the
 //         'EXECUTE INTERRUPT MASK ASSIGNMENT of a 6000 SCU
 
+static config_value_list_t cfg_mode_list [] =
+  {
+    { "manual", 0 },
+    { "program", 1 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_mask_list [] =
+  {
+    { "off", -1 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_able_list [] =
+  {
+    { "disable", 0 },
+    { "enable", 1 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_size_list [] =
+  {
+    { "32", 32 },
+    { "64", 64 },
+    { "128", 128 },
+    { "256", 256 },
+    { "512", 512 },
+    { "1024", 1024 },
+    { "2048", 2048 },
+    { "4096", 4096 },
+    { NULL }
+  };
+
+static config_list_t scu_config_list [] =
+  {
+    /*  0 */ { "mode", 1, 0, cfg_mode_list },
+    /*  1 */ { "maska", 0, N_SCU_PORTS - 1, cfg_mask_list },
+    /*  2 */ { "maskb", 0, N_SCU_PORTS - 1, cfg_mask_list },
+    /*  3 */ { "port0", 1, 0, cfg_able_list },
+    /*  4 */ { "port1", 1, 0, cfg_able_list },
+    /*  5 */ { "port2", 1, 0, cfg_able_list },
+    /*  6 */ { "port3", 1, 0, cfg_able_list },
+    /*  7 */ { "port4", 1, 0, cfg_able_list },
+    /*  8 */ { "port5", 1, 0, cfg_able_list },
+    /*  9 */ { "port6", 1, 0, cfg_able_list },
+    /* 10 */ { "port7", 1, 0, cfg_able_list },
+    /* 11 */ { "lwrstoresize", 1, 0, cfg_size_list },
+    { NULL }
+  };
+
 static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
-// XXX Minor bug; this code doesn't check for trailing garbage
-
     int scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= scu_dev . numunits)
       {
@@ -1611,136 +1660,67 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
     struct config_switches * sw = config_switches + scu_unit_num;
 
-    char * copy = strdup (cptr);
-    char * start = copy;
-    char * statement_save = NULL;
-    for (;;) // process statements
+    config_state_t cfg_state = { NULL };
+
+    for (;;)
       {
-        char * statement;
-        statement = strtok_r (start, ";", & statement_save);
-        start = NULL;
-        if (! statement)
+        int64_t v;
+        int rc = cfgparse ("scu_set_config", cptr, scu_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+
+            case -1: // done
+              break;
+
+            case 0: // MODE
+              sw -> mode = v;
+              break;
+
+            case 1: // MASKA
+            case 2: // MASKB
+              {
+                int m = rc - 1;
+                if (v == -1)
+                  sw -> mask_enable [m] = false;
+                else
+                  {
+                    sw -> mask_enable [m] = true;
+                    sw -> mask_assignment [m] = v;
+                  }
+              }
+              break;
+
+            case  3: // PORT0
+            case  4: // PORT1
+            case  5: // PORT2
+            case  6: // PORT3
+            case  7: // PORT4
+            case  8: // PORT5
+            case  9: // PORT6
+            case 10: // PORT7
+              {
+                int n = rc - 3;
+                sw -> port_enable [n] = v;
+                break;
+              } 
+
+            case 11: // LWRSTORESIZE
+              sw -> lower_store_size = v;
+              break;
+
+            default:
+              sim_debug (DBG_ERR, & scu_dev, "scu_set_config: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: scu_set_config: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+          } // switch
+        if (rc < 0)
           break;
-
-        // process statement
-
-        // extract name
-        char * name_start = statement;
-        char * name_save = NULL;
-        char * name;
-        name = strtok_r (name_start, "=", & name_save);
-        if (! name)
-          {
-            sim_debug (DBG_ERR, & scu_dev, "scu_set_config: can't parse name\n");
-            sim_printf ("error: scu_set_config: can't parse name\n");
-            break;
-          }
-
-        // extract value
-        char * value;
-        value = strtok_r (NULL, "", & name_save);
-        if (! value)
-          {
-            sim_debug (DBG_ERR, & scu_dev, "scu_set_config: can't parse value\n");
-            sim_printf ("error: scu_set_config: can't parse value\n");
-            break;
-          }
-
-        if (strcmp (name, "MODE") == 0)
-          {
-            if (strcmp (value, "PROGRAM") == 0)
-              sw -> mode = 1;
-            else if (strcmp (value, "MANUAL") == 0)
-              sw -> mode = 0;
-            else
-              {
-                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: Invalid MODE value <%s>\n", value);
-                sim_printf ("error: scu_set_config: invalid MODE value <%s>\n", value);
-                break;
-              }
-          }
-        else if (strmask (name, "MASK?") && 
-                 (name [4] == 'A' || name [4] == 'B'))
-          {
-            if (strlen (value) == 0)
-              {
-                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: missing value\n");
-                sim_printf ("error: scu_set_config: missing value\n");
-                break;
-              }
-            if (strcmp (value, "OFF") == 0)
-              {
-                sw -> mask_enable [name [4] - 'A'] = false;
-              }
-            else
-              {
-                char * endptr;
-                long int n = strtol (value, & endptr, 0);
-                if (* endptr)
-                  {
-                    sim_debug (DBG_ERR, & scu_dev, "scu_set_config: can't parse number <%s>\n", value);
-                    sim_printf ("error: scu_set_config: can't parse number <%s>\n", value);
-                    break;
-                  } 
-                if (n < 0 || n >= N_SCU_PORTS)
-                  {
-                    sim_debug (DBG_ERR, & scu_dev, "scu_set_config: MASK value out of range: %ld\n", n);
-                    sim_printf ("error: scu_set_config: MASK value out of range: %ld\n", n);
-                    break;
-                  } 
-
-                sw -> mask_enable [name [4] - 'A'] = true;
-                sw -> mask_assignment [name [4] - 'A'] = n;
-    
-              }
-          }
-        else if (strmask (name, "PORT?") && 
-                 (name [4] >= '0' || name [4] <= '7'))
-          {
-            if (strcmp (value, "ENABLE") == 0)
-              sw -> port_enable [name [4] - '0'] = 1;
-            else if (strcmp (value, "DISABLE") == 0)
-              sw -> port_enable [name [4] - '0'] = 0;
-            else
-              {
-                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: Invalid PORT value <%s>\n", value);
-                sim_printf ("error: scu_set_config: invalid PORT value <%s>\n", value);
-                break;
-              }
-          }
-	else if (strcmp (name, "LWRSTORESIZE") == 0)
-          {
-            if (strlen (value) == 0)
-              {
-                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: missing value\n");
-                sim_printf ("error: scu_set_config: missing value\n");
-                break;
-              }
-            char * endptr;
-            long int n = strtol (value, & endptr, 0);
-            if (* endptr)
-              {
-                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: can't parse number <%s>\n", value);
-                sim_printf ("error: scu_set_config: can't parse number <%s>\n", value);
-                break;
-              } 
-            if (n != 32 && n != 64 && n != 128 && n != 256 && n != 512 && n != 1024 && n != 2048 && n != 4096)
-              {
-                sim_debug (DBG_ERR, & scu_dev, "scu_set_config: LWRSTORESIZE value out of range: %ld\n", n);
-                sim_printf ("error: scu_set_config: LWRSTORESIZE value out of range: %ld\n", n);
-                break;
-              } 
-            sw -> lower_store_size = n;
-          }
-        else
-          {
-            sim_debug (DBG_ERR, & scu_dev, "scu_set_config: Invalid switch name <%s>\n", name);
-            sim_printf ("error: scu_set_config: invalid switch name <%s>\n", name);
-            break;
-          }
       } // process statements
-    free (copy);
-
+    cfgparse_done (& cfg_state);
     return SCPE_OK;
   }
 
