@@ -121,6 +121,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_utils.h"
 
 static t_stat iom_show_mbx (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat iom_show_config (FILE *st, UNIT *uptr, int val, void *desc);
@@ -324,6 +325,9 @@ struct unit_data
 
     // Port half-size: 1 toggle/port // XXX what is this
     uint config_sw_port_halfsize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    // Hacks
+    uint boot_skip;
   };
 
 static struct unit_data unit_data [N_IOM_UNITS_MAX];
@@ -1024,6 +1028,26 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
     iom_interrupt (unit_num);
 
     sim_debug (DBG_DEBUG, &iom_dev, "iom_boot finished\n");
+
+// XXX
+//  Hack to make t4d testing easier. Advence the tape after booting to
+//  allow skipping over working test blocks
+
+    if (unit_data [unit_num] . boot_skip)
+      {
+        int skip = unit_data [unit_num] . boot_skip;
+        int tape_unit_num;
+        /* DEVICE * tapedevp = */ get_iom_channel_dev (unit_num, 
+            unit_data [unit_num] . config_sw_bootload_magtape_chan,
+            0, /* dev_code */
+            & tape_unit_num);
+        sim_printf ("boot_skip: Tape %d skips %d record(s)\n", tape_unit_num, skip);
+        for (int i = 0; i < unit_data [unit_num] . boot_skip; i ++)
+          {
+            t_mtrlnt tbc;
+            sim_tape_sprecf (& mt_unit [tape_unit_num], & tbc);
+          }
+    }
 
 // XXX
 // Since interrupts aren't working yet....
@@ -3211,10 +3235,12 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> config_sw_port_halfsize [i]);
     sim_printf ("\n");
+    sim_printf("Boot skip:                %02o(8)\n", p -> boot_skip);
     
     return SCPE_OK;
 }
 
+#if 0
 //
 // set iom0 config=<blah> [;<blah>]
 //
@@ -3231,6 +3257,7 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //             enable=n
 //             initenable=n
 //             halfsize=n
+//          bootskip=n // Hack: forward skip n records after reading boot record
 
 static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
@@ -3460,6 +3487,17 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                       } 
                     p -> config_sw_port_halfsize [port_num] = n;
                   }
+                else if (strcmp (name, "BOOTSKIP") == 0)
+                  {
+                    // 1 bits
+                    if (n < 0)
+                      {
+                        sim_debug (DBG_ERR, & iom_dev, "iom_set_config: BOOTSKIP value out of range: %ld\n", n);
+                        sim_printf ("error: iom_set_config: BOOTSKIP value out of range: %ld\n", n);
+                        break;
+                      } 
+                    p -> boot_skip = n;
+                  }
                 else
                   {
                     sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid switch name <%s>\n", name);
@@ -3470,6 +3508,165 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
           } // number setting
       } // process statements
     free (copy);
+    return SCPE_OK;
+  }
+#endif
+//
+// set iom0 config=<blah> [;<blah>]
+//
+//    blah = iom_base=n
+//           multiplex_base=n
+//           os=gcos | gcosext | multics
+//           boot=card | tape
+//           tapechan=n
+//           cardchan=n
+//           scuport=n
+//           port=n   // set port number for below commands
+//             addr=n
+//             interlace=n
+//             enable=n
+//             initenable=n
+//             halfsize=n
+//          bootskip=n // Hack: forward skip n records after reading boot record
+
+static config_value_list_t cfg_os_list [] =
+  {
+    { "gcos", CONFIG_SW_STD_GCOS },
+    { "gcosext", CONFIG_SW_EXT_GCOS },
+    { "multics", CONFIG_SW_MULTICS },
+    { NULL }
+  };
+
+static config_value_list_t cfg_boot_list [] =
+  {
+    { "card", CONFIG_SW_BLCT_CARD },
+    { "tape", CONFIG_SW_BLCT_TAPE },
+    { NULL }
+  };
+
+static config_list_t iom_config_list [] =
+  {
+    /*  0 */ { "os", 1, 0, cfg_os_list },
+    /*  1 */ { "boot", 1, 0, cfg_boot_list },
+    /*  2 */ { "iom_base", 0, 07777, NULL },
+    /*  3 */ { "multiplex_base", 0, 0777, NULL },
+    /*  4 */ { "tapechan", 0, 077, NULL },
+    /*  5 */ { "cardchan", 0, 077, NULL },
+    /*  6 */ { "scuport", 0, 07, NULL },
+    /*  7 */ { "port", 0, N_IOM_PORTS - 1, NULL },
+    /*  8 */ { "addr", 0, 7, NULL },
+    /*  9 */ { "interlace", 0, 1, NULL },
+    /* 10 */ { "enable", 0, 1, NULL },
+    /* 11 */ { "initenable", 0, 1, NULL },
+    /* 12 */ { "halfsize", 0, 1, NULL },
+    /* 13 */ { "bootskip", 0, 1000, NULL }, // t4d testing hack
+    { NULL }
+  };
+
+static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+  {
+    int unit_num = UNIT_NUM (uptr);
+    if (unit_num < 0 || unit_num >= iom_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid unit number %d\n", unit_num);
+        sim_printf ("error: iom_set_config: invalid unit number %d\n", unit_num);
+        return SCPE_ARG;
+      }
+
+    struct unit_data * p = unit_data + unit_num;
+
+    static uint port_num = 0;
+
+    config_state_t cfg_state = { NULL };
+
+    for (;;)
+      {
+        int64_t v;
+        int rc = cfgparse ("iom_set_config", cptr, iom_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+
+            case -1: // done
+              break;
+
+            case 0: // OS
+              p -> config_sw_os = v;
+              break;
+
+            case 1: // BOOT
+              p -> config_sw_bootload_card_tape = v;
+              break;
+
+            case 2: // IOM_BASE
+              p -> config_sw_iom_base_address = v;
+              break;
+
+            case 3: // MULTIPLEX_BASE
+              p -> config_sw_multiplex_base_address = v;
+              break;
+
+            case 4: // TAPECHAN
+              p -> config_sw_bootload_magtape_chan = v;
+              break;
+
+            case 5: // CARDCHAN
+              p -> config_sw_bootload_cardrdr_chan = v;
+              break;
+
+            case 6: // SCUPORT
+              p -> config_sw_bootload_port = v;
+              break;
+
+            case 7: // PORT
+              port_num = v;
+              break;
+
+#if 0
+                // all of the remaining assume a valid value in port_num
+                if (/* port_num < 0 || */ port_num > 7)
+                  {
+                    sim_debug (DBG_ERR, & iom_dev, "iom_set_config: cached PORT value out of range: %d\n", port_num);
+                    sim_printf ("error: iom_set_config: cached PORT value out of range: %d\n", port_num);
+                    break;
+                  } 
+#endif
+            case 8: // ADDR
+              p -> config_sw_port_addr [port_num] = v;
+              break;
+
+            case 9: // INTERLACE
+              p -> config_sw_port_interlace [port_num] = v;
+              break;
+
+            case 10: // ENABLE
+              p -> config_sw_port_enable [port_num] = v;
+              break;
+
+            case 11: // INITENABLE
+              p -> config_sw_port_sysinit_enable [port_num] = v;
+              break;
+
+            case 12: // HALFSIZE
+              p -> config_sw_port_halfsize [port_num] = v;
+              break;
+
+            case 13: // BOOTSKIP
+              p -> boot_skip = v;
+              break;
+
+            default:
+              sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: iom_set_config: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG; 
+          } // switch
+        if (rc < 0)
+          break;
+      } // process statements
+    cfgparse_done (& cfg_state);
     return SCPE_OK;
   }
 
