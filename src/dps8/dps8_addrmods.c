@@ -1104,13 +1104,13 @@ IT_MOD:;
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             
             
-            i->address = Yi;
+            //i->address = Yi;
             rTAG = idwtag & 0x60; // force R to 0
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
             
-            TPR.CA = i->address;
-            rY = i->address;
+            //TPR.CA = i->address;
+            rY = TPR.CA;    //i->address;
             
             switch(Tm)
             {
@@ -1177,13 +1177,15 @@ IT_MOD:;
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             
             // force R to 0 (except for IT)
-            i->address = TPR.CA;    // why is i->address being modified?
+            //  i->address = TPR.CA;    // why is i->address being modified?
+            
+            
             rTAG = idwtag & 0x60; // force R to 0 (except for IT)
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
             
-            TPR.CA = i->address;
-            rY = i->address;
+            //TPR.CA = i->address;
+            rY = TPR.CA;    //i->address;
             
             switch(Tm)
             {
