@@ -276,11 +276,11 @@ IR_MOD_2:;
                 switch (Td)
                 {
                     case IT_F2:
-                        doFault(i, dir_flt2_fault, 0, "IT_F2");
-                        break;
+                        doFault(i, f2_fault, 0, "IT_F2");
+                        return;
                     case IT_F3:
-                        doFault(i, dir_flt3_fault, 0, "IT_F3");
-                        break;
+                        doFault(i, f3_fault, 0, "IT_F3");
+                        return;
                 }
             }
             // fall through to TM_R
@@ -391,17 +391,25 @@ IT_MOD:;
         case 2:
         case 3:
             ///< XXX illegal procedure, illegal modifier, fault
-            ;
+            
             if (adrTrace)
             {
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
             }
+            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+            return;
             
+        ///< XXX Abort. FT2 or 3
         case IT_F1:
+            doFault(i, f1_fault, 0, "IT_F1");
+            return;
         case IT_F2:
+            doFault(i, f2_fault, 0, "IT_F2");
+            return;
         case IT_F3:
-            ///< XXX Abort. FT2 or 3
-            ;
+            doFault(i, f3_fault, 0, "IT_F3");
+            return;
+        
         case IT_CI: ///< Character indirect (Td = 10)
             
             ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
@@ -1169,7 +1177,7 @@ IT_MOD:;
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             
             // force R to 0 (except for IT)
-            i->address = TPR.CA;
+            i->address = TPR.CA;    // why is i->address being modified?
             rTAG = idwtag & 0x60; // force R to 0 (except for IT)
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
