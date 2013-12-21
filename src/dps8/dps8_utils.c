@@ -10,6 +10,7 @@
 #include <ctype.h>
 
 #include "dps8.h"
+#include "dps8_utils.h"
 
 /*
  * misc utility routines used by simulator
@@ -1228,6 +1229,30 @@ char *bin2text(t_uint64 word, int n)
 
 #include <ctype.h>
 
+//
+// simh puts the tty in raw mode when the sim is running;
+// this means that test output to the console will lack CR's and
+// be all messed up.
+//
+// There are three ways around this:
+//   1: switch back to cooked mode for the message
+//   2: walk the message and output CRs before LFs with sim_putchar()
+//   3: walk the message and output CRs before LFs with sim_os_putchar()
+//
+// The overhead and obscure side effects of switching are unknown.
+//
+// sim_putchar adds the text to the log file, but not the debug file; and
+// sim_putchar puts the CRs into the log file.
+//
+// sim_os_putchar skips checks that sim_putchar does that verify that
+// we are actually talking to tty, instead of a telnet connection or other
+// non-tty thingy.
+//
+// USE_COOKED does the wrong thing when stdout is piped; ie not a terminal
+
+//#define USE_COOKED
+#define USE_PUTCHAR
+
 void sim_printf( const char * format, ... )
 {
     char buffer[4096];
@@ -1236,9 +1261,7 @@ void sim_printf( const char * format, ... )
     va_start (args, format);
     vsnprintf (buffer, sizeof(buffer), format, args);
     
-#if 0 // one way
-// simh puts the tty in raw mode when the sim is running
-// cook it for this message
+#ifdef USE_COOKED
     if (sim_is_running)
       sim_ttcmd ();
 #endif
@@ -1246,22 +1269,153 @@ void sim_printf( const char * format, ... )
     for(int i = 0 ; i < sizeof(buffer); i += 1)
     {
         if (buffer[i]) {
-// the other way (the way sim_debug does it, mor or less)
-// note that sim_putchar also writes to the debug file, so it will
-// end up with extra CRs.
+#ifdef USE_PUTCHAR
             if (sim_is_running && buffer [i] == '\n')
               sim_putchar ('\r');
+#endif
+#ifdef USE_OS_PUTCHAR
+            if (sim_is_running && buffer [i] == '\n')
+              sim_os_putchar ('\r');
+#endif
             sim_putchar(buffer[i]);
+            //if (sim_deb)
+              //fputc (buffer [i], sim_deb);
         } else
             break;
     }
  
-#if 0
-// and back to raw mode
+#ifdef USE_COOKED
     if (sim_is_running)
       sim_ttrun ();
 #endif
 
     va_end (args);
 }
+
+// XXX what about config=addr7=123, where clist has a "addr%"?
+
+int cfgparse (char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
+  {
+    char * start = NULL;
+    if (! state -> copy)
+      {
+        state -> copy = strdup (cptr);
+        start = state -> copy;
+        state ->  statement_save = NULL;
+      }
+
+    int ret = -2; // error
+
+    // grab every thing up to the next semicolon
+    char * statement;
+    statement = strtok_r (start, ";", & state -> statement_save);
+    start = NULL;
+    if (! statement)
+      {
+        ret = -1; // done
+        goto done;
+      }
+
+    // extract name
+    char * name_start = statement;
+    char * name_save = NULL;
+    char * name;
+    name = strtok_r (name_start, "=", & name_save);
+    if (! name)
+      {
+        sim_printf ("error: %s: can't parse name\n", tag);
+        goto done;
+      }
+
+    // lookup name
+    config_list_t * p = clist;
+    while (p -> name)
+      {
+        if (strcasecmp (name, p -> name) == 0)
+          break;
+        p ++;
+      }
+    if (! p -> name)
+      {
+        sim_printf ("error: %s: don't know name <%s>\n", tag, name);
+        goto done;
+      }
+
+    // extract value
+    char * value;
+    value = strtok_r (NULL, "", & name_save);
+    if (! value)
+      {
+        // Special case; min>max and no value list
+        // means that a missing value is ok
+        if (p -> min > p -> max && ! p -> value_list)
+          {
+            return p - clist;
+          }
+        sim_printf ("error: %s: can't parse value\n", tag);
+        goto done;
+      }
+
+    // first look to value in the value list
+    config_value_list_t * v = p -> value_list;
+    if (v)
+      {
+        while (v -> value_name)
+          {
+            if (strcasecmp (value, v -> value_name) == 0)
+              break;
+            v ++;
+          }
+
+        // Hit?
+        if (v -> value_name)
+          {
+            * result = v -> value;
+            return p - clist;
+          }
+      }
+
+    // Must be a number
+
+    if (p -> min > p -> max)
+      {
+        sim_printf ("error: %s: can't parse value\n", tag);
+        goto done;
+      }
+
+    if (strlen (value) == 0)
+      {
+         sim_printf ("error: %s: missing value\n", tag);
+         goto done;
+      }
+    char * endptr;
+    int64_t n = strtoll (value, & endptr, 0);
+    if (* endptr)
+      {
+        sim_printf ("error: %s: can't parse value\n", tag);
+        goto done;
+      } 
+
+// XXX small bug; doesn't check for junk after number...
+    if (n < p -> min || n > p -> max)
+      {
+        sim_printf ("error: %s: value out of range\n", tag);
+        goto done;
+      } 
+    
+    * result = n;
+    return p - clist;
+
+done:
+    free (state -> copy);
+    state -> copy= NULL;
+    return ret;
+  }
+
+void cfgparse_done (config_state_t * state)
+  {
+    if (state -> copy)
+      free (state -> copy);
+    state -> copy = NULL;
+  }
 
