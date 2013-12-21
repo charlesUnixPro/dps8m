@@ -20,7 +20,7 @@ extern word18 rIC;
 
 static void EISWrite(EISaddr *p, word36 data)
 {
-    if (p->mat == viaPR && get_addr_mode() == APPEND_mode)
+    if (p->mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
@@ -32,7 +32,7 @@ static void EISWrite(EISaddr *p, word36 data)
 static word36 EISRead(EISaddr *p)
 {
     word36 data;
-    if (p->mat == viaPR && get_addr_mode() == APPEND_mode)
+    if (p->mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
