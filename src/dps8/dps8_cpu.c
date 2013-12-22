@@ -922,7 +922,6 @@ jmpRetry:;
         processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
         
 
-
         ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
         
 // XXX The conditions are more rigorous: see AL39, pg 327
@@ -1473,6 +1472,19 @@ void freeDCDstruct(DCDstruct *p)
 DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at address
 {
     DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
+
+// XXX experimental code; there may be a better way to do this, especially
+// if a pointer to a malloc is getting zapped
+// Yep, I was right
+    //memset (p, 0, sizeof (struct DCDstruct));
+// Try the obivous ones
+    p->opcode  = 0;
+    p->opcodeX = 0;
+    p->address = 0;
+    p->a       = 0;
+    p->i       = 0;
+    p->tag     = 0;
+    
 
     Read(p, addr, &p->IWB, InstructionFetch, 0);
     
