@@ -24,7 +24,7 @@ static void EISWrite(EISaddr *p, word36 data)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Write(p->e->ins, p->address, data, DataWrite, 0); // write data
+        Write(p->e->ins, p->address, data, APUDataWrite, 0); // write data
     } else
         Write(p->e->ins, p->address, data, OperandWrite, 0); // write data
 }
@@ -36,7 +36,7 @@ static word36 EISRead(EISaddr *p)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Read(p->e->ins, p->address, &data, DataRead, 0);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+        Read(p->e->ins, p->address, &data, APUDataRead, 0);     // read data via AR/PR. TPR.{TRR,TSR} already set up
     }
     else
         Read(p->e->ins, p->address, &data, OperandRead, 0);  // read operand

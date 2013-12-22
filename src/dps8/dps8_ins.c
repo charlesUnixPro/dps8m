@@ -312,7 +312,8 @@ t_stat executeInstruction(DCDstruct *ci)
     const bool   i = ci->i;               ///< interrupt inhibit bit.
     const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
     
-    TPR.CA = ci->address;           // address from opcode
+    TPR.CA = ci->address;                 // address from opcode
+    ry = ci->address;                     ///< 18-bit address field from instruction
     rY = ci->address;
     
     ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
@@ -366,14 +367,16 @@ t_stat executeInstruction(DCDstruct *ci)
     
     if (iwb->ndes == 0)
     {
-        if (a && !(iwb->flags & IGN_B29))
+        if (a && !(iwb->flags & IGN_B29))   // a should now always be correct so B29 tst may not be necesary....
         {
             doAddrModPtrReg(ci);
             
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
             // XXX [CAC] I disagres. See AL39, pg 311.
-             if (switches . auto_append_disable == 0)
+            
+            // I agree with CAC that this should not set the processor into APPEND mode, but it breaks TestFXE just now. Fix TestFXE
+            if (switches . auto_append_disable == 0)
                set_addr_mode(APPEND_mode);
         }
 // XXX Experimental code

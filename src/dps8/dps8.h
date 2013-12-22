@@ -342,7 +342,8 @@ extern word36 XECD2; /*!< XED instr#2 */
 extern word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
 extern word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
-extern word18	rY;     /*!< address operand */
+extern word18	ry;     /*!< address operand */
+extern word24	rY;     /*!< address operand */
 extern word8	rTAG;	/*!< instruction tag */
 
 ///* GE-645 */

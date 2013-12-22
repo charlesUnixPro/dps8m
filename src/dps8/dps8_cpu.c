@@ -537,6 +537,7 @@ IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
 
 word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
+word18	ry;     /*!< address operand */
 word24	rY;     /*!< address operand */
 word8	rTAG;	/*!< instruction tag */
 
@@ -1063,7 +1064,7 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 //    return ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)));
 //}
 
-
+PRIVATE
 t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
 {
     sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
@@ -1079,21 +1080,19 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
         case DataRead:
         case OperandRead:
         case IndirectRead:
-            if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
+            if (i->a)
                 doAppendCycle(i, accessType, Tag, -1, dat);
             else
                 core_read(addr, dat);
             break;
          
         case APUDataRead:        // append operations from absolute mode
-        case APUDataWrite:
         case APUOperandRead:
-        case APUOperandWrite:
             doAppendCycle(i, accessType, Tag, -1, dat);
             break;
             
         default:
-            fprintf(stderr,  "doAbsoluteRead(Entry): unsupported accessType=%d\n", accessType);
+            sim_printf("doAbsoluteRead(Entry): unsupported accessType=%d\n", accessType);
             break;
     }
     return SCPE_OK;
@@ -1173,6 +1172,34 @@ APPEND_MODE:;
     return SCPE_OK;
 }
 
+PRIVATE
+t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType accessType, int32 Tag)
+{
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "doAbsoluteWrite (Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
+    
+    switch (accessType)
+    {
+        case DataWrite:
+        case OperandWrite:
+            if (i->a)
+                doAppendCycle(i, accessType, Tag, -1, NULL);
+            else
+                core_write(addr, dat);
+            break;
+            
+        case APUDataWrite:      // append operations from absolute mode
+        case APUOperandWrite:
+            doAppendCycle(i, accessType, Tag, -1, NULL);
+            break;
+            
+        default:
+            sim_printf("doAbsoluteWrite(Entry): unsupported accessType=%d\n", accessType);
+            break;
+    }
+    return SCPE_OK;
+}
+
+
 t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
@@ -1199,6 +1226,7 @@ APPEND_MODE:;
                 
                 break;
             case ABSOLUTE_MODE:
+#if OLD_WAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
                 if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
                     doAppendCycle(i, acctyp, Tag, dat, NULL);
@@ -1211,6 +1239,8 @@ APPEND_MODE:;
                 //   processorAddressingMode = APPEND_MODE;
                 //    goto APPEND_MODE;   // ???
                 //}
+#endif
+                doAbsoluteWrite(i, addr, dat, acctyp, Tag);
                 break;
             case BAR_MODE:
                 // XXX probably not right.
@@ -1546,7 +1576,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
     p->a       = GET_A(inst);   // "A" - the indirect via pointer register flag
-    p->i       = GET_I(inst);   // inhibit interrupt flag
+    p->i       = GET_I(inst);   // "I" - inhibit interrupt flag
     p->tag     = GET_TAG(inst); // instruction tag
     
     p->iwb = getIWBInfo(p);     // get info for IWB instruction
@@ -1555,21 +1585,23 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     p->iwb->opcode = p->opcode;
     p->IWB = inst;
     
-    
-    // ToDo: may need to rethink how.when this is dome. Seems to crash the cu
-    // is this a multiword EIS?
-    if (p->iwb->ndes > 1)
+    // HWR 21 Dec 2013
+    if (p->iwb->flags & IGN_B29)
+        p->a = 0;   // make certain 'a' bit is valid always
+
+    if (p->iwb->ndes > 0)
     {
-        memset(p->e, 0, sizeof(EISstruct)); // clear out e
-        p->e->op0 = p->IWB;
-        // XXX: for XEC/XED/faults, this should trap?? I think -MCW
-        for(int n = 0 ; n < p->iwb->ndes; n += 1)
-            //Read(p, rIC + 1 + n, &p->e->op[n], InstructionFetch, 0);
-            Read(p, rIC + 1 + n, &p->e->op[n], OperandRead, 0); // I think.
+        p->a = 0;
+        p->tag = 0;
+        if (p->iwb->ndes > 1)
+        {
+            memset(p->e, 0, sizeof(EISstruct)); // clear out e
+            p->e->op0 = p->IWB;
+            // XXX: for XEC/XED/faults, this should trap?? I think -MCW
+            for(int n = 0 ; n < p->iwb->ndes; n += 1)
+                Read(p, rIC + 1 + n, &p->e->op[n], OperandRead, 0); // I think.
+        }
     }
-    //if (p->e)
-    //    p->e->ins = p;    // Yes, it's a cycle
-    
     return p;
 }
 
