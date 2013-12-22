@@ -5627,7 +5627,8 @@ static int testABSA (DCDstruct * i, word36 * result)
 #endif
 #endif
 
-    * result = res;
+    //* result = res;
+    * result = ans;
     return SCPE_OK;
   }
 
