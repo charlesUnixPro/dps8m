@@ -3931,6 +3931,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             // ToDo: need to decode i into cu.IR
             cu_safe_store();
+            // XXX STORE_YBLOCK8 not yet in; fix this code when it is
+            sim_debug (DBG_ERR, & cpu_dev, "Fixme: SCU STORE_YBLOCK8 workaround\n");
+            // XXX this may be way too simplistic ..... 
+            // XXX Write sets TPR.CA to the address passed in.... Gahh
+            word18 tprca = TPR.CA;
+            Write (i, tprca + 0, scu_data [0], DataWrite, i->tag);
+            Write (i, tprca + 1, scu_data [1], DataWrite, i->tag);
+            Write (i, tprca + 2, scu_data [2], DataWrite, i->tag);
+            Write (i, tprca + 3, scu_data [3], DataWrite, i->tag);
+            Write (i, tprca + 4, scu_data [4], DataWrite, i->tag);
+            Write (i, tprca + 5, scu_data [5], DataWrite, i->tag);
+            Write (i, tprca + 6, scu_data [6], DataWrite, i->tag);
+            Write (i, tprca + 7, scu_data [7], DataWrite, i->tag);
+            TPR.CA = tprca;
             break;
             
         case 0154:  ///< sdbr
