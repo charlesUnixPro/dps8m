@@ -4196,6 +4196,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
           break;
             
         case 0616:  ///< dis
+
+// XXX Insight on DIS with interrupt inhibit set; wait for the interrupt;
+// when it occurs, if inhibit set, continue on; otherwise do the interrupt
+// handling thing. Getting this rihgt with breaking the Fake DIS cyvle used
+// by iom_boot may be tricky
+
             if (i->i) {
                 sim_debug (DBG_WARN, & cpu_dev, "OPU dis: DIS with inhibit set\n");
                 // [CAC] XXX t4d requires this to be interruptable.
@@ -5600,6 +5606,23 @@ static int testABSA (DCDstruct * i, word36 * result)
     //  absa pr0|00
     //  sta xx
     //  lda yy "contains the expected answer
+    //
+    // or
+    //  absa pr0|00
+    //  dis
+    // which would seem to want it to fault
+
+    // Fetch the *+1 instruction
+    word36 dis = M [PPR . IC + 1];
+    if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
+      {
+        //sim_printf ("Taking fault\n");
+        // AL39: Address Appending: A segment boundary check is made in 
+	// every cycle except PSDW. If a boundary violation is
+        // detected, an access violation, out of segment bounds, fault is 
+        // generated and the execution of the instruction interrupted.
+        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+      }
     // Fetch the  LDA instruction
     word36 lda = M [PPR . IC + 2];
     //sim_printf ("lda %012llo\n",  lda);
