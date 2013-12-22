@@ -555,13 +555,17 @@ enum eMemoryAccessType {
     Unknown          = 0,
     InstructionFetch,
     IndirectRead,
-    //IndirectWrite,  // XXX ????
-    //IndirectReadIR   = 3,
-    //IndirectReadRI   = 4,
+    
     DataRead,
     DataWrite,
     OperandRead,
     OperandWrite,
+    
+    APUDataRead,        // append operations from absolute mode
+    APUDataWrite,
+    APUOperandRead,
+    APUOperandWrite,
+
     Call6Operand,
     RTCDOperand,
     

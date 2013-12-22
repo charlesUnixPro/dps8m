@@ -1064,11 +1064,47 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 //}
 
 
+t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
+{
+    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
+    
+    word36 fa = 0;
+    switch (accessType)
+    {
+        // absolute mode fetches are always in absolute mode?
+        case InstructionFetch:
+            core_read(addr, dat);
+            break;
+            
+        case DataRead:
+        case OperandRead:
+        case IndirectRead:
+            if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
+                doAppendCycle(i, accessType, Tag, -1, dat);
+            else
+                core_read(addr, dat);
+            break;
+         
+        case APUDataRead:        // append operations from absolute mode
+        case APUDataWrite:
+        case APUOperandRead:
+        case APUOperandWrite:
+            doAppendCycle(i, accessType, Tag, -1, dat);
+            break;
+            
+        default:
+            fprintf(stderr,  "doAbsoluteRead(Entry): unsupported accessType=%d\n", accessType);
+            break;
+    }
+    return SCPE_OK;
+}
+
+
 /*!
  * the Read, Write functions access main memory, but optionally calls the appending unit to
  * determine the actual memory address
  */
-t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag)
+t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1096,6 +1132,7 @@ APPEND_MODE:;
                 //*dat = CY;  // XXX this may be a nasty loop
                 break;
             case ABSOLUTE_MODE:
+#if OLDWAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
                 // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
                 
@@ -1114,6 +1151,9 @@ APPEND_MODE:;
                     set_addr_mode(APPEND_mode);
                     goto APPEND_MODE;   // ???
                 }
+#endif
+                doAbsoluteRead(i, addr, dat, acctyp, Tag);
+                
                 break;
             case BAR_MODE:
                 // XXX probably not right.
