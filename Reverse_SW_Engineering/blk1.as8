@@ -9,7 +9,7 @@
 
 	macro	idis
 inhibit on
-	dis	?1*?
+	dis	#?1*?
 	inhibit	off
 	endm
 
@@ -631,7 +631,7 @@ l1401:	oct	000000000000
 	ada	#2
 	trc	* + 3
 	tze	* + 3
-	tra	?3* + 3?
+	tra	#?3* + 3?
 	idis	#1
 	idis	#1
 	endm
@@ -1917,7 +1917,7 @@ l1401:	oct	000000000000
 	trc	* + 3
 	idis	#1
 	idis	#1
-	tze	?5* + 2?
+	tze	#?5* + 2?
 	idis	#1
 	endm
 
@@ -1997,7 +1997,7 @@ test_l5333:
 	ada	l6003
 	trc	* + 2
 	idis	#1
-	tze	?4* + 2?
+	tze	#?4* + 2?
 	idis	#1
 	endm
 
