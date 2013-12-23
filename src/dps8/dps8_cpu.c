@@ -851,8 +851,222 @@ static bool sample_interrupts (void)
     return events . int_pending;
   }
 
-// This is part of the simh interface
+static int simh_hooks (void)
+  {
+    int reason = 0;
+    // check clock queue 
+    if (sim_interval <= 0)
+      {
+        reason = sim_process_event ();
+        if (reason)
+          return reason;
+      }
+        
+    sim_interval --;
+
+// XXX
+#if 0
+    // breakpoint? 
+    if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E')))
+      {
+        return STOP_BKPT; /* stop simulation */
+      }
+#endif
+    return reason;
+  }       
+
+//
+// Okay, lets treat this as a state machine
+//
+//  DIS_cycle
+//     spining wheels waiting for interrupt
+//     if interruot, set INTERRUPT_cycle
+//
+//  INTERRUPT_cycle
+//     clear interrupt, load interrupt pair into instruction buffer
+//     set INTERRUPT_EXEC_cycle
+//  INTERUPT_EXEC_cycle
+//     execute instruction in instruction buffer
+//     if (! transfer) set INTERUPT_EXEC2_cycle 
+//     else set FETCH_cycle
+//  INTERUPT_EXEC2_cycle
+//     execute odd instruction in instruction buffer
+//     set INTERUPT_EXEC2_cycle 
+//
+//  FAULT_cycle
+//     fetch fault pair into instruction buffer
+//     set FAULT_EXEC_cycle
+//  FAULT_EXEC_cycle
+//     execute instructions in instruction buffer
+//     if (! transfer) set FAULT_EXE2_cycle 
+//     else set FETCH_cycle
+//  FAULT_EXEC2_cycle
+//     execute odd instruction in instruction buffer
+//     set FETCH_cycle
+//
+//  FETCH_cycle
+//     fetch instruction into instruction buffer
+//     set EXEC_cycle
+//
+//  EXEC_cycle
+//     execute instruction in instruction buffer
+//     if (repeat conditions) keep cycling
+//     if (pair) set EXEC2_cycle
+//     else set FETCH_cycle
+//  EXEC2_cycle
+//     execute odd instruction in instruction buffer
+//
+//  XEC_cycle
+//     load instruction into instruction buffer
+//     set EXEC_cyvle
+//
+//  XED_cycle
+//     load instruction pair into instruction buffer
+//     set EXEC_cyvle
+//  
+//  RPT_cycle
+//     load instruction into instruction buffer
+//     set repeat conditions
+//     set EXEC_cycle
+//
+// other extant cycles:
+//  ABORT_cycle
+
+static Ypair instr_buf;
+static enum { IB_EMPY, IB_SINGLE, IB_PAIR } instr_buf_state;
+
 t_stat sim_instr (void)
+  {
+    // Heh. These need to be static; longjmp resets values
+    static DCDstruct _ci;
+    static DCDstruct * ci = & _ci;
+
+    adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
+    apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
+    
+    cpu . interrupt_flag = false;
+    instr_buf_state = IB_EMPY;
+
+    // This allows long jumping to the top of the state machine
+    int val = setjmp(jmpMain);
+
+#if 0
+    switch (val)
+    {
+        case 0:
+            reason = 0;
+            cpuCycles = 0;
+            break;
+        case JMP_NEXT:
+            goto jmpNext;
+        case JMP_RETRY:
+            goto jmpRetry;
+        case JMP_TRA:
+            goto jmpTra;
+        case JMP_STOP:
+            return stop_reason;
+    }
+#endif
+
+    // Main instruction fetch/decode loop 
+
+    do
+      {
+
+        reason = simh_hooks ();
+        if (reason)
+          return reason;
+
+        switch (cpu . cycle)
+          {
+
+            case DIS_cycle:
+                // spining wheels waiting for interrupt
+                // if interruot, set INTERRUPT_cycle
+
+                cpu . interrupt_flag = sample_interrupts ();
+                if (cpu . interrupt_flag)
+                  cpu . cycle = INTERRUPT_cycle;
+                break;
+
+            case INTERRUPT_cycle:
+                // clear interrupt, load interrupt pair into instruction buffer
+                // set INTERRUPT_EXEC_cycle
+                if (cpu . interrupt_flag)
+                  {
+                    // We should do this later, but doing it now allows us to
+                    // avoid clean up for no interrupt pending.
+
+                    uint intr_pair_addr;
+                    intr_pair_addr = get_highest_intr ();
+                    if (intr_pair_addr != 1) // no interrupts 
+                      {
+
+                        // In the INTERRUPT CYCLE, the processor safe-stores
+                        // the Control Unit Data (see Section 3) into 
+                        // program-invisible holding registers in preparation 
+                        // for a Store Control Unit (scu) instruction, enters 
+                        // temporary absolute mode, and forces the current 
+                        // ring of execution C(PPR.PRR) to
+                        // 0. It then issues an XEC system controller command 
+                        // to the system controller on the highest priority 
+                        // port for which there is a bit set in the interrupt 
+                        // present register.  
+
+                        cu_safe_store ();
+
+                        // save address mode
+                        addr_modes_t am = get_addr_mode();
+
+                        // Temporary absolute mode
+                        set_addr_mode (ABSOLUTE_mode);
+
+                        // Set to ring 0
+                        PPR . PRR = 0;
+
+                        // get interrupt pair
+                        core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
+                        instr_buf_state = IBPAIR;
+
+                        cpu . interrupt_flag = false;
+                        cpu . cycle = INTERRUPT_EXEC_cycle;
+                        break;
+                      } // int_pair != 1
+                  } // interrupt_flag
+                // If we get here, there was no interrupt
+                // The only place we enter INTERRUPT_cycle is in EXEC_cycle,
+                // so go back there
+                cpu . cycle = EXEC_cycle;
+                break;
+
+            case INTERRUPT_EXEC_cycle:
+            case INTERRUPT_EXEC2_cycle:
+                //     execute instruction in instruction buffer
+                //     if (! transfer) set INTERUPT_EXEC2_cycle 
+
+                if (cpu . cycle == INTERRUPT_EXEC_cycle)
+                  ci -> iwb = instr_buf [0];
+                else
+                  ci -> iwb = instr_buf [1];
+
+                decodeInstruction (ci -> IWB, ci);
+                t_stat ret = executeInstruction (ci);
+
+                // XXX  if (! transfer) set INTERUPT_EXEC2_cycle and go
+                // XXX restore IC from safe store
+                instr_buf_status = IB_EMPTY;
+                cpu . cycle = FETCH_cycle;
+                brea;
+
+
+
+      }
+  }
+
+
+
+// This is part of the simh interface
+t_stat sim_instrx (void)
 {
     // Heh. This needs to be static; longjmp resets the value to NULL
     static DCDstruct *ci = NULL;
