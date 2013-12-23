@@ -236,72 +236,56 @@ rescan:
                         // Replace argument references
                         for (;;)
                           {
-                            //char * arg_ref = index (body, '#');
-                            size_t arg_idx = strcspn (body, "#?");
-                            //if (arg_ref)
+                            size_t arg_idx = strcspn (body, "#");
                             if (body [arg_idx] == '#')
                               {
-                                //char arg_digit = * (arg_ref + 1);
                                 char arg_digit = body [arg_idx + 1];
+                                bool isq = false;
+                                if (arg_digit == '?')
+                                  {
+                                    isq = true;
+                                    arg_digit = body [arg_idx + 2];
+                                  }
                                 if (arg_digit < '1' || arg_digit > '9')
                                   die ("invalid argument number");
-                                int arg_num = arg_digit - '1';
-                                if (arg_num >= mp -> n_args)
-                                  die ("argument number too big");
-                                //int arg_idx = arg_ref - body;
-                                // erase the reference
-                                erase (body + arg_idx, 2);
 
-                                // make room for the arg value
-                                expand (& body, arg_idx, mp -> args [arg_num]);
-                        
-                                // paste the arg value
-                                memmove (body + arg_idx, mp -> args [arg_num], strlen (mp -> args [arg_num]));
-                                //continue;
-                              }
-                            //arg_ref = index (body, '?');
-                            //if (arg_ref)
-                            else if (body [arg_idx] == '?')
-                              {
-                                //int arg_idx = arg_ref - body;
-                                //char arg_digit = * (arg_ref + 1);
-                                char arg_digit = body [arg_idx + 1];
-                                if (arg_digit < '1' || arg_digit > '9')
-                                  die ("invalid argument number");
                                 int arg_num = arg_digit - '1';
-                                char * close = index (body + arg_idx + 1, '?');
-                                if (! close)
-                                  die ("unclosed default");
-                                int arg_len = close - (body + arg_idx) + 1;
-                                //int arg_len;
-                                if (arg_num >= mp -> n_args ||
-                                    strlen (mp -> args [arg_num]) == 0)
+
+                                int arg_len = 2;
+                                char * close = NULL;
+                                if (isq)
+                                  {
+                                    close = index (body + arg_idx + 2, '?');
+                                    if (! close)
+                                      die ("unclosed default");
+                                    arg_len = close - (body + arg_idx) + 1;
+                                  }
+
+                                if (isq && (arg_num >= mp -> n_args ||
+                                    strlen (mp -> args [arg_num]) == 0))
                                   { // use default
                                     // find the closing '?'
                                     // get the default value
-                                    char * def = strndup (body + arg_idx + 2,
-                                                          arg_len - 3);
+                                    char * def = strndup (body + arg_idx + 3,
+                                                          arg_len - 4);
                                     erase (body + arg_idx, arg_len);
                                     // make room for the arg value
                                     expand (& body, arg_idx, def);
 
                                     // paste the arg value
-                                    memmove (body + arg_idx, def, arg_len - 3);
+                                    memmove (body + arg_idx, def, strlen (def));
                                     free (def);
                                   }
                                 else if (arg_num < mp -> n_args)
                                   { // use definition
-                                    //arg_len = 2;
                                     erase (body + arg_idx, arg_len);
                                     // make room for the arg value
                                     expand (& body, arg_idx, mp -> args [arg_num]);
-
                                     // paste the arg value
                                     memmove (body + arg_idx, mp -> args [arg_num], strlen (mp -> args [arg_num]));
                                   }
                                 else
                                   die ("argument number too big");
-                                //continue;
                               }
                             else
                               break;
