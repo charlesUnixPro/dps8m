@@ -1,0 +1,2011 @@
+
+
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Bull Inc., 1987                *
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+" *                                                         *
+" * Copyright (c) 1972 by Massachusetts Institute of        *
+" * Technology and Honeywell Information Systems, Inc.      *
+" *                                                         *
+" ***********************************************************
+
+" HISTORY COMMENTS:
+"  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+"     audit(86-01-31,GDixon), install(86-03-21,MR12.0-1033):
+"     select the proper bootload tape device, when the info in the IDCW &
+"     status word may be different.
+"  2) change(87-04-02,Farley), approve(87-07-06,MCR7717),
+"     audit(87-07-15,Fawcett), install(87-07-17,MR12.1-1043):
+"     Added chk_mpc_state routine to test the tape controller's intelligence
+"     level, which will allow proper setting of the "cold mpc flag".
+"  3) change(87-07-23,Farley), approve(87-07-23,PBF7717),
+"     audit(87-07-24,Fawcett), install(87-07-28,MR12.1-1047):
+"     Added POF retry to rd_tape routine, because unwedging of the tape
+"     controller on an IMU takes a long time (> 4sec) to complete (sigh!).
+"  4) change(87-10-02,Farley), approve(88-02-26,MCR7794),
+"     audit(88-03-04,Fawcett), install(88-03-15,MR12.2-1035):
+"     Added code to copy the IMU bit from the system_fault_vector into the
+"     bootload info area.  It will later be copied into
+"     bootload_info$imu_type_iom.
+"                                                      END HISTORY COMMENTS
+" Written by J. A. Bush 12/80
+" Modified for bootload Multics and macros BIM 2/82
+" Modified to read in whole first segment by C. Hornig, October 1982.
+" Modified for DPS88 support by K. Loepere, September 1983.
+" Modified to run on any IOM by Keith Loepere, March 1984.
+" Modified 1095-05-16, BIM: don't bomb on padded records.
+" Modified to run on IMU by Paul Farley, June 1984.
+" Modified 08/31/84 by Paul Farley to select the proper bootload tape
+"  device, when the info in the IDCW & status word may be different.
+" 
+" This program is copied by the tape_mult_ "boot_program" control order and
+" written onto a bootable MST when tape_mult_ is subsequently opened for
+" writing.  This program is put into execution by a bootload sequence as
+" follows: The system operator depresses initialize and bootload (or
+" equivalent) on the system console.  Assuming an MST with this program written
+" on its label is mounted and ready on the selected tape drive, the IOM (or
+" equivalant) hardwired bootload program will read in the first record on the
+" tape (the label record), starting at location 30 (8) absolute.  When the
+" record has been completely read in, a terminate interrupt is executed.  The
+" interrupt cell used for a terminate interrupt is a function of the IOM
+" number.  For IOM #0, interrupt cell 12 is used, for IOM #1, 2, and 3,
+" interrupt cells 13, 14, and 15 respectively are used.  The interrupt cell is
+" used to form the interrupt vector address.  Since interrupt vectors are two
+" locations long, the interrupt cell is multiplied by 2.  Therefore for IOM #0,
+" the interrupt vector address would be 24 (10) or 30 (8).  IOM #s 1, 2, and 3
+" interrupt vector addresses would be 32, 34, and 36 (8) respectively.  For the
+" IOX, only vector address 30 is used.  When the processor senses the 
+" terminate interrupt (via an execute interrupt present (xip) signal), a 
+" hardware XED instruction is forced to be executed to the interrupt vector 
+" address formed in the SCU.  Since this program is read in so that location 0
+" is overlayed at location 30 (8) absolute, by the IOM bootload program, the 
+" XED is forced to execute the transfer vector instructions (2) at the 
+" beginning of the record supplied by tape_mult_ for the appropriate IOM # 
+" and control is transferred to the label "my_zero" from the transfer vector.
+" 
+" The function of this program is to read the next segment off the boot tape
+" and to transfer control to it.
+" 
+" The fault vectors (locations 100 to 177 (8)) are overlayed by an SCU 200/DIS
+" pair.  Therefore if this program dies in a DIS instruction, one can look at
+" absolute location 200 - 207 for the SCU data stored as the result of the
+" fault.
+" 
+" " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+"
+" The IOM Bootload Program:
+"
+" The IOM Bootload program looks like this (locations are absolute memory):
+"
+" Location     Contents			Purpose
+"
+"   000000     18/0, 18/720201		Bootload channel PCW, word 1
+"   000001     3/0, 12/Chan#, 24/0, 3/Port#	Bootload channel PCW, word 2
+"
+"   000002     12/Base, 6/0, 15/PIbase, 3/IOM#	Info used by bootloaded pgm
+"   000003     6/Command, 6/Device#, 6/0, 18/700000
+"					Bootload IDCW - Command is 05
+"					for tape, 01 for cards.
+"   000004     18/000030, 18/0		Second IDCW: IOTD to loc 30
+"
+" System fault vector, at 000010 + 2*IOM#
+" 	     1/0, 1/IMU, 16/0, 18/616200	DIS 0 instruction
+"
+" Terminate interrupt vector, at 000030 + 2*IOM#	Overwritten by bootloaded
+"	     18/0, 18/616200		program: a DIS 0 instruction
+"
+" IOM Mailbox, at Base*6
+"   mbx + 07   12/Base, 6/02, 18/000002 	Fault channel DCW
+"   mbx + 10   18/0, 18/004000		Connect channel LPW -> PCW
+"					at 000000
+"
+" Channel mailbox, at Base*64 + 4*Chan#
+"   mbx + 0    18/000003, 6/02, 12/0003 	Boot dev LPW -> IDCW @ 000003
+"   mbx + 2    12/Base, 6/0, 18/0		Boot dev SCW -> IOM mailbox
+"
+"
+" For Multics, the IOM Base ("Base") must be 0012, locating the IOM mailbox at
+" location 001200.
+"
+" Multics can only be booted from tape -- booting from cards is not very
+" useful, since the card reader firmware must be loaded in order to do so. 
+" Unfortunately, we have no genuine boot-from-disk mechanism available to us, 
+" because there is nothing to support the bootload connect in a cold disk MPC.
+"
+" The channel number ("Chan#") is set by the switches on the IOM to be the
+" channel for the tape subsystem holding the bootload tape. The drive number
+" for the bootload tape is set by switches on the tape MPC itself.
+"
+" The IOM number (IOM#) is set by IOM switches.
+"
+" The IOX Bootload Program:
+"
+" The IOX Bootload program looks like this (locations are absolute memory):
+"
+" Location     Contents			Purpose
+"
+"   000000     6/Command, 6/Device#, 6/0, 18/700000
+"					Bootload IDCW - Command is 05
+"					for tape
+"   000001     18/000030, 18/0		Second IDCW: IOTD to loc 30
+"
+"   000004     24/7000000,12/IOXoffset		A register value for connect
+"
+" System fault vector, at 000010
+" 	     18/1, 18/612000		HALT instruction
+"
+" Terminate interrupt vector, at 000030		Overwritten by bootloaded
+"	     18/10, 18/612000		program: a HALT instruction
+"
+" IOX mailbox
+"
+"   001400     36/0				base addr 0
+"   001401     36/0				base addr 1
+"   001402     36/0				base addr 2
+"   001403     36/0				base addr 3
+"   001404     18/777777,18/0			bound 0, bound 1
+"   001405     18/0,18/0			bound 2, bound 3
+"   001406     24/0,12/3034			channel link word
+"   001407     18/0,9/400,9/400		lpw
+"
+" We compromise between the IOM and IOX version of memory from 1400 onward
+" with the IOX values except for the lpw which was fetched before the tape
+" overwrote it.  The code will fix it up.  The presence of a 0 in the top six
+" bits of word 0 denote an IOM boot from an IOX boot.
+"
+" " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+"
+"	include		bootload_equs
+" BEGIN INCLUDE FILE bootload_equs.incl.alm
+" Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+" Modified by almost everyone, it seems.
+" Last modified for MR11 bootload Multics addresses starting in 1983 by
+"     Keith Loepere.
+"
+" This include file describes various things used by the programs in
+" bound_bootload_0.
+
+" Default pointer register usage:
+
+	equ	ds,0		" Descriptor segment
+	equ	seg2,1		" Another temporary
+	equ	mb,2		" IOM mailbox
+	equ	slt,3		" Segment loading table (SLT)
+	equ	nt,4		" Name_table
+	equ	prb,5		" Physical_record_buffer
+	equ	seg,6		" Temporary
+	equ	fv,7		" Interrupt and fault vectors
+
+" Macros
+"
+"	macro	equ_o
+"	maclist	off,save
+"	bool	&U,&2
+"	equ	&1,&U
+"	maclist	restore
+"&end
+"
+"	macro	set_o
+"	maclist	off,save
+"	bool	&U,&2
+"	set	&1,&U
+"	maclist	restore
+"&end
+"
+"	macro	include_nolist
+"	maclist	off,save
+"	include	&1
+"	maclist	restore
+"&end
+"
+"	macro	Bpush
+"	stx2	bootload_0$entry_stack_ptr,id
+"	ttn	bootload_error$out_of_stack
+"&end
+"
+"" 	Breturn	offset-from-return-point
+"
+"	macro	Breturn
+"	ldx2	bootload_0$entry_stack_ptr,di
+"	tra	0+&1,x2
+"&end
+"
+""	Bentry	name,offset-from-return-point
+"
+"	macro	Bentry
+"	segdef	&1
+"	macro	&1_return
+"	Breturn	&<&K,2&[0&;&2&]
+"&&end
+"&end
+"
+"" 	Bentry_internal	name,offset_from_return_point
+"
+"	macro	Bentry_internal
+"	macro	&1_return	
+"	Breturn	&<&K,2&[0&;&2&]
+"&&end
+"&end
+"
+
+" Definitions
+
+"	equ_o	bostoe_absloc,10000		" bos_teohold
+			bool	tmp00001, 10000
+			equ	bostoe_absloc, tmp00001
+"	equ_o	bostoe_lth,2000
+			bool	tmp00002, 2000
+			equ	bostoe_lth, tmp00002
+
+"	equ_o	fgbx_absloc,24000		" now in bce toehold
+			bool	tmp00003, 24000
+			equ	fgbx_absloc, tmp00003
+"	equ_o	fgbx_lth,2000
+			bool	tmp00004, 2000
+			equ	fgbx_lth, tmp00004
+
+"	equ_o	toe_absloc,24000		" bootload Multics toehold
+			bool	tmp00005, 24000
+			equ	toe_absloc, tmp00005
+"	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+			bool	tmp00006, 4000
+			equ	toe_lth, tmp00006
+					" page address.  It is 
+					" bound as first element
+					" of bound_bootload_0.
+
+"	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+			bool	tmp00007, 24000
+			equ	bbl0_absloc, tmp00007
+"	equ_o	bbl0_lth,22000		" and length.
+			bool	tmp00008, 22000
+			equ	bbl0_lth, tmp00008
+
+"	equ_o	toedata_absloc,46000	" toehold_data
+			bool	tmp00009, 46000
+			equ	toedata_absloc, tmp00009
+"	equ_o	toedata_lth,4000
+			bool	tmp00010, 4000
+			equ	toedata_lth, tmp00010
+
+"	equ_o	upt_absloc,52000		" unpaged_page_tables
+			bool	tmp00011, 52000
+			equ	upt_absloc, tmp00011
+"	equ_o	upt_lth,2000
+			bool	tmp00012, 2000
+			equ	upt_lth, tmp00012
+
+"	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+			bool	tmp00013, 54000
+			equ	iupt_absloc, tmp00013
+"	equ_o	iupt_lth,2000
+			bool	tmp00014, 2000
+			equ	iupt_lth, tmp00014
+
+"	equ_o	bkpt_absloc,56000		" breakpoint_page
+			bool	tmp00015, 56000
+			equ	bkpt_absloc, tmp00015
+"	equ_o	bkpt_lth,2000
+			bool	tmp00016, 2000
+			equ	bkpt_lth, tmp00016
+
+"	equ_o	prb_absloc,60000		" physical_record_buffer
+			bool	tmp00017, 60000
+			equ	prb_absloc, tmp00017
+"	equ_o	prb_lth,6000		" memory past here up for 
+			bool	tmp00018, 6000
+			equ	prb_lth, tmp00018
+					" grabs
+
+" END INCLUDE FILE bootload_equs.incl.alm
+"	include_nolist	make_data_macros
+"	include_nolist	iom_word_macros
+"	include		mstr
+
+
+     "BEGIN INCLUDE FILE mstr.incl.alm
+" Last modified November 1983 by Keith Loepere to add head_version.
+
+"
+"	Structure mstr
+"
+
+	equ	mstr.head,0		" LEVEL 2
+
+
+	equ	mstr.data_word,8
+	equ	mstr.data_shift,36
+	bool	mstr.data_mask,000000
+
+	equ	mstr.trail,0		" LEVEL 2
+
+
+"
+"	Structure mst_label
+"
+	equ	mst_label.xfer_vector,0	" LEVEL 2
+
+	equ	mst_label.lda_instr,0
+	equ	mst_label.tra_instr,1
+	equ	mst_label.head,8		" LEVEL 2
+
+	equ	mst_label.vid,16		" LEVEL 2
+
+	equ	mst_label.fv_overlay,40	" LEVEL 2
+
+	equ	mst_label.scu_instr,40
+	equ	mst_label.dis_instr,41
+	equ	mst_label.fault_data,104
+	equ	mst_label.boot_pgm_path,112
+	equ	mst_label.userid,154
+	equ	mst_label.label_version,162
+	equ	mst_label.output_mode,163
+	equ	mst_label.boot_pgm_len,164
+	equ	mst_label.copyright,165
+	equ	mst_label.boot_pgm,192
+	equ	mst_label.trail,0		" LEVEL 2
+
+
+"
+"	Structure mstr_header
+"
+	equ	mstr_header_size,8
+
+	equ	mstr_header.c1,0
+	equ	mstr_header.uid,1		" DOUBLE
+
+	equ	mstr_header.rec_within_file,3	" UPPER
+	equ	mstr_header.phy_file,3	" LOWER
+
+	equ	mstr_header.data_bits_used,4	" UPPER
+	equ	mstr_header.data_bit_len,4	" LOWER
+
+	equ	mstr_header.flags_word,5
+	equ	mstr_header.flags_shift,9
+	equ	mstr_header.admin_word,5
+	bool	mstr_header.admin,400000	" DU
+	equ	mstr_header.label_word,5
+	bool	mstr_header.label,200000	" DU
+	equ	mstr_header.eor_word,5
+	bool	mstr_header.eor,100000	" DU
+	equ	mstr_header.set_word,5
+	bool	mstr_header.set,000010	" DU
+	equ	mstr_header.repeat_word,5
+	bool	mstr_header.repeat,000004	" DU
+	equ	mstr_header.eot_word,5
+	bool	mstr_header.eot,000001	" DU
+	equ	mstr_header.drain_word,5
+	bool	mstr_header.drain,400000	" DL
+	equ	mstr_header.continue_word,5
+	bool	mstr_header.continue,200000	" DL
+	equ	mstr_header.head_version_word,5
+	equ	mstr_header.head_version_shift,9
+	bool	mstr_header.head_version_mask,7000
+	equ	mstr_header.repeat_count_word,5
+	equ	mstr_header.repeat_count_shift,0
+	bool	mstr_header.repeat_count_mask,000777
+
+	equ	mstr_header.checksum,6
+	equ	mstr_header.c2,7
+
+"
+"	Structure mstr_trailer
+"
+	equ	mstr_trailer_size,8
+
+	equ	mstr_trailer.c1,0
+	equ	mstr_trailer.uid,1		" DOUBLE
+
+	equ	mstr_trailer.tot_data_bits_word,3
+"	equ	mstr_trailer.tot_data_bits_shift,0
+
+	equ	mstr_trailer.reel_num_word,5
+	equ	mstr_trailer.reel_num_shift,24
+	bool	mstr_trailer.reel_num_mask,007777
+	equ	mstr_trailer.tot_file_word,5
+	equ	mstr_trailer.tot_file_shift,0
+
+	equ	mstr_trailer.tot_rec_word,6
+	equ	mstr_trailer.tot_rec_shift,0
+
+	equ	mstr_trailer.c2,7
+
+"
+"	Structure volume_identifier
+"
+	equ	volume_identifier_size,24
+
+"	equ	volume_identifier.installation_id,0
+	equ	volume_identifier.tape_reel_id,8
+	equ	volume_identifier.volume_set_id,16
+
+	bool	header_c1,670314355245	" MANIFEST
+	bool	header_c2,512556146073	" MANIFEST
+	bool	trailer_c1,107463422532	" MANIFEST
+	bool	trailer_c2,265221631704	" MANIFEST
+
+	equ	LABEL_VERSION,3		" MANIFEST
+
+     "END INCLUDE FILE mstr.incl.alm
+"	include_nolist	tape_io_commands
+"	include		toe_hold
+
+
+     "BEGIN INCLUDE FILE toe_hold.incl.alm
+
+
+	"Created 04/16/84  1150.7 est Mon by convert_include_file,
+	"   Version of 11/07/82  1445.1 est Sun.
+
+	"Made from >cdd>incl>x>toe_hold.incl.pl1,
+	"   modified 04/16/84  1150.7 est Mon
+
+"
+"	Structure toe_hold
+"
+	equ	toe_hold_size,2048
+
+
+	equ	toe_hold.entry_sequences,0	" DOUBLE
+	equ	toe_hold.flagbox,32
+	equ	toe_hold.paths,144		" LEVEL 2
+
+	equ	toe_hold.n_paths_used,160
+	equ	toe_hold.memory_state,161
+	equ	toe_hold.bce_dbr,162	" DOUBLE
+	equ	toe_hold.multics_state,1520	" LEVEL 2
+
+
+"
+"	Structure io_path
+"
+	equ	io_path_size,4
+
+	equ	io_path.pcw,0		" DOUBLE
+
+	equ	io_path.port_number_word,2
+	equ	io_path.port_number_shift,33
+	bool	io_path.port_number_mask,000007
+	equ	io_path.iom_number_word,2
+	equ	io_path.iom_number_shift,18
+	bool	io_path.iom_number_mask,077777
+	equ	io_path.channel_number,2	" LOWER
+
+	equ	TOE_HOLD_CRASH_ENTRY,0	" MANIFEST
+	equ	TOE_HOLD_ESD_ENTRY,1	" MANIFEST
+	equ	TOE_HOLD_DUMP_ENTRY,2	" MANIFEST
+	equ	TOE_HOLD_MULTICS_ENTRY,3	" MANIFEST
+	equ	TOE_HOLD_RESTART_ENTRY,4	" MANIFEST
+	equ	TOE_HOLD_BOOT_ENTRY,5	" MANIFEST
+	equ	TOE_HOLD_BOS_ENTRY,12	" MANIFEST
+	equ	TOE_HOLD_BOS_NO_SAVE_ENTRY,13	" MANIFEST
+	equ	TOE_HOLD_BOS_MULTICS_ENTRY,14	" MANIFEST
+
+"
+"	Structure mc_state
+"
+	equ	mc_state_size,528
+
+	equ	mc_state.mc_,0		" LEVEL 2
+
+	equ	mc_state.masks,48
+	equ	mc_state.interrupt,64	" DOUBLE
+	equ	mc_state.mode_reg,66
+	equ	mc_state.cache_mode_reg,67
+	equ	mc_state.dbr,68		" DOUBLE
+	equ	mc_state.cfg,70		" DOUBLE
+	equ	mc_state.bar,72
+	equ	mc_state.old_memory_state,73
+	equ	mc_state.ou_history_registers,80 " DOUBLE
+	equ	mc_state.cu_history_registers,112 " DOUBLE
+	equ	mc_state.du_history_registers,144 " DOUBLE
+	equ	mc_state.apu_history_registers,176 " DOUBLE
+	equ	mc_state.ptwam_ptrs,208
+	equ	mc_state.ptwam_regs,272
+	equ	mc_state.sdwam_ptrs,336
+	equ	mc_state.sdwam_regs,400	" DOUBLE
+
+	equ	Initial_undefined,0		" MANIFEST
+	equ	At_bce__early,1		" MANIFEST
+	equ	At_bce__boot,2		" MANIFEST
+	equ	Multics,3			" MANIFEST
+	equ	Undefined_saving_state,4	" MANIFEST
+	equ	Undefined_reading_bce,5	" MANIFEST
+	equ	At_bce__crash,6		" MANIFEST
+	equ	At_bce__shutdown,7		" MANIFEST
+	equ	Undefined_continue,8	" MANIFEST
+	equ	Undefined_saving_mem,9	" MANIFEST
+
+"
+"	Structure mc
+"
+	equ	mc_size,48
+
+	equ	mc.prs,0
+
+	equ	mc.regs_word,16
+	equ	mc.regs_shift,858
+	equ	mc.x,16			" UPPER
+
+	equ	mc.a,20
+	equ	mc.q,21
+
+	equ	mc.e_word,22
+	equ	mc.e_shift,28
+	bool	mc.e_mask,000377
+
+	equ	mc.t_word,23
+	equ	mc.t_shift,9
+	equ	mc.ralr_word,23
+	equ	mc.ralr_shift,0
+	bool	mc.ralr_mask,000007
+
+	equ	mc.scu,24
+	equ	mc.mask,32		" DOUBLE
+	equ	mc.ips_temp,34
+
+	equ	mc.errcode_word,35
+	equ	mc.errcode_shift,0
+
+	equ	mc.fim_temp_word,36
+	equ	mc.fim_temp_shift,0
+	equ	mc.unique_index,36		" UPPER
+	equ	mc.resignal_word,36
+	bool	mc.resignal,400000		" DL
+	equ	mc.fcode_word,36
+	equ	mc.fcode_shift,0
+	bool	mc.fcode_mask,377777
+
+	equ	mc.fault_reg,37
+
+	equ	mc.cpu_type_word,38
+	equ	mc.cpu_type_shift,33
+	bool	mc.cpu_type_mask,000003
+	equ	mc.ext_fault_reg_word,38
+	equ	mc.ext_fault_reg_shift,18
+	bool	mc.ext_fault_reg_mask,077777
+
+	equ	mc.fault_time,38		" DOUBLE
+	equ	mc.eis_info,40
+
+	equ	apx,0			" MANIFEST
+	equ	abx,1			" MANIFEST
+	equ	bpx,2			" MANIFEST
+	equ	bbx,3			" MANIFEST
+	equ	lpx,4			" MANIFEST
+	equ	lbx,5			" MANIFEST
+	equ	spx,6			" MANIFEST
+	equ	sbx,7			" MANIFEST
+
+"
+"	Structure scu
+"
+	equ	scu_size,8
+
+	equ	scu.ppr_word,0
+	equ	scu.ppr_shift,17
+	equ	scu.prr_shift,33
+	bool	scu.prr_mask,000007
+	equ	scu.psr_shift,18
+	bool	scu.psr_mask,077777
+	bool	scu.p,400000		" DL
+	equ	scu.apu_word,0
+	equ	scu.apu_shift,3
+	bool	scu.apu_mask,037777
+	bool	scu.xsf,200000		" DL
+	bool	scu.sdwm,100000		" DL
+	bool	scu.sd_on,040000		" DL
+	bool	scu.ptwm,020000		" DL
+	bool	scu.pt_on,010000		" DL
+	bool	scu.pi_ap,004000		" DL
+	bool	scu.dsptw,002000		" DL
+	bool	scu.sdwnp,001000		" DL
+	bool	scu.sdwp,000400		" DL
+	bool	scu.ptw,000200		" DL
+	bool	scu.ptw2,000100		" DL
+	bool	scu.fap,000040		" DL
+	bool	scu.fanp,000020		" DL
+	bool	scu.fabs,000010		" DL
+	equ	scu.fault_cntr_word,0
+	equ	scu.fault_cntr_shift,0
+	bool	scu.fault_cntr_mask,000007
+
+	equ	scu.fd_word,1
+	equ	scu.fd_shift,16
+	equ	scu.iro_word,1
+	bool	scu.iro,400000		" DU
+	equ	scu.oeb_word,1
+	bool	scu.oeb,200000		" DU
+	equ	scu.e_off_word,1
+	bool	scu.e_off,100000		" DU
+	equ	scu.orb_word,1
+	bool	scu.orb,040000		" DU
+	equ	scu.r_off_word,1
+	bool	scu.r_off,020000		" DU
+	equ	scu.owb_word,1
+	bool	scu.owb,010000		" DU
+	equ	scu.w_off_word,1
+	bool	scu.w_off,004000		" DU
+	equ	scu.no_ga_word,1
+	bool	scu.no_ga,002000		" DU
+	equ	scu.ocb_word,1
+	bool	scu.ocb,001000		" DU
+	equ	scu.ocall_word,1
+	bool	scu.ocall,000400		" DU
+	equ	scu.boc_word,1
+	bool	scu.boc,000200		" DU
+	equ	scu.inret_word,1
+	bool	scu.inret,000100		" DU
+	equ	scu.crt_word,1
+	bool	scu.crt,000040		" DU
+	equ	scu.ralr_word,1
+	bool	scu.ralr,000020		" DU
+	equ	scu.am_er_word,1
+	bool	scu.am_er,000010		" DU
+	equ	scu.oosb_word,1
+	bool	scu.oosb,000004		" DU
+	equ	scu.paru_word,1
+	bool	scu.paru,000002		" DU
+	equ	scu.parl_word,1
+	bool	scu.parl,000001		" DU
+	equ	scu.onc_1_word,1
+	bool	scu.onc_1,400000		" DL
+	equ	scu.onc_2_word,1
+	bool	scu.onc_2,200000		" DL
+	equ	scu.port_stat_word,1
+	equ	scu.port_stat_shift,6
+	bool	scu.port_stat_mask,001777
+	equ	scu.ial_word,1
+	equ	scu.ial_shift,12
+	bool	scu.ial_mask,000017
+	equ	scu.iac_word,1
+	equ	scu.iac_shift,9
+	bool	scu.iac_mask,000007
+	equ	scu.con_chan_word,1
+	equ	scu.con_chan_shift,6
+	bool	scu.con_chan_mask,000007
+	equ	scu.fi_num_word,1
+	equ	scu.fi_num_shift,1
+	bool	scu.fi_num_mask,000037
+	equ	scu.fi_flag_word,1
+	bool	scu.fi_flag,000001		" DL
+
+	equ	scu.tpr,2			" UPPER
+	equ	scu.trr_word,2
+	equ	scu.trr_shift,33
+	bool	scu.trr_mask,000007
+	equ	scu.tsr_word,2
+	equ	scu.tsr_shift,18
+	bool	scu.tsr_mask,077777
+	equ	scu.cpu_no_word,2
+	equ	scu.cpu_no_shift,6
+	bool	scu.cpu_no_mask,000007
+	equ	scu.delta_word,2
+	equ	scu.delta_shift,0
+	bool	scu.delta_mask,000077
+
+	equ	scu.word3,3		" UPPER
+	equ	scu.tsr_stat_word,3
+	equ	scu.tsr_stat_shift,6
+	bool	scu.tsr_stat_mask,007777
+	equ	scu.tsna_word,3
+	equ	scu.tsna_shift,14
+	bool	scu.tsna_mask,000017
+	equ	scu.tsnb_word,3
+	equ	scu.tsnb_shift,10
+	bool	scu.tsnb_mask,000017
+	equ	scu.tsnc_word,3
+	equ	scu.tsnc_shift,6
+	bool	scu.tsnc_mask,000017
+	equ	scu.tpr_tbr_word,3
+	equ	scu.tpr_tbr_shift,0
+	bool	scu.tpr_tbr_mask,000077
+
+	equ	scu.ilc,4			" UPPER
+	equ	scu.ir,4			" LOWER
+	equ	scu.zero_word,4
+	bool	scu.zero,400000		" DL
+	equ	scu.neg_word,4
+	bool	scu.neg,200000		" DL
+	equ	scu.carry_word,4
+	bool	scu.carry,100000		" DL
+	equ	scu.ovfl_word,4
+	bool	scu.ovfl,040000		" DL
+	equ	scu.eovf_word,4
+	bool	scu.eovf,020000		" DL
+	equ	scu.eufl_word,4
+	bool	scu.eufl,010000		" DL
+	equ	scu.oflm_word,4
+	bool	scu.oflm,004000		" DL
+	equ	scu.tro_word,4
+	bool	scu.tro,002000		" DL
+	equ	scu.par_word,4
+	bool	scu.par,001000		" DL
+	equ	scu.parm_word,4
+	bool	scu.parm,000400		" DL
+	equ	scu.bm_word,4
+	bool	scu.bm,000200		" DL
+	equ	scu.tru_word,4
+	bool	scu.tru,000100		" DL
+	equ	scu.mif_word,4
+	bool	scu.mif,000040		" DL
+	equ	scu.abs_word,4
+	bool	scu.abs,000020		" DL
+	equ	scu.hex_word,4
+	bool	scu.hex,000010		" DL
+
+	equ	scu.ca,5			" UPPER
+	equ	scu.cu_word,5
+	equ	scu.cu_shift,6
+	bool	scu.cu_mask,007777
+	equ	scu.rf_word,5
+	bool	scu.rf,400000		" DL
+	equ	scu.rpt_word,5
+	bool	scu.rpt,200000		" DL
+	equ	scu.rd_word,5
+	bool	scu.rd,100000		" DL
+	equ	scu.rl_word,5
+	bool	scu.rl,040000		" DL
+	equ	scu.pot_word,5
+	bool	scu.pot,020000		" DL
+	equ	scu.pon_word,5
+	bool	scu.pon,010000		" DL
+	equ	scu.xde_word,5
+	bool	scu.xde,004000		" DL
+	equ	scu.xdo_word,5
+	bool	scu.xdo,002000		" DL
+	equ	scu.poa_word,5
+	bool	scu.poa,001000		" DL
+	equ	scu.rfi_word,5
+	bool	scu.rfi,000400		" DL
+	equ	scu.its_word,5
+	bool	scu.its,000200		" DL
+	equ	scu.if_word,5
+	bool	scu.if,000100		" DL
+	equ	scu.cpu_tag_word,5
+	equ	scu.cpu_tag_shift,0
+	bool	scu.cpu_tag_mask,000077
+
+	equ	scu.even_inst,6
+	equ	scu.odd_inst,7
+
+"
+"	Structure scux
+"
+	equ	scux_size,8
+
+
+	equ	scux.fd_word,1
+	equ	scux.fd_shift,0
+	equ	scux.isn_word,1
+	bool	scux.isn,400000		" DU
+	equ	scux.ioc_word,1
+	bool	scux.ioc,200000		" DU
+	equ	scux.ia_am_word,1
+	bool	scux.ia_am,100000		" DU
+	equ	scux.isp_word,1
+	bool	scux.isp,040000		" DU
+	equ	scux.ipr_word,1
+	bool	scux.ipr,020000		" DU
+	equ	scux.nea_word,1
+	bool	scux.nea,010000		" DU
+	equ	scux.oobb_word,1
+	bool	scux.oobb,004000		" DU
+
+	equ	scux.tsr_stat_word,3
+	equ	scux.tsr_stat_shift,6
+	bool	scux.tsr_stat_mask,007777
+
+	equ	scux.instr,6
+
+     "END INCLUDE FILE toe_hold.incl.alm
+
+	equ	bootload_info,0	" address of IOM bootload program
+"	equ_o	load_offset,30	" offset of IOM load
+			bool	tmp00019, 30
+			equ	load_offset, tmp00019
+	equ	my_offset,load_offset+mst_label.boot_pgm
+
+	bool	cold_tape_mpc,400000 " DU
+	bool	imu,200000	" DU
+	equ	imu_bit_shift,1
+"	equ_o	iom_fault_vector,10
+			bool	tmp00020, 10
+			equ	iom_fault_vector, tmp00020
+	bool	iom_num_mask,000007 " DL
+
+" Layout of the physical_record_buffer
+" The first part is common to all phases of the loader.
+
+	equ	prb.prb_it,prb_absloc
+	equ	prb.mstrh,prb.prb_it+1
+	equ	prb.data,prb.mstrh+mstr_header_size
+	equ	prb.mstrt,prb.data+1024
+
+
+	org	030
+	lda	4
+	tra	0000330
+	lda	4
+	tra	0000330
+	lda	4
+	tra	0000330
+	lda	4
+	tra	0000330
+
+" 000040:
+	oct	670314355245 " C1
+	oct	000001512357
+	oct	600014577530
+	oct	000000000000
+	oct	107340107340
+	oct	600000001000
+	oct	023330215267
+	inhibit	off
+	ssx6	0512556,*3	" 512556146073
+" 000050:
+	sdbr pr1|02165	" 102165154154
+	cmpq	0040110,di	" 040110116054
+	adwp4 pr0|040120	" 040120150157
+	adwp5 pr1|045156	" 145156151170
+	oct	040101132054
+	swca pr0|040123	" 040123171163
+	ssa	0164145,dic	" 164145155055
+	asx0	0115040,f1	" 115040040040
+" 000060:
+	asq	0061062,*al	" 061062056065
+	oct	115125114124
+	sblx3 pr1|011103	" 111103123137
+	adx0	0103106,*n	" 103106060060
+	asx0	0061071,f1	" 061071040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+" 000070:
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+" 000100:
+	inhibit	on
+	scu	0000200	" 000200657200
+	dis	0000100	" 000100616200
+	scu	0000200	" 000200657200
+	dis	0000102	" 000102616200
+	scu	0000200	" 000200657200
+	dis	0000104	" 000104616200
+	scu	0000200	" 000200657200
+	dis	0000106	" 000106616200
+" 000110:
+	scu	0000200	" 000200657200
+	dis	0000110	" 000110616200
+	scu	0000200	" 000200657200
+	dis	0000112	" 000112616200
+	scu	0000200	" 000200657200
+	dis	0000114	" 000114616200
+	scu	0000200	" 000200657200
+	dis	0000116	" 000116616200
+" 000120:
+	scu	0000200	" 000200657200
+	dis	0000120	" 000120616200
+	scu	0000200	" 000200657200
+	dis	0000122	" 000122616200
+	scu	0000200	" 000200657200
+	dis	0000124	" 000124616200
+	scu	0000200	" 000200657200
+	dis	0000126	" 000126616200
+" 000130:
+	scu	0000200	" 000200657200
+	dis	0000130	" 000130616200
+	scu	0000200	" 000200657200
+	dis	0000132	" 000132616200
+	scu	0000200	" 000200657200
+	dis	0000134	" 000134616200
+	scu	0000200	" 000200657200
+	dis	0000136	" 000136616200
+" 000140:
+	scu	0000200	" 000200657200
+	dis	0000140	" 000140616200
+	scu	0000200	" 000200657200
+	dis	0000142	" 000142616200
+	scu	0000200	" 000200657200
+	dis	0000144	" 000144616200
+	scu	0000200	" 000200657200
+	dis	0000146	" 000146616200
+" 000150:
+	scu	0000200	" 000200657200
+	dis	0000150	" 000150616200
+	scu	0000200	" 000200657200
+	dis	0000152	" 000152616200
+	scu	0000200	" 000200657200
+	dis	0000154	" 000154616200
+	scu	0000200	" 000200657200
+	dis	0000156	" 000156616200
+" 000160:
+	scu	0000200	" 000200657200
+	dis	0000160	" 000160616200
+	scu	0000200	" 000200657200
+	dis	0000162	" 000162616200
+	scu	0000200	" 000200657200
+	dis	0000164	" 000164616200
+	scu	0000200	" 000200657200
+	dis	0000166	" 000166616200
+" 000170:
+	scu	0000200	" 000200657200
+	dis	0000170	" 000170616200
+	scu	0000200	" 000200657200
+	dis	0000172	" 000172616200
+	scu	0000200	" 000200657200
+	dis	0000174	" 000174616200
+	scu	0000200	" 000200657200
+	dis	0000176	" 000176616200
+" 000200:
+	inhibit	off
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000210:
+	sbx2 pr0|076160	" 076160162157
+	sbx3 pr1|043145	" 143145163163
+	adwp5 pr1|037144	" 137144151162
+	adwp5 pr1|037144	" 137144151162
+	cmpx2 pr0|076041	" 076041102120
+	sbx0 pr1|054102	" 154102160130
+	cmpx2 pr1|013142	" 113142102102
+	cmpx2 pr1|02102	" 102102102102
+" 000220:
+	oct	076142157157
+	oct	164154157141
+	sbx4 pr1|044137	" 144137164141
+	sblaq pr1|060145	" 160145137154
+	ssx5 pr1|041142	" 141142145154
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+" 000230:
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+" 000240:
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+" 000250:
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+" 000260:
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	ssx7 pr1|05141	" 105141147154
+	oct	145164157156
+	ssx1 pr0|056124	" 056124141160
+	sdbr pr1|045137	" 145137154151
+	ssa	0142056,f1	" 142056155040
+	asx0	0040040,f1	" 040040040040
+" 000270:
+	asx0	0040040,f1	" 040040040040
+	asx0	0040040,f1	" 040040040040
+	oct	000000000003
+	oct	000000000002
+	oct	000000001510
+	sbx0 pr1|03157	" 103157160171
+	ssx7 pr1|062151	" 162151147150
+	asx0	0164054,ci	" 164054040050
+" 000300:
+	asx0 pr1|03051	" 103051040110
+	ssx5 pr1|057156	" 157156145171
+	sdbr pr1|067145	" 167145154154
+	ssq pr0|040111	" 040111156146
+	ssa pr1|057162	" 157162155141
+	oct	164151157156
+	swca pr0|040123	" 040123171163
+	ssa pr1|064145	" 164145155163
+" 000310:
+	ssq pr0|040111	" 040111156143
+	asx0	0056054,*au	" 056054040061
+	adx1	0071070,f1	" 071070061040
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000320:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000330:
+	inhibit	on
+	lda	0000000	" 000000235200
+	ana	0770000,du	" 770000375203
+	sta	0000277,ic	" 000277755204
+	tnz	0000062,ic	" 000062601204
+	eax1	0000700	" 000700621200
+	fld	0000000,dl	" 000000431207
+	sscr	0000020,1	" 000020057211
+	eax1	0777700,1	" 777700621211
+" 000340:
+	tpl	0777776,ic	" 777776605204
+	ldt	0777777,du	" 777777637203
+	inhibit	off
+	oct	000623674004
+	oct	000624674002
+	camp	0000002	" 000002532400
+	cams	0000006	" 000006532000
+	stz	0000007	" 000007450000
+	ldq	0000002	" 000002236000
+" 000350:
+	anq	0000007,dl	" 000007376007
+	qls	0000001	" 000001736000
+	lda	0000010,ql	" 000010235006
+	als	0000001	" 000001735000
+	tpl	0000003,ic	" 000003605004
+	ldq	0200000,du	" 200000236003
+	orsq	0000007	" 000007256000
+	ldq	0000001	" 000001236000
+" 000360:
+	qrl	0000007	" 000007772000
+	eax6	0000000,qu	" 000000626002
+	adlx6	0000002	" 000002026000
+	ldx5	0000002	" 000002225000
+	ldaq	0000000,5	" 000000237015
+	cana	0000241,ic	" 000241315004
+	tnz	0000230,ic	" 000230601004
+	ldq	0000003	" 000003236000
+" 000370:
+	anq	0007700,du	" 007700376003
+	orsq	0000227,ic	" 000227256004
+	canq	0007700,du	" 007700316003
+	tze	0000015,ic	" 000015600004
+	stq	0000236,ic	" 000236756004
+	llr	0000074	" 000074777000
+	anq	0007700,du	" 007700376003
+	tze	0000036,ic	" 000036600004
+" 000400:
+	cmpq	0000232,ic	" 000232116004
+	tze	0000034,ic	" 000034600004
+	lda	0000225,ic	" 000225235004
+	ansa	0000003	" 000003355000
+	ansa	0000214,ic	" 000214355004
+	orsq	0000003	" 000003256000
+	orsq	0000212,ic	" 000212256004
+	tra	0000026,ic	" 000026710004
+" 000410:
+	llr	0000074	" 000074777000
+	anq	0007700,du	" 007700376003
+	tze	0000023,ic	" 000023600004
+	orsq	0000003	" 000003256000
+	tra	0000021,ic	" 000021710004
+	inhibit	on
+	lda	0000000,dl	" 000000235207
+	smcm	0000000	" 000000553200
+	ldt	0777777,du	" 777777637203
+" 000420:
+	inhibit	off
+	oct	000205172404
+	camp	0000000	" 000000532400
+	stz	0000007	" 000007450000
+	lda	0000205,ic	" 000205235004
+	sta	0001407	" 001407755000
+	eax6	0001407	" 001407626000
+	eax5	0001410	" 001410625000
+	ldaq	0000000,5	" 000000237015
+" 000430:
+	cana	0000176,ic	" 000176315004
+	tnz	0000165,ic	" 000165601004
+	ldq	0000000	" 000000236000
+	anq	0007700,du	" 007700376003
+	orsq	0000164,ic	" 000164256004
+	tsx2	0000027,ic	" 000027702004
+	orsq	0000007	" 000007256000
+	tsx2	0000107,ic	" 000107702004
+" 000440:
+	nop	0000000	" 000000011000
+	tsx2	0000105,ic	" 000105702004
+	tra	0000154,ic	" 000154710004
+	lda	0060011	" 060011235000
+	ada	0000001,dl	" 000001075007
+	als	0000022	" 000022735000
+	asa	0060000	" 060000055000
+	arl	0000014	" 000014771000
+" 000450:
+	neg	0000000	" 000000531000
+	asa	0060000	" 060000055000
+	lxl4	0060000,id	" 060000724056
+	lda	0060000,id	" 060000235056
+	ttn	0000005,ic	" 000005606404
+	sta	0000622,id	" 000622755056
+	eax4	0777777,4	" 777777624014
+	tpnz	0777774,ic	" 777774605404
+" 000460:
+	tra	0024012	" 024012710000
+	tsx2	0000065,ic	" 000065702004
+	tra	0000134,ic	" 000134710004
+	tra	0777770,ic	" 777770710004
+	szn	0000145,ic	" 000145234004
+	tze	0000003,ic	" 000003600004
+	ldq	0000000,dl	" 000000236007
+	tra	0000000,2	" 000000710012
+" 000470:
+	rscr	0000040	" 000040413000
+	staq	0000051,ic	" 000051757004
+	eaa	0000045,ic	" 000045635004
+	sta	0000000,6	" 000000755016
+	stz	0000000,5	" 000000450015
+	cioc	0000001	" 000001015000
+	lda	0000000,5	" 000000235015
+	tmi	0000025,ic	" 000025604004
+" 000500:
+	rscr	0000040	" 000040413000
+	sbaq	0000041,ic	" 000041177004
+	cmpaq	0000042,ic	" 000042117004
+	tmi	0777773,ic	" 777773604004
+	lda	0070000,dl	" 070000235007
+	orsa	0000000	" 000000255000
+	eaa	0000032,ic	" 000032635004
+	sta	0000000,6	" 000000755016
+" 000510:
+	stz	0000000,5	" 000000450015
+	cioc	0000001	" 000001015000
+	rscr	0000040	" 000040413000
+	staq	0000027,ic	" 000027757004
+	rscr	0000040	" 000040413000
+	sbaq	0000025,ic	" 000025177004
+	cmpaq	0000026,ic	" 000026117004
+	tmi	0777775,ic	" 777775604004
+" 000520:
+	lda	0050000,dl	" 050000235007
+	ersa	0000000	" 000000655000
+	ldq	0400000,du	" 400000236003
+	tra	0000000,2	" 000000710012
+	rscr	0000040	" 000040413000
+	staq	0000015,ic	" 000015757004
+	rscr	0000040	" 000040413000
+	sbaq	0000013,ic	" 000013177004
+" 000530:
+	cmpaq	0000014,ic	" 000014117004
+	tmi	0777775,ic	" 777775604004
+	lda	0000000,5	" 000000235015
+	cana	0000006,ic	" 000006315004
+	tnz	0777750,ic	" 777750601004
+	ldq	0000000,dl	" 000000236007
+	tra	0000000,2	" 000000710012
+	inhibit	on
+	tsx0	0510000	" 510000700200
+" 000540:
+	tsx0	0000000	" 000000700200
+	inhibit	off
+	oct	200000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	ersx1 pr0|03	" 000003641100
+	rscr	0000040	" 000040413000
+	staq	0000065,ic	" 000065757004
+" 000550:
+	eaa	0000050,ic	" 000050635004
+	sta	0000000,6	" 000000755016
+	stz	0000000,5	" 000000450015
+	lda	0000004	" 000004235000
+	szn	0000055,ic	" 000055234004
+	tnz	0000003,ic	" 000003601004
+	cioc	0000001	" 000001015000
+	tra	0000002,ic	" 000002710004
+" 000560:
+	cioc	0001400	" 001400015000
+	lda	0000000,5	" 000000235015
+	tpl	0777777,ic	" 777777605004
+	ldq	0001000,dl	" 001000236007
+	sblq	0000001,dl	" 000001136007
+	tnz	0777777,ic	" 777777601004
+	ldaq	0000000,5	" 000000237015
+	cana	0000037,ic	" 000037315004
+" 000570:
+	tnz	0000015,ic	" 000015601004
+	canq	0007777,dl	" 007777316007
+	tnz	0000000,2	" 000000601012
+	lda	0060006	" 060006235000
+	cana	0000004,du	" 000004315003
+	tnz	0000021,ic	" 000021601004
+	ldq	0060005	" 060005236000
+	div	0000044,du	" 000044506003
+" 000600:
+	adq	0000001,dl	" 000001076007
+	qls	0000006	" 000006736000
+	adq	0060011,du	" 060011076003
+	stq	0060000	" 060000756000
+	tra	0000001,2	" 000001710012
+	ana	0770000,du	" 770000375003
+	cmpa	0600000,du	" 600000115003
+	tze	0000002,ic	" 000002600004
+" 000610:
+	tra	0000000,2	" 000000710012
+	rscr	0000040	" 000040413000
+	sbaq	0000022,ic	" 000022177004
+	cmpaq	0000023,ic	" 000023117004
+	tmi	0777734,ic	" 777734604004
+	tra	0000000,2	" 000000710012
+	inhibit	on
+	dis	0000000	" 000000616200
+	tra	0777777,ic	" 777777710204
+" 000620:
+	inhibit	off
+	tsx0	0050000	" 050000700000
+	drl	0060001,n*	" 060001002020
+	oct	024000000000
+	oct	000000000061
+	oct	000000000003
+	oct	300000000000
+	oct	370000770000
+	oct	770077777777
+" 000630:
+	oct	000000003034
+	oct	000000000000
+	oct	000000000000
+	nop	0000000,du	" 000000011003
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000046113200
+" 000640:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000650:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000660:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000670:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000700:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000710:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000720:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000730:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000740:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000750:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000760:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 000770:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001000:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001010:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001020:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001030:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001040:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001050:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001060:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001070:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001100:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001110:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001120:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001130:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001140:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001150:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001160:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001170:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001200:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001210:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001220:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001230:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001240:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001250:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001260:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001270:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001300:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001310:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001320:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001330:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001340:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001350:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001360:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001370:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001400:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	777777000000
+	oct	000000000000
+	oct	000000003034
+	oct	001402000002
+" 001410:
+	asx0	0000000	" 000000040000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001420:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001430:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 001440:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001450:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001460:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001470:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001500:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001510:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001520:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001530:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001540:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001550:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001560:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001570:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001600:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001610:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001620:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001630:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001640:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001650:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001660:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001670:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001700:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001710:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001720:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001730:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001740:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001750:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001760:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 001770:
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+	adlx0	0000003,du	" 000003020003
+	oct	000000000000
+	oct	001400000000
+	oct	000000000000
+" 002000:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	777777000000
+	oct	000000000000
+	oct	000000003034
+	oct	002002000002
+" 002010:
+	asx0	0000000	" 000000040000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 002020:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 002030:
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+	oct	000000000000
+" 002040:
+	oct	107463422532
+	oct	000001512357
+	oct	600014577530
+	inhibit	on
+	cmpx7 pr0|00	" 000000107340
+	inhibit	off
+	oct	777777777777
+	oct	000000000000
+	oct	000000000000
+	oct	265221631704
