@@ -366,6 +366,7 @@ t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
 #endif
 
 static bool bFaultCycle = false;       // when true then in FAULT CYCLE
+static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
 static int nFaultNumber = -1;
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
@@ -428,7 +429,24 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     nFaultPriority = fault2prio[faultNumber];
     
     if (bFaultCycle) {  // if already in a FAULT CYCLE then signal trouble faule
-        f = &_faults[FAULT_TRB];
+        if (bTroubleFaultCycle)
+          {
+            if (events . int_pending == 0 &&
+                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+                                     // break this logic
+              {
+                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", rIC);
+                sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+                stop_reason = STOP_FLT_CASCADE;
+                longjmp (jmpMain, JMP_STOP);
+              }
+            return;
+          }
+        else
+          {
+            f = &_faults[FAULT_TRB];
+            bTroubleFaultCycle = true;
+          }
     }
     else
     {
@@ -460,7 +478,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     t_stat xrv = doXED(faultPair);
     
     bFaultCycle = false;                // exit FAULT CYCLE
-    
+    bTroubleFaultCycle = false;
     if (xrv == CONT_TRA)
         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
     

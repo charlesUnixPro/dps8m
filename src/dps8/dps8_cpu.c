@@ -83,6 +83,7 @@ const char *sim_stop_messages[] = {
     "Stop code - 5",           // STOP_5
     "BUG",                     // STOP_BUG
     "WARNING"                  // STOP_WARN
+    "Fault cascade",           // STOP_FLT_CASCADE
 };
 
 /* End of simh interface */
