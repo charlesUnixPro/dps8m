@@ -3203,8 +3203,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[1].SNR << 18;
-            Ypair[0] |= PR[1].RNR << 15;
+            Ypair[0] |= (word36) PR[1].SNR << 18;
+            Ypair[0] |= (word36) PR[1].RNR << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -3220,8 +3220,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[3].SNR << 18;
-            Ypair[0] |= PR[3].RNR << 15;
+            Ypair[0] |= (word36) PR[3].SNR << 18;
+            Ypair[0] |= (word36) PR[3].RNR << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -3237,8 +3237,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[5].SNR << 18;
-            Ypair[0] |= PR[5].RNR << 15;
+            Ypair[0] |= (word36) PR[5].SNR << 18;
+            Ypair[0] |= (word36) PR[5].RNR << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -3254,8 +3254,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[7].SNR << 18;
-            Ypair[0] |= PR[7].RNR << 15;
+            Ypair[0] |= (word36) PR[7].SNR << 18;
+            Ypair[0] |= (word36) PR[7].RNR << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -3280,11 +3280,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             for(n = 0 ; n < 8 ; n++)
             {
                 Yblock16[2 * n] = 043;
-                Yblock16[2 * n] |= PR[n].SNR << 18;
-                Yblock16[2 * n] |= PR[n].RNR << 15;
+                Yblock16[2 * n] |= (word36) PR[n].SNR << 18;
+                Yblock16[2 * n] |= (word36) PR[n].RNR << 15;
                 
-                Yblock16[2 * n + 1] = PR[n].WORDNO << 18;
-                Yblock16[2 * n + 1] |= PR[n].BITNO << 9;
+                Yblock16[2 * n + 1] = (word36) PR[n].WORDNO << 18;
+                Yblock16[2 * n + 1] |= (word36) PR[n].BITNO << 9;
             }
             
             WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
@@ -3302,11 +3302,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[0].SNR << 18;
-            Ypair[0] |= PR[0].RNR << 15;
+            Ypair[0] |= (word36) PR[0].SNR << 18;
+            Ypair[0] |= (word36) PR[0].RNR << 15;
             
-            Ypair[1] = PR[0].WORDNO << 18;
-            Ypair[1]|= PR[0].BITNO << 9;
+            Ypair[1] = (word36) PR[0].WORDNO << 18;
+            Ypair[1]|= (word36) PR[0].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3324,11 +3324,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[2].SNR << 18;
-            Ypair[0] |= PR[2].RNR << 15;
+            Ypair[0] |= (word36) PR[2].SNR << 18;
+            Ypair[0] |= (word36) PR[2].RNR << 15;
             
-            Ypair[1] = PR[2].WORDNO << 18;
-            Ypair[1]|= PR[2].BITNO << 9;
+            Ypair[1] = (word36) PR[2].WORDNO << 18;
+            Ypair[1]|= (word36) PR[2].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3346,11 +3346,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[4].SNR << 18;
-            Ypair[0] |= PR[4].RNR << 15;
+            Ypair[0] |= (word36) PR[4].SNR << 18;
+            Ypair[0] |= (word36) PR[4].RNR << 15;
             
-            Ypair[1] = PR[4].WORDNO << 18;
-            Ypair[1]|= PR[4].BITNO << 9;
+            Ypair[1] = (word36) PR[4].WORDNO << 18;
+            Ypair[1]|= (word36) PR[4].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3368,11 +3368,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[6].SNR << 18;
-            Ypair[0] |= PR[6].RNR << 15;
+            Ypair[0] |= (word36) PR[6].SNR << 18;
+            Ypair[0] |= (word36) PR[6].RNR << 15;
             
-            Ypair[1] = PAR[6].WORDNO << 18;
-            Ypair[1]|= PR[6].BITNO << 9;
+            Ypair[1] = (word36) PAR[6].WORDNO << 18;
+            Ypair[1]|= (word36) PR[6].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3407,8 +3407,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
               }
             else
               {
-                CY  =  PR[n].BITNO << 30;
-                CY |=  (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
+                CY  =  (word36) PR[n].BITNO << 30;
+                CY |=  (word36) (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
                 CY |=  PR[n].WORDNO;
               }
             
@@ -3455,10 +3455,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(TPR.TBR) → C(AQ)66,71
             
             rA = TPR.TRR & 7;
-            rA |= TPR.TSR << 18;
+            rA |= (word36) TPR.TSR << 18;
             
             rQ = TPR.TBR & 077;
-            rQ |= TPR.CA << 18;
+            rQ |= (word36) TPR.CA << 18;
             
             break;
         
@@ -4427,8 +4427,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[0].SNR << 18;
-            Ypair[0] |= PR[0].RNR << 15;
+            Ypair[0] |= (word36) PR[0].SNR << 18;
+            Ypair[0] |= (word36) PR[0].RNR << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -4444,8 +4444,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[2].SNR << 18;
-            Ypair[0] |= PR[2].RNR << 15;
+            Ypair[0] |= (word36) PR[2].SNR << 18;
+            Ypair[0] |= (word36) PR[2].RNR << 15;
             Ypair[1] = 0;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
@@ -4461,8 +4461,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[4].SNR << 18;
-            Ypair[0] |= PR[4].RNR << 15;
+            Ypair[0] |= (word36) PR[4].SNR << 18;
+            Ypair[0] |= (word36) PR[4].RNR << 15;
             Ypair[1] = 0;
         
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandRead, rTAG);
@@ -4478,8 +4478,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  (43)8 → C(Y-pair)30,35
             ///  00...0 → C(Y-pair)36,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[6].SNR << 18;
-            Ypair[0] |= PR[6].RNR << 15;
+            Ypair[0] |= (word36) PR[6].SNR << 18;
+            Ypair[0] |= (word36) PR[6].RNR << 15;
             Ypair[1] = 0;
             
             //fWrite2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -4498,11 +4498,11 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[1].SNR << 18;
-            Ypair[0] |= PR[1].RNR << 15;
+            Ypair[0] |= (word36) PR[1].SNR << 18;
+            Ypair[0] |= (word36) PR[1].RNR << 15;
             
-            Ypair[1] = PR[1].WORDNO << 18;
-            Ypair[1]|= PR[1].BITNO << 9;
+            Ypair[1] = (word36) PR[1].WORDNO << 18;
+            Ypair[1]|= (word36) PR[1].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4520,11 +4520,11 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[3].SNR << 18;
-            Ypair[0] |= PR[3].RNR << 15;
+            Ypair[0] |= (word36) PR[3].SNR << 18;
+            Ypair[0] |= (word36) PR[3].RNR << 15;
             
-            Ypair[1] = PR[3].WORDNO << 18;
-            Ypair[1]|= PR[3].BITNO << 9;
+            Ypair[1] = (word36) PR[3].WORDNO << 18;
+            Ypair[1]|= (word36) PR[3].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4542,11 +4542,11 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[5].SNR << 18;
-            Ypair[0] |= PR[5].RNR << 15;
+            Ypair[0] |= (word36) PR[5].SNR << 18;
+            Ypair[0] |= (word36) PR[5].RNR << 15;
             
-            Ypair[1] = PR[5].WORDNO << 18;
-            Ypair[1]|= PR[5].BITNO << 9;
+            Ypair[1] = (word36) PR[5].WORDNO << 18;
+            Ypair[1]|= (word36) PR[5].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -4564,11 +4564,11 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= PR[7].SNR << 18;
-            Ypair[0] |= PR[7].RNR << 15;
+            Ypair[0] |= (word36) PR[7].SNR << 18;
+            Ypair[0] |= (word36) PR[7].RNR << 15;
             
-            Ypair[1] = PR[7].WORDNO << 18;
-            Ypair[1]|= PR[7].BITNO << 9;
+            Ypair[1] = (word36) PR[7].WORDNO << 18;
+            Ypair[1]|= (word36) PR[7].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -5362,7 +5362,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 rX[t] += blk;
                 
-                word36 fmt2 = (((rIC + 1) & AMASK) << 18) | (blk << 6);     ///< | t;
+                word36 fmt2 = (((rIC + 1) & AMASK) << 18) | ((word36) blk << 6);     ///< | t;
                 //sim_debug(DBG_TRACE, &cpu_dev,  "pusht():writine fmt2=%012llo to X[%o]=%06o\n", fmt2, t, rX[t]);
                 
                 Write(rX[t], fmt2, OperandWrite, 0);    // write fmt 2 word to X[n] + blk

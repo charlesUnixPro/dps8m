@@ -630,7 +630,7 @@ IT_MOD:;
 
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | tTB | tCF);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
             Write(i, tmp18, indword, DataWrite, idwtag);
             
             if (adrTrace)
@@ -691,7 +691,7 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | tTB | tCF);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
             Write(i, tmp18, indword, DataWrite, idwtag);
 
             if (adrTrace)
@@ -852,7 +852,7 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | delta);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
             Write(i, tmp18, indword, DataWrite, DataWrite);
             
             if (adrTrace)
@@ -891,7 +891,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
 
             // write back out indword
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | delta);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
             Write(i, tmp18, indword, DataWrite, 0);
             
             if (adrTrace)
@@ -955,7 +955,7 @@ IT_MOD:;
           
             // write back out indword
 
-            indword = (word36) ((Yi << 18) | (tally << 6) | junk);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
 
             if (adrTrace)
             {
@@ -1057,7 +1057,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
 
             // write back out indword
-            indword = (word36) ((Yi << 18) | (tally << 6) | junk);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
             
             if (adrTrace)
             {
@@ -1099,7 +1099,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
             
             // write back out indword
-            indword = (word36) ((Yi << 18) | (tally << 6) | idwtag);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
             if (adrTrace)
             {
@@ -1172,7 +1172,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
             
             // write back out indword
-            indword = (word36) ((Yi << 18) | (tally << 6) | idwtag);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
             if (adrTrace)
             {
