@@ -179,7 +179,8 @@ R_MOD1:;
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
         }
 #ifdef BIT29
-    } else if (operType == prepareCa)
+    } else if (operType == prepareCA)
+    {
         word36 fa;
         Read(i, TPR.CA, & fa, PrepareCA, TM_R);
 #endif
@@ -367,15 +368,15 @@ IR_MOD_2:;
     return;
     
 IT_MOD:;
-//    IT_SD	= 004,
+//    IT_SD     = 004,
 //    IT_SCR	= 005,
-//    IT_CI	= 010,
-//    IT_I	= 011,
-//    IT_SC	= 012,
-//    IT_AD	= 013,
-//    IT_DI	= 014,
+//    IT_CI     = 010,
+//    IT_I      = 011,
+//    IT_SC     = 012,
+//    IT_AD     = 013,
+//    IT_DI     = 014,
 //    IT_DIC	= 015,
-//    IT_ID	= 016,
+//    IT_ID     = 016,
 //    IT_IDC	= 017
     word12 tally;
     word6 idwtag, delta;
