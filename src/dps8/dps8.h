@@ -544,6 +544,7 @@ typedef struct _ptw0 _ptw0;
 #define STOP_5      5
 #define STOP_BUG    6
 #define STOP_WARN   7
+#define STOP_FLT_CASCADE   8
 extern const char *sim_stop_messages[];
 
 
