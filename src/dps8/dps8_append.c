@@ -1722,15 +1722,19 @@ word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word3
             fa = doAppendInstructionFetch(i, readData);
             break;
         case DataRead:
+        case APUDataRead:        // append operations from absolute mode
             fa = doAppendDataRead(i, readData, true); //  a data read
             break;
         case OperandRead:
+        case APUOperandRead:
             fa = doAppendDataRead(i, readData, false); // an operand read
             break;
+        case APUDataWrite:      // append operations from absolute mode
         case DataWrite:// XXX will need to do something similiar to the read ops here
             fa = doAppendDataWrite(i, writeData, true);
             break;
         case OperandWrite:
+        case APUOperandWrite:
             fa = doAppendDataWrite(i, writeData, false);
             break;
         case IndirectRead:
