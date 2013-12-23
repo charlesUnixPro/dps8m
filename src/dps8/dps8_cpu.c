@@ -1070,7 +1070,6 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
 {
     sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
     
-    word36 fa = 0;
     switch (accessType)
     {
         // absolute mode fetches are always in absolute mode?
@@ -1080,13 +1079,25 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
             
         case DataRead:
         case OperandRead:
-        case IndirectRead:
             if (i->a)
                 doAppendCycle(i, accessType, Tag, -1, dat);
             else
                 core_read(addr, dat);
             break;
-         
+       
+        case IndirectRead:
+            if (DOITSITP(*dat, Tag))
+            {
+                if (apndTrace)
+                {
+                    sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
+                }
+                doAppendCycle(i, accessType, Tag, -1, dat);
+            } else
+                core_read(addr, dat);
+            
+            break;
+            
         case APUDataRead:        // append operations from absolute mode
         case APUOperandRead:
             doAppendCycle(i, accessType, Tag, -1, dat);
