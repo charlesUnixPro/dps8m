@@ -1087,7 +1087,8 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            ;
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTWF0.F");
+
         
         loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
     }
@@ -1538,7 +1539,7 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                doFault(i, dir_flt0_fault, 0, "!PTW0.F");
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "!PTW0.F");
             
             if (!PTW0.U)
             {

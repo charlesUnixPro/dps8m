@@ -924,7 +924,7 @@ jmpRetry:;
         processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
         
 
-        ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
+        ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct
         
 // XXX The conditions are more rigorous: see AL39, pg 327
         if (rIC % 1 == 0 && // Even address
@@ -1078,9 +1078,14 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
             break;
             
         case DataRead:
+            core_read(addr, dat);
+            break;
+            
         case OperandRead:
             if (i->a)
+            {
                 doAppendCycle(i, accessType, Tag, -1, dat);
+            }
             else
                 core_read(addr, dat);
             break;
@@ -1093,6 +1098,7 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
                     sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
                 }
                 doAppendCycle(i, accessType, Tag, -1, dat);
+
             } else
                 core_read(addr, dat);
             
@@ -1359,8 +1365,16 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
         return STOP_BKPT;
     else
 #endif
-        for (int j = 0 ; j < n ; j ++)
-            Read(i, addr + j, Yblock + j, acctyp, Tag);
+//    int slop = addr % n;
+//    if (slop)
+//    {
+//        addr -= slop;       // back to last n byte boundary;
+//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
+//            addr = 0;
+//    }
+    
+    for (int j = 0 ; j < n ; j ++)
+        Read(i, addr + j, Yblock + j, acctyp, Tag);
     
     return SCPE_OK;
 }
@@ -1389,8 +1403,17 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
         return STOP_BKPT;
     else
 #endif
-        for (int j = 0 ; j < n ; j ++)
-            Write(i, addr + j, Yblock[j], acctyp, Tag);
+    
+//    int slop = addr % n;  
+//    if (slop)
+//    {
+//        addr -= slop;       // back to last n byte boundary;
+//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
+//            addr = 0;
+//    }
+//
+    for (int j = 0 ; j < n ; j ++)
+        Write(i, addr + j, Yblock[j], acctyp, Tag);
     
     return SCPE_OK;
 }
@@ -1558,6 +1581,8 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
 // XXX experimental code; there may be a better way to do this, especially
 // if a pointer to a malloc is getting zapped
 // Yep, I was right
+// HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
+    
     //memset (p, 0, sizeof (struct DCDstruct));
 // Try the obivous ones
     p->opcode  = 0;
@@ -1567,7 +1592,9 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
     p->i       = 0;
     p->tag     = 0;
     
-
+    p->iwb = 0;
+    p->IWB = 0;
+    
     Read(p, addr, &p->IWB, InstructionFetch, 0);
     
     cpu.read_addr = addr;
