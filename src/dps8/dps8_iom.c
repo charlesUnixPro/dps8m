@@ -843,6 +843,15 @@ static void init_memory_iom (uint unit_num)
     // So this is a bootloader kludge to pass the bootload SCU number
     // 
 
+    // [CAC] From Rev01.AN70.archive:
+    //  In BOS compatibility mode, the BOS BOOT command simulates the IOM,
+    //  leaving the same information.  However, it also leaves a config deck
+    //  and flagbox (although bce has its own flagbox) in the usual locations.
+    //  This allows Bootload Multics to return to BOS if there is a BOS to
+    //  return to.  The presence of BOS is indicated by the tape drive number
+    //  being non-zero in the idcw in the "IOM" provided information.  (This is
+    //  normally zero until firmware is loaded into the bootload tape MPC.)
+
     // 2nd word of PCW pair
 
     Mem [1] = ((t_uint64) (bootchan) << 27) | port;
