@@ -4386,37 +4386,96 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].WORDNO = TPR.CA;
             PR[7].BITNO = TPR.TBR;
             break;        
-// XXX [CAC] collaped code to generic case for ease of debugging
-        // AL39 refers to the even numbered register as eppN in section 4,
-        // but calls them epbpN in Appendix A. as8 and dps8 use epbp.
-        case 0350:  ///< epbp0 aka epp0
+        case 0350:  ///< epbp0
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///  C(TPR.TRR) → C(PRn.RNR)
+            ///  C(TPR.TSR) → C(PRn.SNR)
+            ///  00...0 → C(PRn.WORDNO)
+            ///  0000 → C(PRn.BITNO)
+            PR[0].RNR = TPR.TRR;
+            PR[0].SNR = TPR.TSR;
+            PR[0].WORDNO = 0;
+            PR[0].BITNO = 0;
+            break;
+        case 0352:  ///< epbp2
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///  C(TPR.TRR) → C(PRn.RNR)
+            ///  C(TPR.TSR) → C(PRn.SNR)
+            ///  00...0 → C(PRn.WORDNO)
+            ///  0000 → C(PRn.BITNO)
+            PR[2].RNR = TPR.TRR;
+            PR[2].SNR = TPR.TSR;
+            PR[2].WORDNO = 0;
+            PR[2].BITNO = 0;
+            break;
+        case 0370:  ///< epbp4
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///  C(TPR.TRR) → C(PRn.RNR)
+            ///  C(TPR.TSR) → C(PRn.SNR)
+            ///  00...0 → C(PRn.WORDNO)
+            ///  0000 → C(PRn.BITNO)
+            PR[4].RNR = TPR.TRR;
+            PR[4].SNR = TPR.TSR;
+            PR[4].WORDNO = 0;
+            PR[4].BITNO = 0;
+            break;
+        case 0372:  ///< epbp6
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///  C(TPR.TRR) → C(PRn.RNR)
+            ///  C(TPR.TSR) → C(PRn.SNR)
+            ///  00...0 → C(PRn.WORDNO)
+            ///  0000 → C(PRn.BITNO)
+            PR[6].RNR = TPR.TRR;
+            PR[6].SNR = TPR.TSR;
+            PR[6].WORDNO = 0;
+            PR[6].BITNO = 0;
+            break;
+         
+        
         case 0351:  ///< epp1
-        case 0352:  ///< epbp2 aka epp2
-        case 0353:  ///< epp3
-        case 0370:  ///< epbp4 aka epp4
-        case 0371:  ///< epp5
-        case 0372:  ///< epbp6 aka epp6
-        case 0373:  ///< epp7
-          {
-            // eppn 0350 0351 0352 0353 0370 0371 0372 0373
-            //  &3     0    1    2    3    0    1    2    3
-            //  &20    0    0    0    0   20   20   20   20
-            //  &20>>4 0    0    0    0    4    4    4    4
-            //  (opcode & 03) | ((opcode * 020) >> 4)
-            //         0    1    2    3    4    5    6    7
-            int n = (opcode & 03) | ((opcode & 020) >> 2);
-            //sim_debug (DBG_APPENDING, & cpu_dev, "epp%d (%o) TPR.TRR 0%o, TPR.TSR 0%o, TPR.CA 0%o, TPR.TBR 0%o\n", n, opcode, TPR.TRR, TPR.TSR, TPR.CA, TPR.TBR);
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///   C(TPR.TRR) → C(PRn.RNR)
             ///   C(TPR.TSR) → C(PRn.SNR)
             ///   C(TPR.CA) → C(PRn.WORDNO)
             ///   C(TPR.TBR) → C(PRn.BITNO)
-            PR[n].RNR = TPR.TRR;
-            PR[n].SNR = TPR.TSR;
-            PR[n].WORDNO = TPR.CA;
-            PR[n].BITNO = TPR.TBR;
-          }
-          break;
+            PR[1].RNR = TPR.TRR;
+            PR[1].SNR = TPR.TSR;
+            PR[1].WORDNO = TPR.CA;
+            PR[1].BITNO = TPR.TBR;
+            break;
+        case 0353:  ///< epp3
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///   C(TPR.TRR) → C(PRn.RNR)
+            ///   C(TPR.TSR) → C(PRn.SNR)
+            ///   C(TPR.CA) → C(PRn.WORDNO)
+            ///   C(TPR.TBR) → C(PRn.BITNO)
+            PR[3].RNR = TPR.TRR;
+            PR[3].SNR = TPR.TSR;
+            PR[3].WORDNO = TPR.CA;
+            PR[3].BITNO = TPR.TBR;
+            break;
+        case 0371:  ///< epp5
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///   C(TPR.TRR) → C(PRn.RNR)
+            ///   C(TPR.TSR) → C(PRn.SNR)
+            ///   C(TPR.CA) → C(PRn.WORDNO)
+            ///   C(TPR.TBR) → C(PRn.BITNO)
+            PR[5].RNR = TPR.TRR;
+            PR[5].SNR = TPR.TSR;
+            PR[5].WORDNO = TPR.CA;
+            PR[5].BITNO = TPR.TBR;
+            break;
+        case 0373:  ///< epp7
+            /// For n = 0, 1, ..., or 7 as determined by operation code
+            ///   C(TPR.TRR) → C(PRn.RNR)
+            ///   C(TPR.TSR) → C(PRn.SNR)
+            ///   C(TPR.CA) → C(PRn.WORDNO)
+            ///   C(TPR.TBR) → C(PRn.BITNO)
+            PR[7].RNR = TPR.TRR;
+            PR[7].SNR = TPR.TSR;
+            PR[7].WORDNO = TPR.CA;
+            PR[7].BITNO = TPR.TBR;
+            break;
         
         case 0250:  ///< spbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
