@@ -28,6 +28,11 @@
 #endif
 
 #include "sim_defs.h"                                   /* simulator defns */
+
+extern long sim_deb_start;
+#undef sim_debug
+#define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+
 #include "sim_tape.h"
 
 // patch supplied by Dave Jordan (jordandave@gmail.com) 29 Nov 2012
