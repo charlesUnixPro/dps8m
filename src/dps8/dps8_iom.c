@@ -3553,11 +3553,17 @@ static config_value_list_t cfg_boot_list [] =
     { NULL }
   };
 
+static config_value_list_t cfg_base_list [] =
+  {
+    { "multics", 014 },
+    { NULL }
+  };
+
 static config_list_t iom_config_list [] =
   {
     /*  0 */ { "os", 1, 0, cfg_os_list },
     /*  1 */ { "boot", 1, 0, cfg_boot_list },
-    /*  2 */ { "iom_base", 0, 07777, NULL },
+    /*  2 */ { "iom_base", 0, 07777, cfg_base_list },
     /*  3 */ { "multiplex_base", 0, 0777, NULL },
     /*  4 */ { "tapechan", 0, 077, NULL },
     /*  5 */ { "cardchan", 0, 077, NULL },
