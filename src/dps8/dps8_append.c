@@ -47,8 +47,10 @@ void doAddrModPtrReg(DCDstruct *i)
     
     TPR.CA = (PR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
     TPR.TBR = PR[n].BITNO;  // TPR.BITNO = PR[n].BITNO;
-    i->address = TPR.CA;    // why do I muck with i->address?
-    rY = i->address;    // is this right?
+    //i->address = TPR.CA;    // why do I muck with i->address?
+    //rY = i->address;    // is this right?
+    
+    rY = TPR.CA;    // why do I muck with i->address?
     
     if (apndTrace)
     {
@@ -59,7 +61,7 @@ void doAddrModPtrReg(DCDstruct *i)
 void doPtrReg(DCDstruct *i)
 {
     //processorAddressingMode = APPEND_MODE;
-    set_addr_mode(APPEND_mode);
+    //set_addr_mode(APPEND_mode);   // HWR This should not set append mode
 
     word3 n = GET_PRN(i->IWB);  // get PRn
     word15 offset = GET_OFFSET(i->IWB);
@@ -70,7 +72,7 @@ void doPtrReg(DCDstruct *i)
     TPR.CA = (PR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
     TPR.TBR = PR[n].BITNO;  // TPR.BITNO = PR[n].BITNO;
     //address = TPR.CA;
-    //rY = address;    // is this right?
+    rY = TPR.CA;     //address;    // is this right?
     
     if (apndTrace)
     {
@@ -1428,6 +1430,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: returning false\n");
         }
+        doFault(i, illproc_fault, ill_mod, "Incorrect address modifier");
         return false;  // couldnt/woudlnt/shouldnt do ITS/ITP indirection
     }
     
@@ -1440,9 +1443,14 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
      XXX If either condition is violated, the indirect word TAG field is interpreted as a normal address modifier and the presence of a special address modifier will cause an illegal procedure, illegal modifier, fault.
      */
     //if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
+    /*
     if (get_addr_mode() != APPEND_mode || (TPR.CA & 1))
         // XXX illegal procedure, illegal modifier, fault
         doFault(i, illproc_fault, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
+     */
+    if ((TPR.CA & 1))
+    // XXX illegal procedure, illegal modifier, fault
+        doFault(i, illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
 
     
     if (apndTrace)
@@ -1468,7 +1476,9 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     
     didITSITP = true;
     //processorAddressingMode = APPEND_MODE;
-    set_addr_mode(APPEND_mode);
+    
+    // HWR 22 Dec 2013 APpend mode only not set ITS/ITP
+    //set_addr_mode(APPEND_mode);
     
     return true;
     
@@ -1528,7 +1538,8 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                ;
+                doFault(i, dir_flt0_fault, 0, "!PTW0.F");
+            
             if (!PTW0.U)
             {
                 appendingUnitCycleType = MDSPTW;

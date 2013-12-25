@@ -1138,9 +1138,9 @@ static void writeSDW0toYPair(_sdw0 *p, word36 *yPair)
 {
     word36 even, odd;
     
-    even = p->ADDR << 12 | p->R1 << 9 | p->R2 << 6 | p->R3 << 3 | p->F << 2 | p->FC;
+    even = (word36) p->ADDR << 12 | p->R1 << 9 | p->R2 << 6 | p->R3 << 3 | p->F << 2 | p->FC;
     
-    odd = p->BOUND << 21 | p->R << 20 | p->E << 19 | p->W << 18 | p->P << 17 | p->U << 16 | p->G << 15 | p->C << 14 | p->EB;
+    odd = (word36) p->BOUND << 21 | p->R << 20 | p->E << 19 | p->W << 18 | p->P << 17 | p->U << 16 | p->G << 15 | p->C << 14 | p->EB;
     
     yPair[0] = even;
     yPair[1] = odd;

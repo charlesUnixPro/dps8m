@@ -584,6 +584,22 @@ doPop0(pseudoOp *p)
             } else
                 addr += 8 - inc;
         }
+    } else if (strcmp(p->name, "sixteen") == 0)
+    {
+        if (addr % 16) {
+            if (debug) printf("  SIXTEEN align\n");
+            int inc = addr % 16;
+            
+            // pad with NOP's 000000011000
+            if (nPass == 2)
+            {
+                sprintf(temp, "%s \"(allocating %d nop's)\n", LEXline, 16-inc);
+                outas8ins(000000011000LL, addr++, temp);
+                for(int n = 0 ; n < 16 - inc - 1; n++)
+                    outas8ins(000000011000LL, addr++, "");
+            } else
+                addr += 16 - inc;
+        }
     } else if (strcmp(p->name, "sixtyfour") == 0)
     {
         if (addr % 64) {
@@ -3215,6 +3231,7 @@ pseudoOp pseudoOps[] =
     {"even",        0,              NULL, PSEUDOOP },
     {"odd",         0,              NULL, PSEUDOOP },
     {"eight",       0,              NULL, PSEUDOOP },
+    {"sixteen",     0,              NULL, PSEUDOOP },
     {"sixtyfour",   0,              NULL, PSEUDOOP },
     {"org",         0,              NULL,      ORG },
     {"acc",         epStringArgs,   NULL,    STROP },

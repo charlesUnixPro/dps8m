@@ -83,6 +83,7 @@ const char *sim_stop_messages[] = {
     "Stop code - 5",           // STOP_5
     "BUG",                     // STOP_BUG
     "WARNING"                  // STOP_WARN
+    "Fault cascade",           // STOP_FLT_CASCADE
 };
 
 /* End of simh interface */
@@ -1361,7 +1362,6 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
 {
     sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
     
-    word36 fa = 0;
     switch (accessType)
     {
         // absolute mode fetches are always in absolute mode?
@@ -1371,13 +1371,25 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
             
         case DataRead:
         case OperandRead:
-        case IndirectRead:
             if (i->a)
                 doAppendCycle(i, accessType, Tag, -1, dat);
             else
                 core_read(addr, dat);
             break;
-         
+       
+        case IndirectRead:
+            if (DOITSITP(*dat, Tag))
+            {
+                if (apndTrace)
+                {
+                    sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
+                }
+                doAppendCycle(i, accessType, Tag, -1, dat);
+            } else
+                core_read(addr, dat);
+            
+            break;
+            
         case APUDataRead:        // append operations from absolute mode
         case APUOperandRead:
             doAppendCycle(i, accessType, Tag, -1, dat);
@@ -2180,7 +2192,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           invertabsolute = n
 //           b29test = n // deprecated
 //           dis_enable = n
-//           auto_append_disable = n
+//           auto_append_disable = n // still need for 20184, not for t4d
 //           lprp_highonly = n // deprecated
 
 static config_value_list_t multics_fault_base [] =

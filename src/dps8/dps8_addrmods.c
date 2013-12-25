@@ -179,7 +179,8 @@ R_MOD1:;
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
         }
 #ifdef BIT29
-    } else if (operType == prepareCa)
+    } else if (operType == prepareCA)
+    {
         word36 fa;
         Read(i, TPR.CA, & fa, PrepareCA, TM_R);
 #endif
@@ -367,15 +368,15 @@ IR_MOD_2:;
     return;
     
 IT_MOD:;
-//    IT_SD	= 004,
+//    IT_SD     = 004,
 //    IT_SCR	= 005,
-//    IT_CI	= 010,
-//    IT_I	= 011,
-//    IT_SC	= 012,
-//    IT_AD	= 013,
-//    IT_DI	= 014,
+//    IT_CI     = 010,
+//    IT_I      = 011,
+//    IT_SC     = 012,
+//    IT_AD     = 013,
+//    IT_DI     = 014,
 //    IT_DIC	= 015,
-//    IT_ID	= 016,
+//    IT_ID     = 016,
 //    IT_IDC	= 017
     word12 tally;
     word6 idwtag, delta;
@@ -629,7 +630,7 @@ IT_MOD:;
 
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | tTB | tCF);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
             Write(i, tmp18, indword, DataWrite, idwtag);
             
             if (adrTrace)
@@ -690,7 +691,7 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | tTB | tCF);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
             Write(i, tmp18, indword, DataWrite, idwtag);
 
             if (adrTrace)
@@ -851,7 +852,7 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | delta);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
             Write(i, tmp18, indword, DataWrite, DataWrite);
             
             if (adrTrace)
@@ -890,7 +891,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
 
             // write back out indword
-            indword = (word36) ((Yi << 18) | ((tally & 07777) << 6) | delta);
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
             Write(i, tmp18, indword, DataWrite, 0);
             
             if (adrTrace)
@@ -954,7 +955,7 @@ IT_MOD:;
           
             // write back out indword
 
-            indword = (word36) ((Yi << 18) | (tally << 6) | junk);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
 
             if (adrTrace)
             {
@@ -1056,7 +1057,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
 
             // write back out indword
-            indword = (word36) ((Yi << 18) | (tally << 6) | junk);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
             
             if (adrTrace)
             {
@@ -1098,7 +1099,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
             
             // write back out indword
-            indword = (word36) ((Yi << 18) | (tally << 6) | idwtag);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
             if (adrTrace)
             {
@@ -1171,7 +1172,7 @@ IT_MOD:;
             SCF(tally == 0, rIR, I_TALLY);
             
             // write back out indword
-            indword = (word36) ((Yi << 18) | (tally << 6) | idwtag);
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
             if (adrTrace)
             {

@@ -28,6 +28,11 @@
 #endif
 
 #include "sim_defs.h"                                   /* simulator defns */
+
+extern long sim_deb_start;
+#undef sim_debug
+#define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+
 #include "sim_tape.h"
 
 // patch supplied by Dave Jordan (jordandave@gmail.com) 29 Nov 2012
@@ -544,6 +549,7 @@ typedef struct _ptw0 _ptw0;
 #define STOP_5      5
 #define STOP_BUG    6
 #define STOP_WARN   7
+#define STOP_FLT_CASCADE   8
 extern const char *sim_stop_messages[];
 
 

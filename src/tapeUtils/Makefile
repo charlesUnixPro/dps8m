@@ -7,10 +7,12 @@ RST_OBJS = restore.o bit36.o
 SCN_OBJS = scan.o bit36.o
 DIS_OBJS = disasm.o bit36.o
 PK_OBJS = pack.o bit36.o
+UP_OBJS = unpack.o bit36.o
+EBL0 = extract_bound_bootload_0.o bit36.o
 
-EXES = extract_tape_files mfile dumpTape restore scan disasm pack
+EXES = extract_tape_files mfile dumpTape restore scan disasm pack extract_bound_bootload_0 unpack
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(PK_OBJS)
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(PK_OBJS) $(EBL0) $(UP_OBS)
 
 all : $(EXES)
 
@@ -21,6 +23,8 @@ restore : $(RST_OBJS)
 scan : $(SCN_OBJS)
 disasm : $(DIS_OBJS)
 pack : $(PK_OBJS)
+extract_bound_bootload_0 : $(EBL0)
+unpack : $(UP_OBJS)
 
 extract_tape_files.o : extract_tape_files.c bit36.h simhtapes.h mst.h
 bit36.o : bit36.c bit36.h
@@ -31,6 +35,8 @@ restore.o : restore.c bit36.h mst.h
 scan.o : scan.c bit36.h mst.h
 disasm.o : disasm.c bit36.h
 pack.o : pack.c bit36.h
+extract_bound_bootload_0.o : extract_bound_bootload_0.c mst.h
+unpack.o : unpack.c bit36.h
 
 clean:
 	-rm $(OBJS)  $(EXES)
