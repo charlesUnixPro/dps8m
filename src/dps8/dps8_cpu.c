@@ -932,8 +932,8 @@ static int simh_hooks (void)
 // other extant cycles:
 //  ABORT_cycle
 
-static Ypair instr_buf;
-static enum { IB_EMPY, IB_SINGLE, IB_PAIR } instr_buf_state;
+static word36 instr_buf [2];
+static enum { IB_EMPTY, IB_SINGLE, IB_PAIR } instr_buf_state;
 
 t_stat sim_instr (void)
   {
@@ -945,33 +945,38 @@ t_stat sim_instr (void)
     apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
     
     cpu . interrupt_flag = false;
-    instr_buf_state = IB_EMPY;
+    cpu . g7_flag = false;
+
+    instr_buf_state = IB_EMPTY;
+    // cpuCycles = 0; // XXX this should be done by reset(), messes up count on breakpoint
 
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
 
-#if 0
     switch (val)
     {
         case 0:
             reason = 0;
             cpuCycles = 0;
             break;
+#if 0
         case JMP_NEXT:
             goto jmpNext;
         case JMP_RETRY:
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
+#endif
         case JMP_STOP:
             return stop_reason;
     }
-#endif
 
     // Main instruction fetch/decode loop 
 
     do
       {
+
+        reason = 0;
 
         reason = simh_hooks ();
         if (reason)
@@ -983,6 +988,9 @@ t_stat sim_instr (void)
             case DIS_cycle:
                 // spining wheels waiting for interrupt
                 // if interruot, set INTERRUPT_cycle
+
+                // Are g7 faults addressed in dis? XXX
+                // e.g. time run out?
 
                 cpu . interrupt_flag = sample_interrupts ();
                 if (cpu . interrupt_flag)
@@ -1016,7 +1024,8 @@ t_stat sim_instr (void)
                         cu_safe_store ();
 
                         // save address mode
-                        addr_modes_t am = get_addr_mode();
+                        // shouldn't this be in safe_store?
+                        //addr_modes_t am = get_addr_mode();
 
                         // Temporary absolute mode
                         set_addr_mode (ABSOLUTE_mode);
@@ -1026,7 +1035,7 @@ t_stat sim_instr (void)
 
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
-                        instr_buf_state = IBPAIR;
+                        instr_buf_state = IB_PAIR;
 
                         cpu . interrupt_flag = false;
                         cpu . cycle = INTERRUPT_EXEC_cycle;
@@ -1045,22 +1054,91 @@ t_stat sim_instr (void)
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu . cycle == INTERRUPT_EXEC_cycle)
-                  ci -> iwb = instr_buf [0];
+                  ci -> IWB = instr_buf [0];
                 else
-                  ci -> iwb = instr_buf [1];
+                  ci -> IWB = instr_buf [1];
 
                 decodeInstruction (ci -> IWB, ci);
                 t_stat ret = executeInstruction (ci);
 
+                if (ret == CONT_TRA)
+                  {
+                     instr_buf_state = IB_EMPTY;
+                     cpu . cycle = FETCH_cycle;
+                  }
+
                 // XXX  if (! transfer) set INTERUPT_EXEC2_cycle and go
                 // XXX restore IC from safe store
-                instr_buf_status = IB_EMPTY;
+                // XXX need cu_safe_restore
+                cu_safe_restore ();
+                break;
+
+            case FETCH_cycle:
+
+                if (cpu . interrupt_flag)
+                  {
+                    cpu . cycle = INTERRUPT_cycle;
+                    break;
+                  }
+                if (cpu . g7_flag)
+                  {
+                    cpu . cycle = FAULT_cycle;
+                    break;
+                  }
+
+                processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
+        
+
+                ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
+        
+// XXX The conditions are more rigorous: see AL39, pg 327
+                if (rIC % 1 == 0 && // Even address
+                    ci -> i == 0) // Not inhibited
+                  {
+                    cpu . interrupt_flag = sample_interrupts ();
+                    cpu . g7_flag = bG7Pending ();
+                  }
+                else
+                  {
+                    cpu . interrupt_flag = false;
+                    cpu . g7_flag = false;
+                  }
+                cpu . cycle = EXEC_cycle;
+                break;
+
+            case EXEC_cycle:
+              {
+                t_stat ret = executeInstruction (ci);
+                if (ret > 0)
+                  {
+                     reason = ret;
+                     break;
+                  }
+                if (ret < 0)
+                  {
+                    switch (ret)
+                      {
+                        case CONT_TRA: // Instruction transferred
+                          break;   // don't bump rIC, instruction already did it
+                        // shouldn't happen; doFault never returns
+                        //case CONT_FAULT:
+                        default:
+                          sim_printf ("execute instruction returned %d?\n", ret);
+                          break;
+                      }
+                  }
+                if (ret == 0)
+                  rIC ++;
                 cpu . cycle = FETCH_cycle;
-                brea;
+              }
+              break;
+          }  // switch (cpu . cycle)
 
+      } while (reason == 0);
 
-
-      }
+    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+    
+    return reason;
   }
 
 
@@ -1129,7 +1207,7 @@ jmpRetry:;
           }
 
         // do group 7 fault processing
-        if (G7Pending && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
+        if (bG7Pending () && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
             doG7Faults();
             
         //
@@ -1180,7 +1258,7 @@ dis_entry:
 		    // register.  
 
                     // XXX safe store
-                    // safe_store ()
+                    cu_safe_store ();
 
                     addr_modes_t am = get_addr_mode();  // save address mode
 

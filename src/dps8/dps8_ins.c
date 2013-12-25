@@ -151,6 +151,10 @@ static void scu2words(t_uint64 *words)
     words[7] = cu.IRODD;
 }
 
+void cu_safe_restore(void)
+{
+    PPR.IC = scu_data [4];
+}
 void cu_safe_store(void)
 {
     // Save current Control Unit Data in hidden temporary so a later SCU instruction running
