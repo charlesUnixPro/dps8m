@@ -1900,7 +1900,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           invertabsolute = n
 //           b29test = n // deprecated
 //           dis_enable = n
-//           auto_append_disable = n
+//           auto_append_disable = n // still need for 20184, not for t4d
 //           lprp_highonly = n // deprecated
 
 static config_value_list_t multics_fault_base [] =
