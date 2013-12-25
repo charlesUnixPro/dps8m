@@ -1718,6 +1718,7 @@ extern bool apndTrace;  ///< when true do appending unit tracing
 
 extern jmp_buf jmpMain;     ///< This is where we should return to from a fault to retry an instruction
 extern int stop_reason;     ///< sim_instr return value for JMP_STOP
+#define JMP_ENTRY       0
 #define JMP_RETRY       1   ///< retry instruction
 #define JMP_NEXT        2   ///< goto next sequential instruction
 #define JMP_TRA         3   ///< treat return as if it were a TRA instruction with rIC already set to where to jump to
@@ -1899,10 +1900,11 @@ typedef enum { NORMAL_mode, PRIV_mode } instr_modes_t;
 // don't currently use all of the states used in the physical CPU.
 // The FAULT_EXEC cycle did not exist in the physical hardware.
 typedef enum {
-    ABORT_cycle = ABORT_CYCLE,
-    FAULT_cycle = FAULT_CYCLE,
+    ABORT_cycle /* = ABORT_CYCLE */,
+    FAULT_cycle /* = FAULT_CYCLE */,
     EXEC_cycle,
     FAULT_EXEC_cycle,
+    FAULT_EXEC2_cycle,
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     INTERRUPT_EXEC2_cycle,
@@ -1931,6 +1933,8 @@ typedef struct {
 
     bool interrupt_flag; // an interrupt is pending in this cycle
     bool g7_flag; // a g7 fault is pending in this cycle;
+     _fault faultNumber; // fault number saved by doFault
+     _fault_subtype subFault; // saved by doFault
 } cpu_state_t;
 
 /* Indicator register (14 bits [only positions 18..32 have meaning]) */
@@ -2957,6 +2961,18 @@ int disk_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
 
 /* dps8_faults.c */
 
+struct dps8faults
+{
+    int         fault_number;
+    int         fault_address;
+    const char *fault_mnemonic;
+    const char *fault_name;
+    int         fault_priority;
+    int         fault_group;
+    bool        fault_pending;        // when true fault is pending and waiting to be processed
+};
+typedef struct dps8faults dps8faults;
+extern dps8faults _faults[];
 void check_events (void);
 
 /* dps8_ins.c */

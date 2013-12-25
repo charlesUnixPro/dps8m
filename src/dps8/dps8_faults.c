@@ -61,18 +61,6 @@ static t_uint64 FR;
         27     ;        66     ;           ;   Unassigned           ;          ;
  
 */
-struct dps8faults
-{
-    int         fault_number;
-    int         fault_address;
-    const char *fault_mnemonic;
-    const char *fault_name;
-    int         fault_priority;
-    int         fault_group;
-    bool        fault_pending;        // when true fault is pending and waiting to be processed
-};
-
-typedef struct dps8faults dps8faults;
 
 #ifndef QUIET_UNUSED
 static dps8faults _faultsP[] = { // sorted by priority
@@ -423,12 +411,18 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         return;
     }
 
-    dps8faults *f = &_faults[faultNumber];
+    cpu . faultNumber = faultNumber;
+    cpu . subFault = subFault;
+
+//--    dps8faults *f = &_faults[faultNumber];
     
-    nFaultGroup = fault2group[faultNumber];
-    nFaultPriority = fault2prio[faultNumber];
+//--    nFaultGroup = fault2group[faultNumber];
+//--    nFaultPriority = fault2prio[faultNumber];
     
-    if (bFaultCycle) {  // if already in a FAULT CYCLE then signal trouble faule
+    if (bFaultCycle)  // if already in a FAULT CYCLE then signal trouble fault
+      {
+        cpu . faultNumber = FAULT_TRB;
+        cpu . subFault = 0; // XXX ???
         if (bTroubleFaultCycle)
           {
             if (events . int_pending == 0 &&
@@ -440,26 +434,33 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
-            return;
+            // Double fault with interrupts pending
+            // return;
           }
         else
           {
-            f = &_faults[FAULT_TRB];
+//--            f = &_faults[FAULT_TRB];
             bTroubleFaultCycle = true;
           }
-    }
+      }
     else
-    {
+      {
         // TODO: safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
-    }
+        cu_safe_store ();
+      }
     
+    cpu . cycle = FAULT_cycle;
+    longjmp (jmpMain, JMP_ENTRY);
+#if 0
     if (nFaultGroup == 7) {
         // Recognition of group 7 faults is delayed and we can have
         // multiple group 7 faults pending.
         g7Faults |= (1 << faultNumber);
         return;
     }
+#endif
     
+#if 0
     int fltAddress = (rFAULTBASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
     word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
   
@@ -488,7 +489,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         longjmp(jmpMain, JMP_NEXT);     // execute next instruction
     else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
         longjmp(jmpMain, JMP_RETRY);    // retry instruction
-    
+#endif
     
 //    printf("fault(): %d %d %s (%s) '%s'\r\n", f->fault_number, f->fault_group,  f->fault_name, f->fault_mnemonic, faultMsg ? faultMsg : "?");
 //
