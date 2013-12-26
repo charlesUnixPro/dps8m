@@ -2111,7 +2111,8 @@ typedef struct {
     uint b29_test; // If non-zero, enable untested code
     uint dis_enable; // If non-zero, DIS works
     uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
-    uint lprp_highonly; // If non-zerp lprp only sets the high bits
+    uint lprp_highonly; // If non-zero lprp only sets the high bits
+    uint steady_clock; // If non-zero the clock is tied to the cycle counter
 } switches_t;
 
 

@@ -1881,6 +1881,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("DIS enable:               %01o(8)\n", switches . dis_enable);
     sim_printf("AutoAppend disable:       %01o(8)\n", switches . auto_append_disable);
     sim_printf("LPRPn set high bits only: %01o(8)\n", switches . lprp_highonly);
+    sim_printf("Steady clock:             %01o(8)\n", switches . steady_clock);
 
     return SCPE_OK;
 }
@@ -1897,15 +1898,26 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           portinterlace = n
 //           mode = n
 //           speed = n
+//    Hacks:
 //           invertabsolute = n
 //           b29test = n // deprecated
 //           dis_enable = n
 //           auto_append_disable = n // still need for 20184, not for t4d
 //           lprp_highonly = n // deprecated
+//           steadyclock = on|off
 
 static config_value_list_t multics_fault_base [] =
   {
     { "multics", 2 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_on_off [] =
+  {
+    { "off", 0 },
+    { "on", 1 },
+    { "disable", 0 },
+    { "enable", 1 },
     { NULL }
   };
 
@@ -1922,11 +1934,12 @@ static config_list_t cpu_config_list [] =
 
     // Hacks
 
-    /*  8 */ { "invertabsolute", 0, 1, NULL }, // XXX use keywords
-    /*  9 */ { "b29test", 0, 1, NULL }, // XXX use keywords
-    /* 10 */ { "dis_enable", 0, 1, NULL }, // XXX use keywords
-    /* 11 */ { "auto_append_disable", 0, 1, NULL }, // XXX use keywords
-    /* 12 */ { "lprp_highonly", 0, 1, NULL }, // XXX use keywords
+    /*  8 */ { "invertabsolute", 0, 1, cfg_on_off }, 
+    /*  9 */ { "b29test", 0, 1, cfg_on_off }, 
+    /* 10 */ { "dis_enable", 0, 1, cfg_on_off }, 
+    /* 11 */ { "auto_append_disable", 0, 1, cfg_on_off }, 
+    /* 12 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
+    /* 13 */ { "steady_clock", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2007,6 +2020,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 12: // LPRP_HIGHONLY
               switches . lprp_highonly = v;
+              break;
+
+            case 13: // STEADY_CLOCK
+              switches . steady_clock = v;
               break;
 
             default:
