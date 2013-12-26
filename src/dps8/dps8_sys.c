@@ -414,8 +414,11 @@ sysinfo_t sys_opts =
   {
     0, /* clock speed */
     {
-      0, /* iom_times.connect */
-      0  /* iom_times.chan_activate */
+// I get too much jitter in cpuCycles when debugging 20184; try turning queing
+// off here (changing 0 to -1)
+// still get a little jitter, and once a hang in DIS. very strange
+      -1, /* iom_times.connect */
+      -1  /* iom_times.chan_activate */
     },
     {
 // XXX This suddenly started working when I reworked the iom code for multiple units.
