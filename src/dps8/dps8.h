@@ -480,7 +480,7 @@ extern struct _sdw {  ///< as used by APU
 typedef struct _sdw _sdw;
 
 //* in-core SDW (i.e. not cached, or in SDWAM)
-struct _sdw0 {
+extern struct _sdw0 {
     // even word
     word24  ADDR;   ///< The 24-bit absolute main memory address of the page table for the target segment if SDWAM.U = 0; otherwise, the 24-bit absolute main memory address of the origin of the target segment.
     word3   R1;     ///< Upper limit of read/write ring bracket
@@ -589,7 +589,7 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define MA_RD  2   /* data read */
 #define MA_WR  3   /* data write */
 
-word36 Ypair[2];        ///< 2-words
+extern word36 Ypair[2];        ///< 2-words
 
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
