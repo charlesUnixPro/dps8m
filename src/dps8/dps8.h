@@ -28,6 +28,11 @@
 #endif
 
 #include "sim_defs.h"                                   /* simulator defns */
+
+extern long sim_deb_start;
+#undef sim_debug
+#define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+
 #include "sim_tape.h"
 
 // patch supplied by Dave Jordan (jordandave@gmail.com) 29 Nov 2012
@@ -475,7 +480,7 @@ extern struct _sdw {  ///< as used by APU
 typedef struct _sdw _sdw;
 
 //* in-core SDW (i.e. not cached, or in SDWAM)
-struct _sdw0 {
+extern struct _sdw0 {
     // even word
     word24  ADDR;   ///< The 24-bit absolute main memory address of the page table for the target segment if SDWAM.U = 0; otherwise, the 24-bit absolute main memory address of the origin of the target segment.
     word3   R1;     ///< Upper limit of read/write ring bracket
@@ -584,7 +589,7 @@ typedef enum eMemoryAccessType MemoryAccessType;
 #define MA_RD  2   /* data read */
 #define MA_WR  3   /* data write */
 
-word36 Ypair[2];        ///< 2-words
+extern word36 Ypair[2];        ///< 2-words
 
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
@@ -2106,7 +2111,8 @@ typedef struct {
     uint b29_test; // If non-zero, enable untested code
     uint dis_enable; // If non-zero, DIS works
     uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
-    uint lprp_highonly; // If non-zerp lprp only sets the high bits
+    uint lprp_highonly; // If non-zero lprp only sets the high bits
+    uint steady_clock; // If non-zero the clock is tied to the cycle counter
 } switches_t;
 
 

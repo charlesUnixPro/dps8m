@@ -1294,8 +1294,11 @@ void sim_printf( const char * format, ... )
 
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
+// return -2: error; -1: done; >= 0 option found
 int cfgparse (char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
   {
+    if (! cptr)
+      return -2;
     char * start = NULL;
     if (! state -> copy)
       {

@@ -30,6 +30,7 @@ void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
 stats_t sys_stats;
 
 static t_stat sys_cable (int32 arg, char * buf);
+static t_stat dps_debug_start (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -37,7 +38,8 @@ CTAB dps8_cmds[] =
     {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n"},
     {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n"},
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n"},
-    { "CABLE",   sys_cable,       0, "String a cable\n" },
+    {"CABLE",    sys_cable,       0, "cable String a cable\n" },
+    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -176,6 +178,15 @@ static t_stat sys_cable (int32 arg, char * buf)
 exit:
     free (copy);
     return rc;
+  }
+
+long sim_deb_start;
+
+static t_stat dps_debug_start (int32 arg, char * buf)
+  {
+    sim_deb_start = atol (buf);
+    sim_printf ("Debug set to start at cycle: %ld\n", sim_deb_start);
+    return SCPE_OK;
   }
 
 static struct PRtab {
@@ -403,8 +414,11 @@ sysinfo_t sys_opts =
   {
     0, /* clock speed */
     {
-      0, /* iom_times.connect */
-      0  /* iom_times.chan_activate */
+// I get too much jitter in cpuCycles when debugging 20184; try turning queing
+// off here (changing 0 to -1)
+// still get a little jitter, and once a hang in DIS. very strange
+      -1, /* iom_times.connect */
+      -1  /* iom_times.chan_activate */
     },
     {
 // XXX This suddenly started working when I reworked the iom code for multiple units.

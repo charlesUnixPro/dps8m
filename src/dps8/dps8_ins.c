@@ -4020,7 +4020,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                         return STOP_UNIMP;
                     case 0040:
                     case 0050:  // return clock/calendar in AQ
-                        goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
+                        if (! switches . steady_clock)
+                          goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
+                        rA = 0;
+                        rQ = cpuCycles;
+                        break;
                         
                         
                     case 0060:

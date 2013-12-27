@@ -5,3 +5,5 @@ restore
 scan
 pack
 disasm
+unpack
+extract_bound_bootload_0
