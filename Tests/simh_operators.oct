@@ -1,0 +1,51 @@
+!SIZE 001237
+!SEGNAME simh_operators_
+!SEGDEF alm_call 001175
+!SEGDEF alm_entry 001215
+!SEGDEF alm_operators_begin 001175
+!SEGDEF alm_operators_end 001237
+!SEGDEF alm_push 001201
+!SEGDEF alm_return 001225
+!SEGDEF alm_return_no_pop 001233
+!SEGDEF transfer_vector 000551
+!SEGDEF operator_table 000000
+000551 xxxx 000000000000 	BSS	271					" words 0-270
+001170 xxxx 001175710000 	tra	alm_call			" 271	special for alm
+001171 xxxx 001201710000 	tra	alm_push			" 272	special for alm
+001172 xxxx 001225710000 	tra	alm_return			" 273	special for alm
+001173 xxxx 001233710000 	tra	alm_return_no_pop	" 274	special for alm
+001174 xxxx 001215710000 	tra	alm_entry			" 275	special for alm
+001175 xxxx 600024650100 	sprilp	sp|stack_frame.return_ptr 		" save return pointer
+001176 xxxx 600025754100 	sti		sp|stack_frame.return_ptr+1		" save indicators
+001177 xxxx 600030370120 	epplp	sp|stack_frame.lp_ptr,* 		" set up our lp
+001200 xxxx 200000713100 	callsp	bp|0							" do the call
+001201 xxxx 700024252120 	spribp	sb|stack_header.stack_end_ptr,* " save return from operator
+001202 xxxx 700024352120 	eppbp	sb|stack_header.stack_end_ptr,* " get pointer to new stack frame
+001203 xxxx 200020652100 	sprisp	bp|stack_frame.prev_sp 			" save previous ptr in new frame
+001204 xxxx 200032250100 	spriap	bp|stack_frame.arg_ptr 			" save argument ptr
+001205 xxxx 200030650100 	sprilp	bp|stack_frame.lp_ptr 			" save linkage ptr
+001206 xxxx 200000372100 	eppsp	bp|0							" move up to new frame
+001207 xxxx 600000352117 	eppbp	sp|0,7							" get pointer to end of this new frame
+001210 xxxx 700024252100 	spribp	sb|stack_header.stack_end_ptr 	" and update stack end pointer
+001211 xxxx 600022252100 	spribp	sp|stack_frame.next_sp 			" and set next sp of new frame
+001212 xxxx 000001627000 	eax7	1								" set ALM translator ID for debugging
+001213 xxxx 600037747100 	stx7	sp|stack_frame.translator_id
+001214 xxxx 600000710120 	tra		sp|0,*							" return to alm program
+001215 xxxx 277777352100     eppbp	bp|-1               			" generate pointer to entry structure
+001216 xxxx 700024370120 	epplp	sb|stack_header.stack_end_ptr,*	" get a pointer to the next stack frame
+001217 xxxx 400026252100 	spribp	lp|stack_frame.entry_ptr
+001220 xxxx 200000213100 	epaq	bp|0							" get seg no of object in a
+001221 xxxx 700052765161 	lprplb	sb|stack_header.isot_ptr,*au 	" get packed ptr to static from isot
+001222 xxxx 400034545100 	sprplb	lp|stack_frame.static_ptr 		" save in next stack frame
+001223 xxxx 700026764161 	lprplp	sb|stack_header.lot_ptr,*au 	" get packed ptr to linkage from lot
+001224 xxxx 200001710100 	tra		bp|1							" return to alm prog
+001225 xxxx 700024652300 	sprisp	sb|stack_header.stack_end_ptr 	" update stack end ptr
+001226 xxxx 600020372320 	eppsp	sp|stack_frame.prev_sp,* 		" pop stack
+001227 xxxx 600000373100 	epbpsb	sp|0							" set up stack base in case we just switched stacks
+001230 xxxx 600030350120 	eppap	sp|stack_frame.operator_ptr,* 	" set op ptr of frame being returned to
+001231 xxxx 600025634100 	ldi		sp|stack_frame.return_ptr+1		" restore indicators for caller
+001232 xxxx 600024610100 	rtcd	sp|stack_frame.return_ptr 		" return to calling program
+001233 xxxx 600000373100 	epbpsb	sp|0							" set up stack base in case returning to outer ring
+001234 xxxx 600030350120 	eppap	sp|stack_frame.operator_ptr,* 	" set up operator ptr of frame being returned to
+001235 xxxx 600025634100 	ldi		sp|stack_frame.return_ptr+1		" restore indicators for caller
+001236 xxxx 600024610100 	rtcd	sp|stack_frame.return_ptr 		" return to calling program
