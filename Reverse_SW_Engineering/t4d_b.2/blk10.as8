@@ -1956,18 +1956,44 @@ l12061:	oct	012053000220
 	lda	0013053	" 013053235000
 	inhibit	on
 	dis	0013037	" 013037616200
-" 013040:
 	inhibit	off
-	lda	0015264	" 015264235000
-	sta	0020000	" 020000755000
-	lda	0015265	" 015265235000
+" 013040:
+" Set up the SDW
+
+" SDW even word 000220000004
+"   ADDR 00022000
+"   R1 0
+"   R2 0
+"   R3 0
+"   F  1
+"   FC 0
+	lda	0015264	" contains 000220000004
+	sta	0020000	
+
+" SDW odd word 000007600000
+"   BOUND 00000
+"   R,E,W,P,U 1
+"   G,C, ER 0
+
+	lda	0015265	" contains 000007600000
 	sta	0020001	" 020001755000
-	lda	0015275	" 015275235000
+	lda	0015275	" contains 000000001000 : mme 0
 	sta	0022000	" 022000755000
-	lprp0	0015266	" 015266760000
-	ldbr	0015270	" 015270232000
+	lprp0	0015266	" contains 0
+
+" ldbr (00020000 0000   00000 0200000)
+"    DSBR.ADDR <- 00020000
+"    DSBR.BOUND <- 00000
+"    DSBR.U <- 1
+"    CDSR.STACK <- 0
+
+	ldbr	0015270	" contains 000200000000 000000200000
 " 013050:
 	ldi	0000000,dl	" 000000634007
+
+" This should xfer to 00020000, (DSBR.ADDR + OFFSET of 0)
+" But we are out of bounds, so we should fault?
+" 
 	tra pr0|00	" 000000710100
 	inhibit	on
 	dis	0013052	" 013052616200
