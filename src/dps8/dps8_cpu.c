@@ -1057,6 +1057,18 @@ jmpNext:;
 }
 
 
+static void setDegerate()
+{
+    TPR.TRR = 0;
+    TPR.TSR = 0;
+    TPR.TBR = 0;
+    
+    PPR.PRR = 0;
+    PPR.PSR = 0;
+    
+    PPR.P = 1;
+}
+
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
 
 #define DOITSITP(indword, Tag) ((_TM(Tag) == TM_IR || _TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)))
@@ -1070,47 +1082,19 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
 {
     sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
     
+    rY = addr;
+    TPR.CA = addr;  //XXX for APU
+    
     switch (accessType)
     {
-        // absolute mode fetches are always in absolute mode?
         case InstructionFetch:
             core_read(addr, dat);
             break;
-            
-        case DataRead:
-            core_read(addr, dat);
-            break;
-            
-        case OperandRead:
-            if (i->a)
-            {
-                doAppendCycle(i, accessType, Tag, -1, dat);
-            }
-            else
-                core_read(addr, dat);
-            break;
-       
-        case IndirectRead:
-            if (DOITSITP(*dat, Tag))
-            {
-                if (apndTrace)
-                {
-                    sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
-                }
-                doAppendCycle(i, accessType, Tag, -1, dat);
-
-            } else
-                core_read(addr, dat);
-            
-            break;
-            
-        case APUDataRead:        // append operations from absolute mode
-        case APUOperandRead:
-            doAppendCycle(i, accessType, Tag, -1, dat);
-            break;
-            
         default:
-            sim_printf("doAbsoluteRead(Entry): unsupported accessType=%d\n", accessType);
+            //if (i->a)
+                doAppendCycle(i, accessType, Tag, -1, dat);
+            //else
+            //    core_read(addr, dat);
             break;
     }
     return SCPE_OK;
@@ -1140,16 +1124,10 @@ t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType accty
             case APPEND_MODE:
 APPEND_MODE:;
                 doAppendCycle(i, acctyp, Tag, -1, dat);
-                
-                //word24 fa = doFinalAddressCalculation(acctyp, TPR.TSR, TPR.CA, &acvf);
-                //if (fa)
-                //    core_read(fa, dat);
-                
-                //rY = finalAddress;
-                //*dat = CY;  // XXX this may be a nasty loop
                 break;
             case ABSOLUTE_MODE:
-#if OLDWAY
+                
+//#if OLDWAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
                 // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
                 
@@ -1158,19 +1136,11 @@ APPEND_MODE:;
                 else
                     core_read(addr, dat);
                 if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                {
-                    if (apndTrace)
-                    {
-                        sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
-                    }
-                    
-                    //processorAddressingMode = APPEND_MODE;
-                    set_addr_mode(APPEND_mode);
-                    goto APPEND_MODE;   // ???
-                }
-#endif
-                doAbsoluteRead(i, addr, dat, acctyp, Tag);
+                    goto APPEND_MODE;
                 
+//#endif
+                //doAppendCycle(i, acctyp, Tag, -1, dat);
+
                 break;
             case BAR_MODE:
                 // XXX probably not right.
@@ -1199,11 +1169,11 @@ t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType a
     {
         case DataWrite:
         case OperandWrite:
-            if (i->a)
+            //if (i->a)
                 doAppendCycle(i, accessType, Tag, -1, NULL);
-            else
-                core_write(addr, dat);
-            break;
+            //else
+            //    core_write(addr, dat);
+            //break;
             
         case APUDataWrite:      // append operations from absolute mode
         case APUOperandWrite:
@@ -1214,6 +1184,8 @@ t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType a
             sim_printf("doAbsoluteWrite(Entry): unsupported accessType=%d\n", accessType);
             break;
     }
+    doAppendCycle(i, accessType, Tag, -1, NULL);
+
     return SCPE_OK;
 }
 
@@ -1238,13 +1210,10 @@ t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acct
 APPEND_MODE:;
 #endif
                 doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
-                //word24 fa = doFinalAddressCalculation(acctyp, TPR.TSR, TPR.CA, &acvf);
-                //if (fa)
-                //    core_write(fa, dat);
-                
                 break;
             case ABSOLUTE_MODE:
-#if OLD_WAY
+
+//#if OLD_WAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
                 if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
                     doAppendCycle(i, acctyp, Tag, dat, NULL);
@@ -1257,8 +1226,8 @@ APPEND_MODE:;
                 //   processorAddressingMode = APPEND_MODE;
                 //    goto APPEND_MODE;   // ???
                 //}
-#endif
-                doAbsoluteWrite(i, addr, dat, acctyp, Tag);
+//#endif
+                // doAppendCycle(i, acctyp, Tag, dat, NULL);
                 break;
             case BAR_MODE:
                 // XXX probably not right.
@@ -1744,6 +1713,9 @@ void set_addr_mode(addr_modes_t mode)
         SETF(rIR, I_NBAR);
         
         PPR.P = 1;
+        
+        setDegerate();
+        
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
         if (! IR.abs_mode && IR.not_bar_mode)

@@ -557,7 +557,7 @@ enum eMemoryAccessType {
     Unknown          = 0,
     InstructionFetch,
     IndirectRead,
-    
+    IndirectWrite,
     DataRead,
     DataWrite,
     OperandRead,
