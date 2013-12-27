@@ -816,6 +816,8 @@ void doSegref(list *);
 void doLink(char *, tuple *);
 void doInhibit(char *);
 
+void doEntryPoint(expr *);                      // for the ENTRYPOINT pseudo-op
+
 void emitSegdefs();
 void emitSegrefs();
 void writeSegrefs();

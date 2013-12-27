@@ -3147,42 +3147,49 @@ void doInhibit(char *o)
  * this non-standard pop tells the loader the entry point for this assembly
  *
  * usage:
- *      go entry   " tells the loader to set this assembly's "go" address to entry
+ *      entrypoint entry   " tells the loader to set this assembly's "go" address to entry
  *
  */
 
 //char *doGo_AddrString = NULL;
-//
+expr *entryPoint = NULL;
+
 //void emitGo(FILE *oct)
 //{
 //    /// emit go directive (if any)
-//    if (doGo_AddrString)
+//    if (entryPoint)
 //    {
-//        if (debug) fprintf(stderr, "!GO %06o\n", (word18)Eval(doGo_AddrString) & 0777777);
+//        if (debug) fprintf(stderr, "!GO %06o\n", (word18)(entryPoint->value & 0777777));
 //       
-//        
-//        doGo_AddrString = NULL;
+//        entryPoint = NULL;
 //    }
 //}
 
-//void doGo(FILE *oct, int nPass, word18 *addr, char *inLine, char *label, char *op, char *arg0, char *args[32])
-//{
-//   
-//    switch (nPass)
-//    {
-//        case 1:
-//            doGo_AddrString = strdup(arg1);
-//            break;
-//        case 2:
-//            if (doGo_AddrString)
-//            {
-//                fprintf(stderr, "Warning: only one (1) \"go\" directive allowed per assembly. Ignoring\n");
-//                return;
-//            }
-//            break;
-//    }
-//
-//}
+void doEntryPoint(expr *entry)
+{
+   
+    switch (nPass)
+    {
+        case 1:
+            break;
+        case 2:
+            if (entryPoint)
+            {
+                yyerror("Warning: only one (1) \"entrypoint\" directive allowed per assembly. Ignoring\n");
+                return;
+            }
+            entryPoint = entry;
+            if (strcmp(entry->lc, ".text."))
+            {
+                yyprintf("only .text. \"entrypoint\" allowed (%s). Ignoring", entry->lc);
+                return;
+            }
+            outas8Direct("entrypoint", (word18)(entryPoint->value & 0777777));
+            
+            break;
+    }
+
+}
 
 int getmod(const char *arg_in);
 
@@ -3239,7 +3246,7 @@ pseudoOp pseudoOps[] =
     {"ac4",         epStringArgs,   NULL,    STROP },
     {"equ",         epDEC,          NULL,      EQU },
     {"bool",        epOCT,          NULL,     BOOL },
-//    {"include",     0, doInclude },
+//    {"include",     0, doInclude }, // handled in scanner
     {"its",         0,              NULL,      ITS },
     {"itp",         0,              NULL,      ITP },
     {"null",        0,              NULL,   NULLOP },
@@ -3331,6 +3338,8 @@ pseudoOp pseudoOps[] =
     {"link",        0, NULL,    LINK},
     {"inhibit",     0, NULL,    INHIBIT},
     
+    {"entrypoint",  epUnknown,      NULL,   ENTRYPOINT  },
+
     { 0, 0, 0 } ///< end marker do not remove
 };
 

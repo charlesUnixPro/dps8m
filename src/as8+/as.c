@@ -72,7 +72,7 @@ int asMain(int argc, char **argv)
     initliteralPool();
 
     // pass 1 - just build symbol table - more. or less
-    pass(1, src, NULL);
+    pass(1, src, oct);
     
     if (yyErrorCount)
     {
@@ -88,7 +88,7 @@ int asMain(int argc, char **argv)
     // pass 2 - do code generation
     //dumpEntrySequences();
     
-    pass(2, src, NULL);
+    pass(2, src, oct);
     
     //dumpEntrySequences();
     
