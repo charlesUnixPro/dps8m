@@ -1900,6 +1900,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("LPRPn set high bits only: %01o(8)\n", switches . lprp_highonly);
     sim_printf("Steady clock:             %01o(8)\n", switches . steady_clock);
     sim_printf("Degenerate mode:          %01o(8)\n", switches . degenerate_mode);
+    sim_printf("Append after:             %01o(8)\n", switches . append_after);
 
     return SCPE_OK;
 }
@@ -1960,6 +1961,7 @@ static config_list_t cpu_config_list [] =
     /* 12 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
     /* 13 */ { "steady_clock", 0, 1, cfg_on_off },
     /* 14 */ { "degenerate_mode", 0, 1, cfg_on_off },
+    /* 15 */ { "append_after", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2048,6 +2050,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 14: // DEGENERATE_MODE
               switches . degenerate_mode = v;
+              break;
+
+            case 15: // APPEND_AFTER
+              switches . append_after = v;
               break;
 
             default:

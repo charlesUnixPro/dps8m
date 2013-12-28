@@ -15,6 +15,7 @@ set cpu config=auto_append_disable=enable
 set cpu config=lprp_highonly=enable
 set cpu config=steady_clock=enable
 set cpu config=degenerate_mode=enable
+set cpu config=append_after=enable
 
 ;set CPU DEBUG=ALL
 ;set CPU DEBUG=TRACE;REGDUMPAQI
