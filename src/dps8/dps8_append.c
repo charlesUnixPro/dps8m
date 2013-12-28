@@ -189,8 +189,8 @@ void do_cams (word36 Y)
 static _ptw0* fetchDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
-        // XXX: generate access violation, out of segment bounds fault
-        ;
+        // generate access violation, out of segment bounds fault
+        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
         
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -212,8 +212,8 @@ static _ptw0* fetchDSPTW(word15 segno)
 static _ptw0* modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
-        // XXX: generate access violation, out of segment bounds fault
-        ;
+        // generate access violation, out of segment bounds fault
+        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
     
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -331,8 +331,8 @@ static _sdw0 *fetchNSDW(word15 segno)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
         }
-        // XXX: generate access violation, out of segment bounds fault
-        ;
+        // generate access violation, out of segment bounds fault
+        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
     }
     if (apndTrace)
     {
@@ -613,9 +613,6 @@ static char *strAccessType(MemoryAccessType accessType)
         case OperandWrite:      return "OperandWrite";
         case Call6Operand:      return "Call6Operand";
         case RTCDOperand:       return "RTCDOperand";
-#ifdef BUT29
-        case PrepareCA:         return "PrepareCA";
-#endif
         default:                return "???";
     }
 }
@@ -935,15 +932,16 @@ doAppendDataRead(DCDstruct *i, word36 *readData, bool bNotOperand)
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
     }
     
+// XXX CAC isn't GET_A(i->IWB) the same as i->a?
     if ((GET_A(i->IWB) && i->iwb->ndes == 0)  || didITSITP || bNotOperand)    // indirect or ITS/ITP just setup
     {
         if (apndTrace && didITSITP)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
         }
-        if (apndTrace && bNotOperand)
+        if (apndTrace && GET_A(i->IWB))
         {
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
         }
         if (apndTrace)
         {
@@ -1155,7 +1153,7 @@ doAppendDataWrite(DCDstruct *i, word36 writeData, bool bNotOperand)
         {
             if (didITSITP)
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
-            else if (bNotOperand)
+            else if (GET_A(i->IWB))
             {
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
             }
@@ -1751,12 +1749,6 @@ word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word3
         case IndirectRead:
             fa = doAppendIndirectRead(i, readData, Tag);
             break;
-#ifdef BIT29
-        case PrepareCA:
-            // This may be the same as or very similar doAppendInstructionFetch
-            fa = doAppendPrepareCA(i, Tag);
-            break;
-#endif
         default:
             fprintf(stderr,  "doAppendCycle(Entry): unsupported accessType=%s\n", strAccessType(accessType));
             return 0;
