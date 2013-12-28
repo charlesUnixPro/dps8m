@@ -5627,6 +5627,14 @@ emCall(DCDstruct *i)
             sim_printf("%12.8Lg", eaq);
             break;
         }
+        case 7:   ///< dump index registers
+        {
+            //sim_printf("Index registers * * *\n");
+            for(int i = 0 ; i < 8 ; i += 4)
+                sim_printf("r[%d]=%06o r[%d]=%06o r[%d]=%06o r[%d]=%06o\n", i+0, rX[i+0], i+1, rX[i+1], i+2, rX[i+2], i+3, rX[i+3]);
+            
+        }
+            
             
     }
 }
