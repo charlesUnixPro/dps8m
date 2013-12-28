@@ -1,86 +1,16 @@
+"
+" Test of address modifications to be run from TestIndirect .....
+"
+"
+    option  Multics
 
-    option  Multics     " Multics style calling conventions
-
-    entrypoint main
+    name    TAM     " This is the TAM_main segment
     
-	name	main
-	segdef	main
+    entry  TAM_main    " and we want to emtry TAM tests via TAM_main
 
-	segref	UtilsA, ioa,rd_clockA
-	segref	lot_,lot_
-    segref  stack_0, stack_0
-
-    segref  TAM, TAM_main
-
-    "segref  indirect_tests
-
-    link    I, <UtilsA>|[ioa]
-    link    D, <UtilsA>|[rd_clockA]
-
-
-main:
-    tsx2    setupFXE
-
-
-    LDA     I
-    tsp2	pr4|I, *        " ioa
-    acc     /Howdy world this is 'TestIndirect'! - It's /
-
-    "tsp2    rd_clockA
-    "tsp2    <UtilsA>|[rd_clockA]
-    tsp2    lp|D,*
-    "tsp2    UtilsA$rd_clockA
-
-    staq	Date        " MM/DD HH:MM
-        
-    tsp2	ioa
-    acc     /'^g^g'\r\n/
-    nop     Date
-    nop     Date+1
-
-   " sprpap      g
-   " sprp4       f
-   " short_call  TAM_main
-   " lprp4       f
-   " lprpap      g
-
-    call    TAM_main(ap|0)
-
-	dis
-    
-
-	even
-
-g:  bss 1
-f:  bss 1
-
-Date:	bss     2
-
-    INCLUDE     setupFXE.as8
-
-	end
-
-
-
-"
-" Test of address modifications for new CA stuff ...
-"
-"
-
-    tsx2	rd_clock
-    staq	Date        "MM/DD HH:MM
-
-    call    ioa(msgHello, Date, Date+1)
-    tra     _main
-
-msgHello:   acc         "This is TestIndirect ...^g^g\r\n"
-msgResult:  acc         /Result: ^n\r\n/
-msgResult2: acc         /Result: ^n ^n\r\n/
-msgResulta: acc         /Result: '^a'\r\n/
-msgResultg: acc         /Result: '^g'\r\n/
+    segref	UtilsA, ioa 
 
         even
-Date:   bss     2
 L1:     bss     1
 L2:     bss     1
 
@@ -89,7 +19,14 @@ LAQ:
 LA:     bss     1
 LQ:     bss     1
 
-_main:
+save2:      bss     ,2
+save2p:     bss     ,2
+save3p:     bss     ,2
+
+        eight
+rsave:  bss ,8
+
+TAM_main:
 
     eax0    _a
     eax1    u
@@ -104,72 +41,108 @@ _main:
 "
 " R mods ...
 "
+msgResult:  acc /Result: /
 
-msgRmods:   acc /R mods ...\r\n/
+d9a:    desc9a  IBS,IBSsz
+IBS:    aci     /If this works, I'll be surprised.../
+        equ     IBSsz, 35
+
 
 R_mods:
-    call    ioa(msgRmods)
+    push
+
+    tsp2	ioa
+    acc     /R mods ...\r\n/
+
+    tsp2    ioa
+    acc     /'^S'\r\n/
+    nop     d9a
 
     lda     u
     sta     L1
-    call    ioa(msgResult, L1)  " 006000 0100 03
-
+    tsp2    ioa
+    acc     /Should be ... 006000 0100 03 is ^n\r\n/
+    nop     L1
 
     ldq     0,x1
     stq     L1
-    call    ioa(msgResult, L1)  " 006000 0100 03
+    tsp2    ioa
+    acc     /Should be ... 006000 0100 03 is ^n\r\n/
+    nop     L1
 
     lda     2,x4
     sta     L1
-    call    ioa(msgResult, L1)  " 400000000003
+    tsp2    ioa
+    acc     /Should be ... 400000000003 is ^n\r\n/
+    nop     L1
 
     ldq     y+10
     stq     L1
-    call    ioa(msgResult, L1)  " 000000000012
+    tsp2    ioa
+    acc     /Should be ... 000000000012 is ^n\r\n/
+    nop     L1
 
 
     lda     t                   " 000005 000004 => a
     sta     L1
     sta     L2
-    call    ioa(msgResult, L1)  " 000005000004
+    tsp2    ioa
+    acc     /Should be ... 000005 000004 is ^w\r\n/
+    nop     L1
 
     lda     L2      " restore A
     ldq     y, au   " 5 => q
     stq     L1
-    call    ioa(msgResult, L1)  " 5
+    tsp2    ioa
+    acc     /Should be ... 5 is ^n\r\n/
+    nop     L1
+
 
     lda     L2
     ldq     z, al   " 017 => q
     stq     L1
-    call    ioa(msgResult, L1)  " 17
+    tsp2    ioa
+    acc     /Should be ... 17 is ^n\r\n/
+    nop     L1
+
 
     ldq     t+1         
     stq     L1
-    call    ioa(msgResult, L1)  " 000006777776   6, -2
+    tsp2    ioa
+    acc     /Should be ... 000006777776 (6,-2) is ^w\r\n/
+    nop     L1
 
     ldq     L1
     lda     x,qu    " 3 => a
     staq    LAQ
 
     sta     L1
-    call    ioa(msgResult, L1)  " 3
+    tsp2    ioa
+    acc     /Should be ... 3 is ^n\r\n/
+    nop     L1
 
     ldaq    LAQ
     lda     y,ql    " y(-2) => a " 700
 
     sta     L1
-    call    ioa(msgResult, L1)  "   700
+    tsp2    ioa
+    acc     /Should be ... 700 is ^n\r\n/
+    nop     L1
 
 _a: lda     0,ic   " 000000235004
     sta     L1
-    call    ioa(msgResult, L1)  "   700
+    tsp2    ioa
+    acc     /Should be ... 000000235004 is ^w\r\n/
+    nop     L1
 
     ldq  0123456,du   "0123456 => q -- none; operand has the form y || (00...0)18
     lda  0543210,dl   "0543210 => a --  none; operand has the form (00...0)18 || y
    
     staq    LAQ
-    call    ioa(msgResult, LQ)  " 123456000000
-    call    ioa(msgResult, LA)  " 000000543210
+    tsp2    ioa
+    acc     "Should be ... 123456000000/000000543210 is ^n/^n\r\n"
+    nop     LQ
+    nop     LA
 
     tra     RI_mods
    
@@ -177,31 +150,38 @@ _a: lda     0,ic   " 000000235004
 "
 " RI mods ...
 "
-msgRI:      acc     /RI mods ...\r\n/
-
 
 RI_mods:
-    call    ioa(msgRI)
+    tsp2	ioa
+    acc     /RI mods ...\r\n/
+
 
     lda     q,n*         " -2 => a
-    ldq     q+1,*        " 042 => a
+    ldq     q+1,*        " 042 => q
     staq    LAQ
-    call    ioa(msgResult, LQ)  " 123456000000
-    call    ioa(msgResult, LA)  " 000000543210
+
+    tsp2    ioa
+    acc     "Should be ... 42/400000000002 is ^n/^n\r\n"
+    nop     LQ
+    nop     LA
 
 
     lda     2, dl       " 2 => AL
     ldx1    2, du        " 2 => x1
     ldq     q, 1*       " C(q+x1 + C(A)0,17) => 616 => q
     stq     L1
-    call    ioa(msgResult, L1)  " 616
+    tsp2    ioa
+    acc     "Should be ... 616 is ^n\r\n"
+    nop     L1
 
-    
+
     lda     11, du      " 11 => AU
     ldx2    3, du        " 3 => x2
     ldq     q, 2*       " C(q+x2 + C(A)0,17) => 77 => q
     stq     L1
-    call    ioa(msgResult, L1)  " 77
+    tsp2    ioa
+    acc     "Should be ... 77 is ^n\r\n"
+    nop     L1
 
 
     ldq     4, ic*      " 02102 => q
@@ -211,58 +191,77 @@ RI_mods:
 
 here:
     stq     L1
-    call    ioa(msgResult, L1)  " 2012
+    tsp2    ioa
+    acc     "Should be ... 2012 is ^n\r\n"
+    nop     L1
+
 
     ldx0    2, du       " 2 => x0
     ldx1    2, du       " 2 => x1
     ldq     l, 0*       " l + 2 => du(m) => q
 
     stq     L1
-    call    ioa(msgResult, L1)  " since l+2 & m move we'll see what this works out to
+    tsp2    ioa
+    acc     "Should be ... ??? (since l+2 & m move) is ^n\r\n" 
+    nop     L1
+
 
     eaa     1
     eax1    2
     ldq     k, au*      " x+2 => q (-3)
 
     stq     L1
-    call    ioa(msgResult, L1)  " 400000000003
+    tsp2    ioa
+    acc     "Should be ... 400000000003 is ^n\r\n"  " o-3
+    nop     L1
+
 
     eaq     3
     lda     p,*         " y + 3 => 3
 
     sta     L1
-    call    ioa(msgResult, L1)  " 3
+    tsp2    ioa
+    acc     /Should be ... 3 is ^n\r\n/
+    nop     L1
 
     eax3    3
     eax5    5
     ldq     h,*     " x + 9 => 42
  
     stq     L1
-    call    ioa(msgResult, L1)  " 42
+    tsp2    ioa
+    acc     "Should be ... 42 is ^n\r\n"  " o-3
+    nop     L1
 
     tra     IR_mods
 
 "
 " IR mods ....
 "
-msgIR:  acc /IR_mods\r\n/
-
 IR_mods:
-    call    ioa(msgIR)
+    tsp2	ioa
+    acc     /IR mods ...\r\n/
 
     lda     g, *n   " -1 => a
     sta     L1
-    call    ioa(msgResult, L1)  " 400000000001
+    tsp2    ioa
+    acc     "Should be ... 400000000001 is ^n\r\n"  " o-1
+    nop     L1
 
     ldq    f, *dl   " &x => q
     stq     L1
-    call    ioa(msgResult, L1)  " Yup, but this will move as x moves
+    tsp2    ioa
+    acc     "Should be ... ??? (this will move as x moves) is ^w\r\n"  "
+    nop     L1
 
     eax4    13
     lda     c,  *1  " x+13 => -255 (400000000255) => a
     neg             " a = (377777777523)
+
     sta     L1
-    call    ioa(msgResult, L1)  "
+    tsp2    ioa
+    acc     "Should be ... 377777777523 is ^n\r\n"  "
+    nop     L1
 
 
     eax1    4
@@ -271,6 +270,7 @@ a:  lxl0    b,1*    " a + 5 => x0
 b:  oct     111,222,333,444
     arg     bb, *ic
 bb: arg     5, dl
+
 here_2:
 
 " DH02-01 Ex 1 pg 5-12
@@ -278,7 +278,11 @@ here_2:
     lda     ir0, *QL    " C(b+1) (222) => a
 
     sta     L1
-    call    ioa(msgResult, L1)  " 000000000222
+    tsp2    ioa
+    acc     "Should be ... 000000000222 is ^n\r\n"  "
+    nop     L1
+
+    "call    ioa(msgResult, L1)  " 000000000222
 
 " DH02-01 Ex 2 pg 5-12
     eax3    2
@@ -286,7 +290,11 @@ here_2:
     lda     ir1, *3     " C(b+2) (333) => a
 
     sta     L1
-    call    ioa(msgResult, L1)  " 000000000333
+    tsp2    ioa
+    acc     "Should be ... 000000000333 is ^n\r\n"  "
+    nop     L1
+
+    "call    ioa(msgResult, L1)  " 000000000333
 
 " DH02-01 Ex 3 pg 5-12
     eax3    4
@@ -295,7 +303,7 @@ here_2:
     eax7    7
     lda     ir2, *3     " C(x+9) (42) => a
     sta     L1
-    call    ioa(msgResult, L1)  " 000000000042
+    "call    ioa(msgResult, L1)  " 000000000042
 
 
 " DH02-01 Ex 4 pg 5-12
@@ -303,40 +311,40 @@ here_2:
     ldq     9, dl
     lda     ir3, *dl    " C(A) = &w
     sta     L1
-    call    ioa(msgResult, L1)  " Yup, &w. But, &w will change
+    "call    ioa(msgResult, L1)  " Yup, &w. But, &w will change
 
 
 " DH02-01 Ex 5 pg 5-12
     lda     10, dl
     lda     ir5, *al    " C(x + 10) (616) => a
     sta     L1
-    call    ioa(msgResult, L1)  " 000000000616
+    "call    ioa(msgResult, L1)  " 000000000616
 
 " DH02-01 Ex 6 pg 5-12
     eax3    11
     ldq     ir6, *n     " C(z) (13(8)) => q
     stq     L1
-    call    ioa(msgResult, L1)  " 000000000013
+    "call    ioa(msgResult, L1)  " 000000000013
 
 
 " DH02-01 Ex 7 pg 5-12
     eax5    12
     lda     ir7, *n     " C(x + 12) (02012) => a
     sta     L1
-    call    ioa(msgResult, L1)  " 000000002012
+    "call    ioa(msgResult, L1)  " 000000002012
 
 " DH02-01 Ex 8 pg 5-12
     eax5    13
     lda     ir8, *      " C(x + 13) (-255 oct) => a
     neg                 " -a => a
     sta     L1
-    call    ioa(msgResult, L1)  " 377777777523
+    "call    ioa(msgResult, L1)  " 377777777523
 
 " DH02-01 Ex 9 pg 5-12
     eax1    14
     ldq     ir9, *      " C(ir9c + 14) (7777777) => q
     stq     L1
-    call    ioa(msgResult, L1)  " 000007777777
+    "call    ioa(msgResult, L1)  " 000007777777
 
     tra IT_mods
 
@@ -346,7 +354,7 @@ here_2:
 msgIT:  acc /IT mods ...\r\n/
 
 IT_mods:
-        call    ioa(msgIT)
+        "call    ioa(msgIT)
 
 " AL39 - Subtract delta (Td = 4) Example
         "Reference Computed Tally value 
@@ -361,7 +369,7 @@ IT_1:   ldq it1
         lda it1,sd
         
         sta L1
-        call    ioa(msgResult, L1)  " 000000000046 .. 000000000034
+        "call    ioa(msgResult, L1)  " 000000000046 .. 000000000034
 
         ttf IT_1
         
@@ -386,7 +394,7 @@ IT_2:   ldq it2
         lda it2,ad
         
         sta L1
-        call    ioa(msgResult, L1)  " 000000000013 .. 000000000025
+        "call    ioa(msgResult, L1)  " 000000000013 .. 000000000025
 
         ttf IT_2
 
@@ -400,7 +408,7 @@ it2:    tallyd  it1a+11, 6, 2   "address, count, delta
 IT_3:   lda it3,sc
 
         sta L1
-        call    ioa(msgResulta, L1)  " 'This '
+        "call    ioa(msgResulta, L1)  " 'This '
 
         ttf IT_3
 
@@ -414,7 +422,7 @@ it3c:
 IT_4:   lda it4,scr
 
         sta L1
-        call    ioa(msgResulta, L1)  "gfedc
+        "call    ioa(msgResulta, L1)  "gfedc
 
         ttf IT_4
         
@@ -437,19 +445,19 @@ it5e:   vfd 18/it5c+2,12/0,1/0,5/0
 IT_5:   lda it5,ci  " 163 => a
 
         sta L1
-        call    ioa(msgResulta, L1) " s
+        "call    ioa(msgResulta, L1) " s
 
 it5a:   lda it5b,ci
         sta L1
-        call    ioa(msgResultg, L1) " '00000I'
+        "call    ioa(msgResultg, L1) " '00000I'
 
         lda it5d,ci
         sta L1
-        call    ioa(msgResultg, L1) " '00000B'
+        "call    ioa(msgResultg, L1) " '00000B'
 
         lda it5e,ci
         sta L1
-        call    ioa(msgResultg, L1) " '00000M'
+        "call    ioa(msgResultg, L1) " '00000M'
 
         tra IT_6
 
@@ -458,7 +466,7 @@ it6:    arg x+9
 IT_6:   lda it6,i   " 042 => a
 
         sta L1
-        call    ioa(msgResult, L1) " 000000000042
+        "call    ioa(msgResult, L1) " 000000000042
 
         tra IT_7
 
@@ -467,7 +475,7 @@ IT_6:   lda it6,i   " 042 => a
 IT_7:   ldq it7, di
 
         stq L1
-        call    ioa(msgResult, L1) " 616,42,5,4,3,2,1
+        "call    ioa(msgResult, L1) " 616,42,5,4,3,2,1
 
         ttf IT_7
 
@@ -478,7 +486,7 @@ it7:    tallyd  x+11, -7
 IT_8:   lda it8, id
 
         sta L1
-        call    ioa(msgResult, L1) " 100, 200, ..., 700, 7777
+        "call    ioa(msgResult, L1) " 100, 200, ..., 700, 7777
 
         ttf IT_8
 
@@ -489,7 +497,7 @@ it8:    tallyd  x+15, 8
 IT_9:   lda     it9, idc
 
         sta L1
-        call    ioa(msgResult, L1) " o-1, o-2, o-3, 0, 1, 2, 3
+        "call    ioa(msgResult, L1) " o-1, o-2, o-3, 0, 1, 2, 3
 
         ttf     IT_9
 
@@ -506,7 +514,7 @@ it9b:   arg     x + 0       " 1st ea
 IT_9B:  lda     it9c, idc
 
         sta L1
-        call    ioa(msgResult, L1) " 100 .. 700
+        "call    ioa(msgResult, L1) " 100 .. 700
 
         ttf     IT_9B
 
@@ -525,7 +533,7 @@ it9d:   arg     x + 15       " 1st ea
 IT_10:  lda     it10, dic   " x, y, z ...
 
         sta L1
-        call    ioa(msgResult, L1) " -1, 0, o13
+        "call    ioa(msgResult, L1) " -1, 0, o13
 
         ttf     IT_10
 
@@ -540,7 +548,7 @@ it10b:  null
 IT_11:  ldq     it11, dic       " aa1, aa2, c, aa4
 
         stq L1
-        call    ioa(msgResult, L1) " 012, 345, o-255, 670
+        "call    ioa(msgResult, L1) " 012, 345, o-255, 670
 
         ttf     IT_11
         
@@ -561,8 +569,10 @@ aa2:    oct     345
 aa4:    oct     670
 
 IT_12:
-" exit simulator
-    dis
+
+        " return to caller
+        return
+
 
 
 
@@ -642,8 +652,4 @@ x:      oct -1,-2,-3,0,1,2,3,4,5,42,616,77, 02012, -255, 123, 100,200,300,400,50
 y:      dec 0,1,2,3,4,5,6,7,8,9,10
 z:      dec 11,12,13,14,15,16,17,18,19,20
     
-    
-        include     rdclock.as8
-        include     Utils.as8
-
 
