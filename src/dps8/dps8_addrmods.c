@@ -495,8 +495,9 @@ IT_MOD:;
                 
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);            }
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
                 }
+            }
             
             return;
             
@@ -597,6 +598,11 @@ IT_MOD:;
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
                 }
             }
+            else if (operType == prepareCA)
+            {
+              // prepareCA shouln't muck about with the tallys
+              return;
+            }
 
             // For each reference to the indirect word, the character counter, cf, is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, overflows to 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF.
             
@@ -689,12 +695,16 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
-            Write(i, tmp18, indword, DataWrite, idwtag);
-
-            if (adrTrace)
+            if (operType != prepareCA)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
+                // Only update the tally and address if not prepareCA
+                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
+                Write(i, tmp18, indword, DataWrite, idwtag);
+
+                if (adrTrace)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
+                }
             }
             
             TPR.CA = Yi;
@@ -842,6 +852,12 @@ IT_MOD:;
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
                 }
             }
+            else if (operType == prepareCA)
+            {
+              // prepareCA shouln't muck about with the tallys
+              return;
+            }
+
             
             Yi += delta;
             Yi &= MASK18;
@@ -888,14 +904,19 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
 
-            // write back out indword
-            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-            Write(i, tmp18, indword, DataWrite, 0);
-            
-            if (adrTrace)
+            if (operType != prepareCA)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
+                // Only update the tally and address if not prepareCA
+                // write back out indword
+                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+                Write(i, tmp18, indword, DataWrite, 0);
+            
+                if (adrTrace)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
+                }
             }
+
             // read data
             if (operType == readCY)
             {
@@ -953,16 +974,20 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
           
-            // write back out indword
+            if (operType != prepareCA)
+              {
+                // Only update the tally and address if not prepareCA
+                // write back out indword
 
-            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
 
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
-            }
+                if (adrTrace)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                }
             
-            Write(i, tmp18, indword, DataWrite, 0);
+                Write(i, tmp18, indword, DataWrite, 0);
+            }
             
             // read data
             if (operType == readCY)
@@ -1049,6 +1074,11 @@ IT_MOD:;
                 processorCycle = APU_DATA_MOVEMENT; // ???
                 Write(i, TPR.CA, CY, DataWrite, TM_IT);
             }
+            else if (operType == prepareCA)
+            {
+              // prepareCA shouln't muck about with the tallys
+              return;
+            }
 
             
             Yi += 1;
@@ -1103,15 +1133,19 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            // write back out indword
-            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
-            
-            if (adrTrace)
+            if (operType != prepareCA)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
-            }
+                // Only update the tally and address if not prepareCA
+                // write back out indword
+                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
-            Write(i, tmp18, indword, DataWrite, 0);
+                if (adrTrace)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                }
+
+                Write(i, tmp18, indword, DataWrite, 0);
+            }
             
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             
@@ -1179,16 +1213,19 @@ IT_MOD:;
             tally &= 07777; // keep to 12-bits
             SCF(tally == 0, rIR, I_TALLY);
             
-            // write back out indword
-            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
-            
-            if (adrTrace)
+            if (operType != prepareCA)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                // Only update the tally and address if not prepareCA
+                // write back out indword
+                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
+            
+                if (adrTrace)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                }
+            
+                Write(i, tmp18, indword, DataWrite, TM_IT);
             }
-            
-            Write(i, tmp18, indword, DataWrite, TM_IT);
-            
             
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             // But for the dps88 you can use everything but ir/ri.
