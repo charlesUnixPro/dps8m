@@ -75,6 +75,8 @@ static void dumpstr (char * tag, char * str, size_t len)
 int main (int argc, char * argv [])
   {
 
+    int unique = 0; // incremented during each macro expansion
+
 // Loop over lines, either 'defining' a macro (adding lines to the body)
 // or 'scanning', looking for macro definitions or references
 
@@ -184,6 +186,8 @@ rescan:
 
                     if (where)
                       {
+                        unique ++;
+
                         // Convert pointer to index
                         int where_idx = where - expbuf;
 
@@ -241,15 +245,20 @@ rescan:
                               {
                                 char arg_digit = body [arg_idx + 1];
                                 bool isq = false;
+                                bool isu = false;
+                                int arg_num = 0;
                                 if (arg_digit == '?')
                                   {
                                     isq = true;
                                     arg_digit = body [arg_idx + 2];
+                                    arg_num = arg_digit - '1';
                                   }
-                                if (arg_digit < '1' || arg_digit > '9')
+                                else if (arg_digit >= 'a' && arg_digit <= 'z')
+                                  isu = true;
+                                else if (arg_digit >= '1' || arg_digit <= '9')
+                                  arg_num = arg_digit - '1';
+                                else
                                   die ("invalid argument number");
-
-                                int arg_num = arg_digit - '1';
 
                                 int arg_len = 2;
                                 char * close = NULL;
@@ -261,7 +270,17 @@ rescan:
                                     arg_len = close - (body + arg_idx) + 1;
                                   }
 
-                                if (isq && (arg_num >= mp -> n_args ||
+                                if (isu)
+                                  {
+                                    char uarg [32];
+                                    sprintf (uarg, "uniq_%06d%c", unique, arg_digit);
+                                    erase (body + arg_idx, arg_len);
+                                    // make room for the arg value
+                                    expand (& body, arg_idx, uarg);
+                                    // paste the arg value
+                                    memmove (body + arg_idx, uarg, strlen (uarg));
+                                  }
+                                else if (isq && (arg_num >= mp -> n_args ||
                                     strlen (mp -> args [arg_num]) == 0))
                                   { // use default
                                     // find the closing '?'
