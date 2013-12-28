@@ -2113,6 +2113,7 @@ typedef struct {
     uint auto_append_disable; // If non-zero, bit29 does not force APPEND_mode
     uint lprp_highonly; // If non-zero lprp only sets the high bits
     uint steady_clock; // If non-zero the clock is tied to the cycle counter
+    uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
 } switches_t;
 
 

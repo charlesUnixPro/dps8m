@@ -301,18 +301,6 @@ bool _illmod[] = {
 
 //=============================================================================
 
-static void setDegerate()
-{
-    TPR.TRR = 0;
-    TPR.TSR = 0;
-    TPR.TBR = 0;
-    
-    PPR.PRR = 0;
-    PPR.PSR = 0;
-    
-    PPR.P = 1;
-}
-
 t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = ci->IWB;          ///< instruction working buffer

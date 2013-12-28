@@ -238,6 +238,32 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     }
     
+    if (switches . degenerate_mode && (get_addr_mode () == ABSOLUTE_mode))
+      {
+        sim_debug (DBG_APPENDING, & cpu_dev, "fetchSDWfromSDWAM: degenerate case\n");
+        static _sdw degenerate_SDW =
+          {
+            0, // ADDR;
+            0, // R1;
+            0, // R2;
+            0, // R3;
+            037777, // BOUND;
+            1, // R
+            1, // E
+            1, // W
+            1, // P
+            1, // U
+            1, // G
+            1, // C,
+            037777, // CL
+            0, // POINTER
+            1, // F
+            0, // USE
+          };
+        SDW = & degenerate_SDW;
+        return SDW;
+      }
+
     for(int _n = 0 ; _n < 64 ; _n++)
     {
         // make certain we initialize SDWAM prior to use!!!

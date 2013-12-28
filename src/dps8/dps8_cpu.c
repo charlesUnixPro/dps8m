@@ -1057,7 +1057,7 @@ jmpNext:;
 }
 
 
-static void setDegerate()
+static void setDegenerate()
 {
     TPR.TRR = 0;
     TPR.TSR = 0;
@@ -1127,6 +1127,14 @@ APPEND_MODE:;
                 break;
             case ABSOLUTE_MODE:
                 
+                if (switches . degenerate_mode)
+                  {
+                    setDegenerate ();
+                    doAppendCycle(i, acctyp, Tag, -1, dat);
+                    if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
+                        goto APPEND_MODE;
+                    break;
+                  }
 //#if OLDWAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
                 // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
@@ -1213,6 +1221,15 @@ APPEND_MODE:;
                 break;
             case ABSOLUTE_MODE:
 
+                if (switches . degenerate_mode)
+                  {
+                    setDegenerate ();
+                    doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
+                    // XXX what kind of dataop can put a write operation into appending mode?
+                    //if (DOITSITP(dat, Tag))
+                    //    goto APPEND_MODE;
+                    break;
+                  }
 //#if OLD_WAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
                 if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
@@ -1714,7 +1731,8 @@ void set_addr_mode(addr_modes_t mode)
         
         PPR.P = 1;
         
-        setDegerate();
+        // if (switches . degenerate_mode)
+        setDegenerate();
         
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
@@ -1881,6 +1899,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("AutoAppend disable:       %01o(8)\n", switches . auto_append_disable);
     sim_printf("LPRPn set high bits only: %01o(8)\n", switches . lprp_highonly);
     sim_printf("Steady clock:             %01o(8)\n", switches . steady_clock);
+    sim_printf("Degenerate mode:          %01o(8)\n", switches . degenerate_mode);
 
     return SCPE_OK;
 }
@@ -1904,6 +1923,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           auto_append_disable = n // still need for 20184, not for t4d
 //           lprp_highonly = n // deprecated
 //           steadyclock = on|off
+//           degenerate_mode = n
 
 static config_value_list_t multics_fault_base [] =
   {
@@ -1939,6 +1959,7 @@ static config_list_t cpu_config_list [] =
     /* 11 */ { "auto_append_disable", 0, 1, cfg_on_off }, 
     /* 12 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
     /* 13 */ { "steady_clock", 0, 1, cfg_on_off },
+    /* 14 */ { "degenerate_mode", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2023,6 +2044,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 13: // STEADY_CLOCK
               switches . steady_clock = v;
+              break;
+
+            case 14: // DEGENERATE_MODE
+              switches . degenerate_mode = v;
               break;
 
             default:

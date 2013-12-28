@@ -14,6 +14,7 @@ set cpu config=dis_enable=enable
 set cpu config=auto_append_disable=enable
 set cpu config=lprp_highonly=enable
 set cpu config=steady_clock=enable
+set cpu config=degenerate_mode=enable
 
 ;set CPU DEBUG=ALL
 ;set CPU DEBUG=TRACE;REGDUMPAQI
@@ -37,4 +38,5 @@ set tape1 rewind
 
 ;set debug dps8.log
 attach -r TAPE1 t4d_b.2.tap
+echo Booting T4D_B.2
 boot iom1
