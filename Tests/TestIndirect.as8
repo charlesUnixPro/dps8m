@@ -1,3 +1,67 @@
+
+    option  Multics     " Multics style calling conventions
+
+    entrypoint main
+    
+	name	main
+	segdef	main
+
+	segref	UtilsA, ioa,rd_clockA
+	segref	lot_,lot_
+    segref  stack_0, stack_0
+
+    segref  TAM, TAM_main
+
+    "segref  indirect_tests
+
+    link    I, <UtilsA>|[ioa]
+    link    D, <UtilsA>|[rd_clockA]
+
+
+main:
+    tsx2    setupFXE
+
+
+    LDA     I
+    tsp2	pr4|I, *        " ioa
+    acc     /Howdy world this is 'TestIndirect'! - It's /
+
+    "tsp2    rd_clockA
+    "tsp2    <UtilsA>|[rd_clockA]
+    tsp2    lp|D,*
+    "tsp2    UtilsA$rd_clockA
+
+    staq	Date        " MM/DD HH:MM
+        
+    tsp2	ioa
+    acc     /'^g^g'\r\n/
+    nop     Date
+    nop     Date+1
+
+   " sprpap      g
+   " sprp4       f
+   " short_call  TAM_main
+   " lprp4       f
+   " lprpap      g
+
+    call    TAM_main(ap|0)
+
+	dis
+    
+
+	even
+
+g:  bss 1
+f:  bss 1
+
+Date:	bss     2
+
+    INCLUDE     setupFXE.as8
+
+	end
+
+
+
 "
 " Test of address modifications for new CA stuff ...
 "
@@ -581,4 +645,5 @@ z:      dec 11,12,13,14,15,16,17,18,19,20
     
         include     rdclock.as8
         include     Utils.as8
+
 

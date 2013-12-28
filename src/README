@@ -1,3 +1,18 @@
+Fri Dec 27 17:17:52 PST 2013
+All sorts of updates & corrections both to as8 & dps8. Consult Wiki for latest ruminations
+
+Beginning to start trying to run the Test & Diagnostics tape as well as the
+Multics 12.5 boot tape. These are currently used to test the simulator and
+neither run to completion or as intended - sadly. (Yet!)
+
+20184:       1,093,571 Cycles
+t4d_b.2:    31,184,718 Cycles
+UnitTests:              Pass
+
+t4d/faults: 30,791,956 Cycles
+
+
+
 Sat Nov  9 18:24:47 PST 2013
 Adding code to detect illegal address modifications
 

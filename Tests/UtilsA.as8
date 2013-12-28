@@ -212,7 +212,8 @@ saveX:  bss     ,8
 "   ^G   GEBCD (6-bit) descriptor
 "   ^4   decimal (4-bit) descroptor
 
-ioa:    spri2   save2       " save pr2 for return to caller
+ioa:    sreg    saveX
+        spri2   save2       " save pr2 for return to caller
         sprp2   save2p      " save a packed version of pr2
         sprp3   save3p      " save a packed version of pr3
         lprp3   save2p      " get PR2's segment number into PR3
@@ -389,6 +390,7 @@ ioamov:	als     18          "place in AU
         sta     ertally		"and save
         tze     ioanomov		"skip zero length move
 
+        eax5    0           " 0 => x5 (what was x5 used for?)
         mlr     (rl,ql),(rl,x5)	"copy the string
         desc9a	errtemp,au
         desc9a	erbuf,au
@@ -410,6 +412,7 @@ ioax6:	eax6	*           "restore X6
 ioax3:	eax3	*           "restore X3
         lprp3   save3p
         lprp2   save2p
+        lreg    saveX
         rtcd    save2       " and return
 
 ioakey: aci	"AGwondagS4"
@@ -610,6 +613,7 @@ errmov:	als     18          "place in AU
         sta     ertally		"and save
         tze     ernomov		"skip zero length move
 
+        eax5    0           " 0 => x5 (what was x5 used for?)
         mlr     (rl,ql),(rl,x5)	"copy the string
         desc9a	errtemp,au
         desc9a	erbuf,au
