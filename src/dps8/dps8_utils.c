@@ -104,12 +104,11 @@ char *disAssemble(word36 instruction)
     
         sprintf(buff, " pr%d|%o", n, offset);
         strcat (result, buff);
-        return strupr(result);
+        // return strupr(result);
+    } else {
+        sprintf(buff, " %06o", address);
+        strcat (result, buff);
     }
-    
-    sprintf(buff, " %06o", address);
-    strcat (result, buff);
-    
     // get mod
     strcpy(buff, "");
     for(int n = 0 ; n < 0100 ; n++)
