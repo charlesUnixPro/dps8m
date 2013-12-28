@@ -12,7 +12,7 @@
 word36 Ypair[2];        ///< 2-words
 static word36 Yblock8[8];      ///< 8-words
 static word36 Yblock16[16];    ///< 16-words
-static int testABSA (DCDstruct * i, word36 * result);
+static int doABSA (DCDstruct * i, word36 * result);
 
 static t_stat doInstruction(DCDstruct *i);
 
@@ -4207,7 +4207,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 #endif
           {
             word36 result;
-            int rc = testABSA (i, & result);
+            int rc = doABSA (i, & result);
             if (rc)
               return rc;
             rA = result;
@@ -5631,7 +5631,7 @@ emCall(DCDstruct *i)
     }
 }
 
-static int testABSA (DCDstruct * i, word36 * result)
+static int doABSA (DCDstruct * i, word36 * result)
   {
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
@@ -5639,99 +5639,72 @@ static int testABSA (DCDstruct * i, word36 * result)
         doFault (i, illproc_fault, 0, "ABSA in absolute mode.\n");
         return CONT_FAULT;
       }
-    // Too many fingers have poked at i->address
-    word18 addr = (i -> IWB >> 18) & 0777777;
 
-// test code
+    // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
+    // violation, out of segment bounds, fault.
 
-    // AL39, fig 6-7.
-    // Too many fingers in the pie i-> address is not what is wanted
-    word3 n = (addr /*i -> address */  >> 15) & 07;
-    word15 offset = addr /* i -> address */ & 077777;
-
-    word15 segno = PR [n] . SNR;
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
-
-    word36 sdwe, sdwo;
-    core_read (DSBR . ADDR + x1, & sdwe);
-    core_read (DSBR . ADDR + x1 + 1, & sdwo);
-
-    word14 BOUND = (sdwo >> (35 - 14)) & 037777;
-    word18 bound = ((word18) BOUND) << 4;
-    word24 seg_addr = (sdwe >> 12) & 077777777;
-
-    word36 res;
-    // BOUND: 14 high-order bits of the largest 18-bit modulo 16 offset that 
-    // may be accessed without causing a descriptor violation, out of segment 
-    // bounds, fault.
-
-    int av = 0;
-    word15 moffset = (((long) offset) & 0777760);
-    if (moffset >= bound)
+    if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
       {
-        //// Guessing they want the offending offset in 24:12 format, like SDWe
-        //res = ((word36) offset) << 12;
-        // Guessing they want the offending offset final address in 24:12 format, lide SDWe
-        res = ((word36) ((offset + seg_addr) & 077777777)) << 12;
-        //res = ((word36) ((offset + seg_addr) & 077777760)) << 12;
-        av = 1;
-      }
-    else
-      //res = (sdwe & 0777777700000)/* + (((word36) offset) << 12)*/; // Mod 16:
-      res = 0;
-    
-#if 1
-    // Code pattern is
-    //  absa pr0|00
-    //  sta xx
-    //  lda yy "contains the expected answer
-    //
-    // or
-    //  absa pr0|00
-    //  dis
-    // which would seem to want it to fault
-
-    // Fetch the *+1 instruction
-    word36 dis = M [PPR . IC + 1];
-    if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
-      {
-        //sim_printf ("Taking fault\n");
-        // AL39: Address Appending: A segment boundary check is made in 
-	// every cycle except PSDW. If a boundary violation is
-        // detected, an access violation, out of segment bounds, fault is 
-        // generated and the execution of the instruction interrupted.
         doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+        return CONT_FAULT;
       }
-    // Fetch the  LDA instruction
-    word36 lda = M [PPR . IC + 2];
-    //sim_printf ("lda %012llo\n",  lda);
-    // Extract the address
-    word18 ans_addr = GETHI (lda);
-    // Get the answer
-    word36 ans = M [ans_addr];
-    //sim_printf ("addr %06o\n", addr);
-#if 0
-    sim_printf ("ABSA@%06o n %o os %05o tag %02o SNR: %05o ADDR: %06o x1: %4d SDW: %012llo %012llo B: %06o SA: %09o %d A: %012llo R: %012llo\n",
-       rIC, n, offset, i -> tag, PR [n] . SNR, DSBR . ADDR, x1, M [0], M [1], bound, seg_addr, av, ans, res);
+
+    // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+
+    word36 SDWe, SDWo;
+    core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
+    core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
+
+    // 3. If SDW.F = 0, then generate directed fault n where n is given in
+    // SDW.FC. The value of n used here is the value assigned to define a
+    // missing segment fault or, simply, a segment fault.
+
+    // ABSA doesn't care if the page isn't resident
 
 
-    //word15 segno = PR [n] . SNR;
-    //word12 offset = i -> address & 07777;
-    //word12 ins_segno = offset / 1024;
-    //if (2 * ins_segno >= 16 * (DSBR.BND + 1))
-      //sim_printf ("Access violation\n");
+    // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
 
-    if (ans != res)
+    word14 BOUND = (SDWo >> (35 - 14)) & 037777;
+    if (TPR . CA >= 16 * (BOUND + 1))
       {
-         sim_printf ("Wrong! computed %012llo, wanted %012llo\n", res, ans);
-         res = ans;
+        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+        return CONT_FAULT;
+      }
+
+
+    // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
+
+    // ABSA doesn't care
+
+
+    // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+
+    word24 ADDR = (SDWe >> 12) & 077777760;
+    word36 res = (word36) ADDR + (word36) TPR.CA;
+    res &= 077777777; //24 bit math
+    res <<= 12; // 24:12 format
+
+#if 0
+      {
+        word36 dis = M [PPR . IC + 1];
+        if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
+          sim_printf ("we didn't fault\n");
+        else
+          {
+            // Fetch the  LDA instruction
+            word36 lda = M [PPR . IC + 2];
+            //sim_printf ("lda %012llo\n",  lda);
+            // Extract the address
+            word18 ans_addr = GETHI (lda);
+            // Get the answer
+            word36 ans = M [ans_addr];
+           sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
+             SDWe, SDWo, ADDR, ans >> 12, res >> 12);
+         }
       }
 #endif
-#endif
 
-    //* result = res;
-    * result = ans;
+    * result = res;
     return SCPE_OK;
   }
 
