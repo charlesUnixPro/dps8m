@@ -200,7 +200,7 @@ RI_MOD:;
     
         if (adrTrace)
         {
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Cr=%06o TPR.CA(Before)=%06o ", Cr, TPR.CA);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Cr=%06o TPR.CA(Before)=%06o\n", Cr, TPR.CA);
         }
         
         TPR.CA += Cr;
@@ -340,7 +340,7 @@ IR_MOD_2:;
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o ", Td, Cr, TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n", Td, Cr, TPR.CA);
             }
             
             TPR.CA += Cr;
@@ -379,17 +379,22 @@ IT_MOD:;
     switch (Td)
     {
         // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
-        //case SPEC_ITP:
-        //case SPEC_ITS:
-            //if (doITSITP(IWB, Td))
-            //    goto startCA;
+        case SPEC_ITP:
+        case SPEC_ITS:
+            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+
+            if (doITSITP(i, indword, rTAG))
+                goto startCA;
             
+            /// XXX need to put some tests in here...
             ///< XXX illegal procedure, illegal modifier, fault
-            //;
+            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+
+            break;
             
-        case 1:
+//        case 1:
         case 2:
-        case 3:
+//        case 3:
             ///< XXX illegal procedure, illegal modifier, fault
             
             if (adrTrace)
@@ -877,7 +882,7 @@ IT_MOD:;
             
             Yi -= delta;
             Yi &= MASK18;
-            TPR.CA = Yi;
+            //TPR.CA = Yi;
             
             tally += 1;
             tally &= 07777; // keep to 12-bits
@@ -895,7 +900,8 @@ IT_MOD:;
             if (operType == readCY)
             {
                 processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                Read(i, Yi, &CY, DataRead, TM_IT);
                 
                 if (adrTrace)
                 {
@@ -904,7 +910,8 @@ IT_MOD:;
             } else if (operType == writeCY)
             {
                 processorCycle = APU_DATA_MOVEMENT; // ???
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
+                //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+                Write(i, Yi, CY, DataWrite, TM_IT);
                 
                 if (adrTrace)
                 {
@@ -940,7 +947,7 @@ IT_MOD:;
 
             Yi -= 1;
             Yi &= MASK18;
-            TPR.CA = Yi;
+            //TPR.CA = Yi;
             
             tally += 1;
             tally &= 07777; // keep to 12-bits
@@ -966,7 +973,8 @@ IT_MOD:;
                 }
                 
                 processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                Read(i, Yi, &CY, DataRead, TM_IT);
                 
                 if (adrTrace)
                 {
@@ -981,7 +989,8 @@ IT_MOD:;
                 }
                 
                 processorCycle = APU_DATA_MOVEMENT; // ???
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
+                //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+                Write(i, Yi, CY, DataWrite, TM_IT);
                 
             }
         
@@ -1085,6 +1094,9 @@ IT_MOD:;
             
             Yi -= 1;
             Yi &= MASK18;
+           
+            word24 YiSafe2 = Yi; // save indirect address for later use
+            
             TPR.CA = Yi;
             
             tally += 1;
@@ -1103,14 +1115,17 @@ IT_MOD:;
             
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             
+            //TPR.CA = GETHI(CY);
             
-            //i->address = Yi;
-            rTAG = idwtag & 0x60; // force R to 0
+            TPR.CA = YiSafe2;
+            
+            //rTAG = idwtag & 0x60; // force R to 0 (except for IT)
+            rTAG = idwtag & 0x70; // force R to 0
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
             
             //TPR.CA = i->address;
-            rY = TPR.CA;    //i->address;
+            //rY = TPR.CA;    //i->address;
             
             switch(Tm)
             {
@@ -1155,7 +1170,7 @@ IT_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
             }
             
-            TPR.CA = Yi;
+            word24 YiSafe = Yi; // save indirect address for later use
             
             Yi += 1;
             Yi &= MASK18;
@@ -1174,13 +1189,16 @@ IT_MOD:;
             
             Write(i, tmp18, indword, DataWrite, TM_IT);
             
+            
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+            // But for the dps88 you can use everything but ir/ri.
             
             // force R to 0 (except for IT)
-            //  i->address = TPR.CA;    // why is i->address being modified?
+            TPR.CA = YiSafe;
+            //TPR.CA = GETHI(indword);
             
-            
-            rTAG = idwtag & 0x60; // force R to 0 (except for IT)
+            rTAG = idwtag & 0x70; // force R to 0 (except for IT)
+            //rTAG = GET_TAG(CY) & 0x60; // force R to 0 (except for IT)
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
             
@@ -1199,7 +1217,7 @@ IT_MOD:;
                     goto IR_MOD;
     
                 case TM_IT:
-                    rTAG = idwtag;
+                    rTAG = GET_TAG(idwtag);
                     Td = _TD(rTAG);
                     Tm = _TM(rTAG);
                     

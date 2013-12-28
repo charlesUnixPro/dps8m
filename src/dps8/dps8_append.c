@@ -47,10 +47,11 @@ void doAddrModPtrReg(DCDstruct *i)
     
     TPR.CA = (PR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
     TPR.TBR = PR[n].BITNO;  // TPR.BITNO = PR[n].BITNO;
+    
     //i->address = TPR.CA;    // why do I muck with i->address?
     //rY = i->address;    // is this right?
     
-    rY = TPR.CA;    // why do I muck with i->address?
+    //rY = TPR.CA;    // why do I muck with i->address?
     
     if (apndTrace)
     {
@@ -920,7 +921,7 @@ M:;
 }
 
 static word36
-doAppendDataRead(DCDstruct *i, word36 *readData, bool bNotOperand)
+doAppendDataReadOLD(DCDstruct *i, word36 *readData, bool bNotOperand)
 {
 #ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
@@ -949,7 +950,7 @@ doAppendDataRead(DCDstruct *i, word36 *readData, bool bNotOperand)
         }
         goto A;
     }
-    
+   
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
     
@@ -1085,7 +1086,8 @@ G:;
         fetchPTW(SDW, TPR.CA);
         if (PTW0.F)
             // initiate a directed fault
-            ;
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTWF0.F");
+
         
         loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
     }
@@ -1135,7 +1137,225 @@ I:;
 }
 
 static word36
-doAppendDataWrite(DCDstruct *i, word36 writeData, bool bNotOperand)
+doAppendDataRead(DCDstruct *i, word36 *readData, bool bNotOperand)
+{
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    }
+    
+    if ((GET_A(i->IWB) && i->iwb->ndes == 0)  || didITSITP || bNotOperand)    // indirect or ITS/ITP just setup
+    {
+        if (apndTrace && didITSITP)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        if (apndTrace && bNotOperand)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): Data Read detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        goto A;
+    }
+    
+    if (get_addr_mode() == APPEND_mode)
+    {
+        TPR.TRR = PPR.PRR;
+        TPR.TSR = PPR.PSR;
+    }
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    }
+    
+A:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A)\n");
+    }
+    
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(TPR.TSR))
+    {
+        // No
+        
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+        }
+        
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A):DSBR.U=%o\n", DSBR.U);
+        }
+        
+        if (DSBR.U == 0)
+        {
+            appendingUnitCycleType = DSPTW; // Descriptor segment PTW fetch
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+            // XXX initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
+            if (!PTW0.U)
+            {
+                appendingUnitCycleType = MDSPTW;
+                modifyDSPTW(TPR.TSR);
+            }
+            
+            appendingUnitCycleType = PSDW;  // Paged SDW Fetch. Fetches an SDW from a paged descriptor segment.
+            fetchPSDW(TPR.TSR);
+        }
+        else
+        {
+            appendingUnitCycleType = NSDW; // Nonpaged SDW Fetch. Fetches an SDW from an unpaged descriptor segment.
+            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        }
+        
+        if (SDW0.F == 0)
+        {
+            if (apndTrace)
+            {
+                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A):SDW0.F == 0! Initiating directed fault\n");
+            }
+            
+            // initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
+        }
+        else
+        // load SDWAM .....
+        loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+#ifndef QUIET_UNUSED
+B:;
+#endif
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(B)\n");
+    }
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+    // Set fault ACV0 = IRO
+    acvFault(i, ACV0);
+    
+    // No
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+    //Set fault ACV3 = ORB
+    acvFault(i, ACV3);
+    
+    if (SDW->R)
+    goto G;
+    
+    //C(PPR.PSR) = C(TPR.TSR)?
+    if (PPR.PSR != TPR.TSR)
+    //Set fault ACV4 = R-OFF
+    acvFault(i, ACV4);
+    
+    goto G;
+    
+    
+G:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(G)\n");
+    }
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
+    acvFault(i, ACV15);
+    
+    if (acvFaults)
+    // Initiate an access violation fault
+    doFault(i, acc_viol_fault, 0, "acvFault");
+    // XXX what if they ignore the fault? Can it be ignored?
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+    goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA))
+    {
+        appendingUnitCycleType = PTWfetch;
+        fetchPTW(SDW, TPR.CA);
+        if (PTW0.F)
+        // initiate a directed fault
+        doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTWF0.F");
+        
+        
+        loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    appendingUnitCycleType = FANP;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    }
+    
+    finalAddress = SDW->ADDR + TPR.CA;
+    
+    core_read(finalAddress, readData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    }
+    return finalAddress;
+    
+I:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I)\n");
+    }
+    
+    // final address paged
+    appendingUnitCycleType = FAP;
+    
+    word24 y2 = TPR.CA % 1024;
+    
+    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    
+    core_read(finalAddress, readData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    }
+    return finalAddress;
+}
+
+static word36
+doAppendDataWriteOLD(DCDstruct *i, word36 writeData, bool bNotOperand)
 {
 #ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
@@ -1352,6 +1572,228 @@ I:;
     return finalAddress;
     
 }
+static word36
+doAppendDataWrite(DCDstruct *i, word36 writeData, bool bNotOperand)
+{
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    }
+    
+    if ((GET_A(i->IWB) && i->iwb->ndes == 0) || didITSITP || bNotOperand)    // indirect or ITS/ITP just setup
+    {
+        if (apndTrace)
+        {
+            if (didITSITP)
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+            else if (bNotOperand)
+            {
+                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+            }
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): wrote operand detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        goto A;
+    }
+    
+    if (get_addr_mode() == APPEND_mode)
+    {
+        TPR.TRR = PPR.PRR;
+        TPR.TSR = PPR.PSR;
+    }
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    }
+A:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A)\n");
+    }
+    
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(TPR.TSR))
+    {
+        // No
+        
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+        }
+        
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):DSBR.U=%o\n", DSBR.U);
+        }
+        
+        if (DSBR.U == 0)
+        {
+            appendingUnitCycleType = DSPTW; // Descriptor segment PTW fetch
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+            // XXX initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
+            if (!PTW0.U)
+            {
+                appendingUnitCycleType = MDSPTW;
+                modifyDSPTW(TPR.TSR);
+            }
+            
+            appendingUnitCycleType = PSDW;  // Paged SDW Fetch. Fetches an SDW from a paged descriptor segment.
+            fetchPSDW(TPR.TSR);
+        }
+        else
+        {
+            appendingUnitCycleType = NSDW; // Nonpaged SDW Fetch. Fetches an SDW from an unpaged descriptor segment.
+            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        }
+        
+        if (SDW0.F == 0)
+        {
+            if (apndTrace)
+            {
+                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):SDW0.F == 0! Initiating directed fault\n");
+            }
+            // initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            
+        }
+        else
+        // load SDWAM .....
+        loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+#ifndef QUIET_UNUSED
+B:;
+#endif
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(B)\n");
+    }
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+    // Set fault ACV0 = IRO
+    acvFault(i, ACV0);
+    
+    //if (isSTROP(IWB))
+    // Yes ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(B): a STR-OP\n");
+    }
+    
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+    //Set fault ACV5 = OWB
+    acvFault(i, ACV5);
+    
+    if (!SDW->W)
+    // Set fault ACV6 = W-OFF
+    acvFault(i, ACV6);
+    goto G;
+    
+G:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(G)\n");
+    }
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
+    acvFault(i, ACV15);
+    
+    if (acvFaults)
+    // Initiate an access violation fault
+    doFault(i, acc_viol_fault, 0, "acvFault");
+    // XXX what if they ignore the fault? Can it be ignored?
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+    goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA))
+    {
+        appendingUnitCycleType = PTWfetch;
+        fetchPTW(SDW, TPR.CA);
+        if (PTW0.F)
+        // initiate a directed fault
+        doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F != 0");
+        // XXX what if they ignore the fault? Can it be ignored?
+        
+        
+        loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    appendingUnitCycleType = FANP;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    }
+    finalAddress = SDW->ADDR + TPR.CA;
+    
+    core_write(finalAddress, writeData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(H:FANP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+    }
+    return finalAddress;
+    
+I:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(I)\n");
+    }
+    
+    //if (isSTROP(IWB) && PTW->M == 0)
+    if (PTW->M == 0)
+    {
+        appendingUnitCycleType = MPTW;
+        modifyPTW(SDW, TPR.CA);
+    }
+    
+    // final address paged
+    appendingUnitCycleType = FAP;
+    
+    word24 y2 = TPR.CA % 1024;
+    
+    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    
+    core_write(finalAddress, writeData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(I:FAP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+    }
+    return finalAddress;
+    
+}
+
 
 bool didITSITP = false; ///< true after an ITS/ITP processing
 
@@ -1484,7 +1926,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
 
 
 static word36
-doAppendIndirectRead(DCDstruct *i, word36 *readData, word6 Tag)
+doAppendIndirectReadOLD(DCDstruct *i, word36 *readData, word6 Tag)
 {
 #ifndef QUIET_UNUSED
     word3 RSDWH_R1; ///< I think
@@ -1536,7 +1978,7 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                doFault(i, dir_flt0_fault, 0, "!PTW0.F");
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "!PTW0.F");
             
             if (!PTW0.U)
             {
@@ -1716,6 +2158,471 @@ J:;
     return finalAddress;
 }
 
+static word36
+doAppendIndirectRead(DCDstruct *i, word36 *readData, word6 Tag)
+{
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    //    if (apndTrace)
+    //    {
+    //        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+    //        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    //    }
+    //
+    //    if (GET_A(IWB))
+    //    {
+    //        if (apndTrace)
+    //            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+    //        goto A;
+    //    }
+    //
+    //    TPR.TRR = PPR.PRR;
+    //    TPR.TSR = PPR.PSR;
+    //
+    didITSITP = false;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+A:;
+#endif
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A)\n");
+    }
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(TPR.TSR))
+    {
+        // No
+        
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A):DSBR.U=%o\n", DSBR.U);
+        }
+        if (DSBR.U == 0)
+        {
+            appendingUnitCycleType = DSPTW; // Descriptor segment PTW fetch
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+            // XXX initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "!PTW0.F");
+            
+            if (!PTW0.U)
+            {
+                appendingUnitCycleType = MDSPTW;
+                modifyDSPTW(TPR.TSR);
+            }
+            
+            appendingUnitCycleType = PSDW;  // Paged SDW Fetch. Fetches an SDW from a paged descriptor segment.
+            fetchPSDW(TPR.TSR);
+        }
+        else
+        {
+            appendingUnitCycleType = NSDW; // Nonpaged SDW Fetch. Fetches an SDW from an unpaged descriptor segment.
+            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        }
+        
+        if (SDW0.F == 0)
+        {
+            if (apndTrace)
+            {
+                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A):SDW0.F == 0! Initiating directed fault\n");
+            }
+            
+            // initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            
+        }
+        else
+        // load SDWAM .....
+        loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+#ifndef QUIET_UNUSED
+B:;
+#endif
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(B)\n");
+    }
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+    // Set fault ACV0 = IRO
+    acvFault(i, ACV0);
+    
+    // No
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+    //Set fault ACV3 = ORB
+    acvFault(i, ACV3);
+    
+    if (SDW->R)
+    goto G;
+    
+    //C(PPR.PSR) = C(TPR.TSR)?
+    if (PPR.PSR != TPR.TSR)
+    //Set fault ACV4 = R-OFF
+    acvFault(i, ACV4);
+    
+    goto G;
+    
+    
+G:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(G)\n");
+    }
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
+    acvFault(i, ACV15);
+    
+    if (acvFaults)
+    // Initiate an access violation fault
+    doFault(i, acc_viol_fault, 0, "acvFault");
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+    goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA))
+    {
+        appendingUnitCycleType = PTWfetch;
+        fetchPTW(SDW, TPR.CA);
+        if (PTW0.F)
+        // initiate a directed fault
+        doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
+        
+        
+        loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    appendingUnitCycleType = FANP;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    }
+    
+    finalAddress = SDW->ADDR + TPR.CA;
+    
+    core_read(finalAddress, readData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    }
+    goto J;
+    
+I:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(I)\n");
+    }
+    
+    // final address paged
+    appendingUnitCycleType = FAP;
+    
+    word24 y2 = TPR.CA % 1024;
+    
+    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    
+    core_read(finalAddress, readData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    }
+    goto J;
+    
+J:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) ISITS(%d) ISITP(%d)\n", ISITS(*readData), ISITP(*readData));
+    }
+    
+    //if ((Tdes == TM_IR || Tdes == TM_RI) && (ISITS(*readData) || ISITP(*readData)))
+    //    doITSITP(*readData, Tdes);
+    if ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITS(*readData) || ISITP(*readData)))
+    doITSITP(i, *readData, Tag);
+    
+    else
+    {
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (Non-ITS/ITP): finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+        }
+        return finalAddress;
+    }
+    
+    /// at this point CA, TBR, TRR, TSR, & Tdes are set up to read from where the ITS/ITP pointer said ....
+    //
+    
+    word36 newwrd = (TPR.CA << 18) | rTAG;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Exit (ITS/ITP): newwrd=%012llo\n", newwrd);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(J) Need to read from CA:%6o FA:%08o\n", TPR.CA, finalAddress);
+    }
+    
+    *readData = newwrd;
+    return finalAddress;
+}
+
+static word36
+doAppendIndirectWrite(DCDstruct *i, word36 writeData, word6 Tag)
+{
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    //    if (apndTrace)
+    //    {
+    //        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+    //        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    //    }
+    //
+    //    if (GET_A(IWB))
+    //    {
+    //        if (apndTrace)
+    //            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+    //        goto A;
+    //    }
+    //
+    //    TPR.TRR = PPR.PRR;
+    //    TPR.TSR = PPR.PSR;
+    //
+    didITSITP = false;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+A:;
+#endif
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(A)\n");
+    }
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(TPR.TSR))
+    {
+        // No
+        
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(A):DSBR.U=%o\n", DSBR.U);
+        }
+        if (DSBR.U == 0)
+        {
+            appendingUnitCycleType = DSPTW; // Descriptor segment PTW fetch
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+            // XXX initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "!PTW0.F");
+            
+            if (!PTW0.U)
+            {
+                appendingUnitCycleType = MDSPTW;
+                modifyDSPTW(TPR.TSR);
+            }
+            
+            appendingUnitCycleType = PSDW;  // Paged SDW Fetch. Fetches an SDW from a paged descriptor segment.
+            fetchPSDW(TPR.TSR);
+        }
+        else
+        {
+            appendingUnitCycleType = NSDW; // Nonpaged SDW Fetch. Fetches an SDW from an unpaged descriptor segment.
+            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        }
+        
+        if (SDW0.F == 0)
+        {
+            if (apndTrace)
+            {
+                sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(A):SDW0.F == 0! Initiating directed fault\n");
+            }
+            
+            // initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            
+        }
+        else
+        // load SDWAM .....
+        loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+#ifndef QUIET_UNUSED
+B:;
+#endif
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(B)\n");
+    }
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+        // Set fault ACV0 = IRO
+        acvFault(i, ACV0);
+    
+    // No
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+        //Set fault ACV5 = OWB
+        acvFault(i, ACV5);
+    
+    if (SDW->W) // write permissions?
+        goto G; // Yes.
+    
+    //C(PPR.PSR) = C(TPR.TSR)?
+    if (PPR.PSR != TPR.TSR)
+        //Set fault ACV6 = W-OFF
+        acvFault(i, ACV6);
+    
+    goto G;
+    
+    
+G:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(G)\n");
+    }
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
+        acvFault(i, ACV15);
+    
+    if (acvFaults)
+        // Initiate an access violation fault
+        doFault(i, acc_viol_fault, 0, "acvFault");
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+        goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA))
+    {
+        appendingUnitCycleType = PTWfetch;
+        fetchPTW(SDW, TPR.CA);
+        if (PTW0.F)
+        // initiate a directed fault
+        doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
+        
+        
+        loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    appendingUnitCycleType = FANP;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    }
+    
+    finalAddress = SDW->ADDR + TPR.CA;
+    
+    core_write(finalAddress, writeData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(H:FANP) Read: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+    }
+    goto J;
+    
+I:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(I)\n");
+    }
+    
+    // final address paged
+    appendingUnitCycleType = FAP;
+    
+    word24 y2 = TPR.CA % 1024;
+    
+    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    
+    core_write(finalAddress, writeData);  // I think now is the time to do it ...
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(I:FAP) Read: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+    }
+    goto J;
+    
+J:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(J) ISITS(%d) ISITP(%d)\n", ISITS(writeData), ISITP(writeData));
+    }
+    
+    //if ((Tdes == TM_IR || Tdes == TM_RI) && (ISITS(*readData) || ISITP(*readData)))
+    //    doITSITP(*readData, Tdes);
+    if ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITS(writeData) || ISITP(writeData)))
+    doITSITP(i, writeData, Tag);
+    
+    else
+    {
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(J) Exit (Non-ITS/ITP): finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+        }
+        return finalAddress;
+    }
+    
+    /// at this point CA, TBR, TRR, TSR, & Tdes are set up to read from where the ITS/ITP pointer said ....
+    //
+    
+    word36 newwrd = (TPR.CA << 18) | rTAG;
+    
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(J) Exit (ITS/ITP): newwrd=%012llo\n", newwrd);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(J) Need to read from CA:%6o FA:%08o\n", TPR.CA, finalAddress);
+    }
+    
+    return finalAddress;
+}
+
 
 word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word36 writeData, word36 *readData)
 {
@@ -1747,6 +2654,9 @@ word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word3
             fa = doAppendDataWrite(i, writeData, false);
             break;
         case IndirectRead:
+            fa = doAppendIndirectRead(i, readData, Tag);
+            break;
+        case IndirectWrite:
             fa = doAppendIndirectRead(i, readData, Tag);
             break;
         default:

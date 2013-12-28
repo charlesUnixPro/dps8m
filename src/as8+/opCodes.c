@@ -637,6 +637,13 @@ outRec *outas8Direct(char *dir, ...)
         
         asprintf(&p->dirStr, "!LINKAGE %06o %d", linkAddr, linkCount);
     }
+    else if (!strcasecmp(dir, "entrypoint"))
+    {
+        word18 goAddr = va_arg( argPointer, word18 );
+       
+        asprintf(&p->dirStr, "!GO %06o", goAddr);
+    }
+
     else
         fprintf(stderr, "outas8Direct(): unhandled directive <%s>\n", dir);
 

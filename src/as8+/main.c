@@ -21,7 +21,7 @@ char *includePath   = "";
 
 void usage()
 {
-    fprintf(stderr, "usage: as8+ [-dv][-I include path][-o outputFile] program.src\n");    
+    fprintf(stderr, "usage: as8+ [-dv][-I Include-Path][-o OutputFile] Single-Program-SourceFile\n");    
 }
 
 int literalType = 2;            ///< all literals are unique

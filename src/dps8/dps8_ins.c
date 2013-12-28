@@ -301,6 +301,18 @@ bool _illmod[] = {
 
 //=============================================================================
 
+static void setDegerate()
+{
+    TPR.TRR = 0;
+    TPR.TSR = 0;
+    TPR.TBR = 0;
+    
+    PPR.PRR = 0;
+    PPR.PSR = 0;
+    
+    PPR.P = 1;
+}
+
 t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = ci->IWB;          ///< instruction working buffer
@@ -363,8 +375,6 @@ t_stat executeInstruction(DCDstruct *ci)
             doFault(ci, illproc_fault, 0, "Illegal DU/DL modification");
     }
     
-        
-    
     if (iwb->ndes == 0)
     {
         if (a && !(iwb->flags & IGN_B29))   // a should now always be correct so B29 tst may not be necesary....
@@ -376,8 +386,10 @@ t_stat executeInstruction(DCDstruct *ci)
             // XXX [CAC] I disagres. See AL39, pg 311.
             
             // HWR I agree with CAC that this should not set the processor into APPEND mode, but it breaks TestFXE just now. Fix TestFXE
-            if (switches . auto_append_disable == 0)
-                 set_addr_mode(APPEND_mode);
+#if NOT_NEEDED
+//            if (switches . auto_append_disable == 0)
+//                 set_addr_mode(APPEND_mode);
+#endif
         }
 // XXX Experimental code
         if (a && (iwb->flags & TRANSFER_INS))

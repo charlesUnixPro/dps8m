@@ -10,7 +10,7 @@ AS8=${BASE}/as8+
 #echo as8 = "$AS8"
 #echo dps8 = "$DPS8"
 
-SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE"
+SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods"
 
 #EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
 EPOCH=$(date +%s)

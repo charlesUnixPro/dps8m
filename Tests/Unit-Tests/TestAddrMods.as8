@@ -9,7 +9,7 @@
     call    ioa(msgHello, Date, Date+1)
     tra     _main
 
-msgHello:   acc         "This is TestAddrMods ...^g^g\r\n"
+msgHello:   acc         "This is TestIndirect ...^g^g\r\n"
 msgResult:  acc         /Result: ^n\r\n/
 msgResult2: acc         /Result: ^n ^n\r\n/
 msgResulta: acc         /Result: '^a'\r\n/
