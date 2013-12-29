@@ -361,7 +361,7 @@ here_2:
     sta     L1
     
     tsp2    ioa
-    acc     "Should be ... 377777777523 is ^n\r\n"  "
+    acc     "Should be ... 34359738195 is ^d\r\n"  "
     nop     L1
 
 " DH02-01 Ex 9 pg 5-12
