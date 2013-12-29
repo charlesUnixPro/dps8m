@@ -334,7 +334,8 @@ ioa_g:  mvt     (),()
 
         tra     ioaloop
 
-ioa_d:	btd     (),()       " convert decimal number
+ioa_d:	tov     *+1         " sometimes OV is set when we get here! Why?
+        btd     (),()       " convert decimal number
         desc9a	errarg,4    " 36-bit integer
         desc4ls	errnum,12   " max 12-digits (incl sign)
 
