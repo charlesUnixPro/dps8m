@@ -231,14 +231,14 @@ static _ptw0* modifyDSPTW(word15 segno)
 
 
 /// \brief XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
-static _sdw* fetchSDWfromSDWAM(word15 segno)
+static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
 {
     if (apndTrace)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     }
     
-    if (switches . degenerate_mode && (get_addr_mode () == ABSOLUTE_mode))
+    if (switches . degenerate_mode && (! i -> a) && (get_addr_mode () == ABSOLUTE_mode))
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "fetchSDWfromSDWAM: degenerate case\n");
         static _sdw degenerate_SDW =
@@ -727,7 +727,7 @@ doAppendInstructionFetch(DCDstruct *i, word36 *readData)
     }
 
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -992,7 +992,7 @@ A:;
     }
     
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -1210,7 +1210,7 @@ A:;
     }
     
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -1422,7 +1422,7 @@ A:;
     }
     
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -1643,7 +1643,7 @@ A:;
     }
     
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -1988,7 +1988,7 @@ A:;
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A)\n");
     }
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -2221,7 +2221,7 @@ A:;
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectRead(A)\n");
     }
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
@@ -2454,7 +2454,7 @@ A:;
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendIndirectWrite(A)\n");
     }
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(TPR.TSR))
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
     {
         // No
         
