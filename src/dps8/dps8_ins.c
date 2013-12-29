@@ -380,9 +380,12 @@ t_stat executeInstruction(DCDstruct *ci)
 #endif
         }
 // XXX Experimental code
-        if (a && (iwb->flags & TRANSFER_INS))
+        if (! switches . append_after)
         {
-            set_addr_mode(APPEND_mode);
+            if (a && (iwb->flags & TRANSFER_INS))
+            {
+                set_addr_mode(APPEND_mode);
+            }
         }
         
         // if instructions need an operand (CY) to operate, read it now. Else defer AM calcs until instruction execution
@@ -409,6 +412,14 @@ t_stat executeInstruction(DCDstruct *ci)
     //t_stat ret = opcodeX ? DoEISInstruction(ci) : DoBasicInstruction(ci);
     t_stat ret = doInstruction(ci);
     
+    if (switches . append_after)
+    {
+        if (iwb->ndes == 0 && a && (iwb->flags & TRANSFER_INS))
+        {
+          set_addr_mode(APPEND_mode);
+        }
+    }
+
     cpuCycles += 1; // bump cycle counter
     
     if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)

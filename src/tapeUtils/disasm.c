@@ -873,11 +873,12 @@ char *disAssemble(word36 instruction)
 
         sprintf(buff, " pr%d|0%o", n, offset);
         strcat (result, buff);
-        return result; // strupr(result);
-    }
+        //return result; // strupr(result);
+    }else{
 
-    sprintf(buff, "\t0%06o", address);
-    strcat (result, buff);
+        sprintf(buff, "\t0%06o", address);
+        strcat (result, buff);
+    }
 
     // get mod
     strcpy(buff, "");
