@@ -310,6 +310,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_NOTIFY      (1 << 15)   
 #define DBG_ERR         (1 << 16)   
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
+#define DBG_FAULT       (1 << 17)  ///< follow fault handling
 
 /* Global data */
 
@@ -344,7 +345,8 @@ extern int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o rIC fetch */
 extern word36 XECD1; /*!< XEC instr / XED instr#1 */
 extern word36 XECD2; /*!< XED instr#2 */
 
-extern word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
+//extern word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
+#define rIR (cu.IR)
 extern word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
 extern word18	ry;     /*!< address operand */
@@ -1930,6 +1932,7 @@ typedef struct {
     bool interrupt_flag;
 } cpu_state_t;
 
+#if 0
 /* Indicator register (14 bits [only positions 18..32 have meaning]) */
 typedef struct {
     uint zero;              // bit 18
@@ -1948,7 +1951,7 @@ typedef struct {
     uint abs_mode;          // bit 31
     uint hex_mode;          // bit 32
 } IR_t;
-
+#endif
 
 /* MF fields of EIS multi-word instructions -- 7 bits */
 typedef struct {
@@ -1976,7 +1979,7 @@ typedef struct {
     
 } instr_t;
 
-extern IR_t IR;                // Indicator register
+// extern IR_t IR;                // Indicator register
 
 /* Control unit data (288 bits) */
 typedef struct {
@@ -2074,7 +2077,8 @@ typedef struct {
     flag_t xdo;     // execute even instr from xed pair
     
     /* word 6 */
-    instr_t IR;     /* Working instr register; addr & tag are modified */
+    //instr_t IR;     /* Working instr register; addr & tag are modified */
+    word18 IR;     /* Working instr register; addr & tag are modified */
     uint tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it)
     
     /* word 7 */
@@ -2964,6 +2968,7 @@ void check_events (void);
 void cu_safe_store(void);
 t_stat executeInstruction(DCDstruct *ci);
 t_stat doXED(word36 *Ypair);
+void cu_safe_restore (void);
 
 /* dps8_iom.c */
 

@@ -136,6 +136,8 @@ static void scu2words(t_uint64 *words)
     words[4] = rIR; // HWR
     
     words[4] = setbits36(words[4], 0, 18, PPR.IC);
+    //if (switches . invert_absolute)
+      //words [4] ^= I_ABS;
     
     words[5] = setbits36(0, 0, 18, TPR.CA);
     words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
@@ -145,7 +147,8 @@ static void scu2words(t_uint64 *words)
     words[5] = setbits36(words[5], 24, 1, cu.xdo);
     words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
     
-    encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
+    // XXX CAC word 6 is the current instuction, not the IR
+    // encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
     //words[6] = ins;  // I think HWR
     
     words[7] = cu.IRODD;
@@ -157,6 +160,49 @@ void cu_safe_store(void)
     // in FAULT mode can save the state as it existed at the time of the fault rather than
     // as it exists at the time the scu instruction is executed.
     scu2words(scu_data);
+}
+
+void cu_safe_restore (void)
+{
+    // BUG:  We don't track much of the data that should be tracked
+    
+    PPR.PRR  = getbits36(scu_data[0], 0, 3);
+    PPR.PSR  = getbits36(scu_data[0], 3, 15);
+    PPR.P    = getbits36(scu_data[0], 18, 1);
+    // 19 "b" XSF
+    // 20 "c" SDWAMN
+    cu.SD_ON = getbits36(scu_data[0], 21, 1);
+    // 22 "e" PTWAM
+    cu.PT_ON = getbits36(scu_data[0], 23, 1);
+    // 24..32 various
+    // 33-35 FCT
+    
+    // scu_data[1]
+    
+    TPR.TRR  =  getbits36(scu_data[2], 0, 3);
+    TPR.TSR  = getbits36(scu_data[2], 3, 15);
+    switches.cpu_num = getbits36(scu_data[2], 27, 3);
+    cu.delta = getbits36(scu_data[2], 30, 6);
+    
+    TPR.TBR  = getbits36(scu_data[3], 30, 6);
+    
+    //save_IR(&scu_data[4]);
+    rIR      = getbits36(scu_data[4], 18, 18); // HWR
+    PPR.IC   = getbits36(scu_data[4], 0, 18);
+    
+    TPR.CA   = getbits36(0, 0, 18);
+    cu.repeat_first = getbits36(scu_data[5], 18, 1);
+    cu.rpt   = getbits36(scu_data[5], 19, 1);
+    // BUG: Not all of CU data exists and/or is saved
+    cu.xde   = getbits36(scu_data[5], 24, 1);
+    cu.xdo   = getbits36(scu_data[5], 24, 1);
+    cu.CT_HOLD = getbits36(scu_data[5], 30, 6);
+    
+    // XXX This will take some thought
+    //encode_instr(&cu.IR, &scu_data[6]);    // BUG: cu.IR isn't kept fully up-to-date
+    //scu_data[6] = ins;  // I think HWR
+    
+    cu.IRODD = scu_data [7];
 }
 
 PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
@@ -3954,7 +4000,15 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Write (i, tprca + 1, scu_data [1], DataWrite, i->tag);
             Write (i, tprca + 2, scu_data [2], DataWrite, i->tag);
             Write (i, tprca + 3, scu_data [3], DataWrite, i->tag);
+// Bug DIS@0013060 31184718 blk10 absulte mode bit inverted in SCU instruction
+#if 0
+            word36 tmp = scu_data [4];
+            if (switches . invert_absolute)
+              tmp ^= I_ABS;
+            Write (i, tprca + 4, tmp, DataWrite, i->tag);
+#else
             Write (i, tprca + 4, scu_data [4], DataWrite, i->tag);
+#endif
             Write (i, tprca + 5, scu_data [5], DataWrite, i->tag);
             Write (i, tprca + 6, scu_data [6], DataWrite, i->tag);
             Write (i, tprca + 7, scu_data [7], DataWrite, i->tag);

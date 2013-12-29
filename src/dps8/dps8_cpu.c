@@ -70,6 +70,8 @@ static DEBTAB cpu_dt[] = {
     { "NOTIFY",     DBG_NOTIFY      },
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
+    { "FAULT",      DBG_FAULT       },
+
     { NULL,         0               }
 };
 
@@ -532,8 +534,8 @@ word36 XECD2; /*!< XED instr#2 */
 
 //word18	rIC;	/*!< instruction counter */
 // same as PPR.IC
-word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
-IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
+ //word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
+//IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
 
 
 word27	rTR;	/*!< timer [map: TR, 9 0's] */
@@ -1721,12 +1723,12 @@ addr_modes_t get_addr_mode(void)
 void set_addr_mode(addr_modes_t mode)
 {
     if (mode == ABSOLUTE_mode) {
-        IR.abs_mode = 1;
+        //IR.abs_mode = 1;
         SETF(rIR, I_ABS);
         
         // FIXME: T&D tape section 3 wants not-bar-mode true in absolute mode,
         // but section 9 wants false?
-        IR.not_bar_mode = 1;
+        //IR.not_bar_mode = 1;
         SETF(rIR, I_NBAR);
         
         PPR.P = 1;
@@ -1736,20 +1738,21 @@ void set_addr_mode(addr_modes_t mode)
         
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
-        if (! IR.abs_mode && IR.not_bar_mode)
+        //if (! IR.abs_mode && IR.not_bar_mode)
+        if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting append mode.\n");
-        IR.abs_mode = 0;
+        //IR.abs_mode = 0;
         CLRF(rIR, I_ABS);
         
-        IR.not_bar_mode = 1;
+        //IR.not_bar_mode = 1;
         SETF(rIR, I_NBAR);
         
     } else if (mode == BAR_mode) {
-        IR.abs_mode = 0;
+        //IR.abs_mode = 0;
         CLRF(rIR, I_ABS);
-        IR.not_bar_mode = 0;
+        //IR.not_bar_mode = 0;
         CLRF(rIR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
