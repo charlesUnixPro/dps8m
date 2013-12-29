@@ -197,6 +197,7 @@ typeChr:bss     ,16
 
         eight
 saveX:  bss     ,8
+saveIR: bss     ,1
 
 "	tsp2	snr|ioa     " to print messages
 "	acc	'message'
@@ -212,7 +213,8 @@ saveX:  bss     ,8
 "   ^G   GEBCD (6-bit) descriptor
 "   ^4   decimal (4-bit) descroptor
 
-ioa:    sreg    saveX
+ioa:    sti     saveIR
+        sreg    saveX
         spri2   save2       " save pr2 for return to caller
         sprp2   save2p      " save a packed version of pr2
         sprp3   save3p      " save a packed version of pr3
@@ -413,6 +415,7 @@ ioax3:	eax3	*           "restore X3
         lprp3   save3p
         lprp2   save2p
         lreg    saveX
+        ldi     saveIR
         rtcd    save2       " and return
 
 ioakey: aci	"AGwondagS4"
