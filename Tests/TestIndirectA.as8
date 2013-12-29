@@ -6,9 +6,12 @@
 
     name    TAM     " This is the TAM_main segment
     
-    entry  TAM_main    " and we want to emtry TAM tests via TAM_main
+    entry  _main    " and we want to emtry TAM tests via TAM_main
+    entry  _print
 
     segref	UtilsA, ioa 
+
+    segdef  pi, E, fltTmp
 
         even
 L1:     bss     1
@@ -26,7 +29,7 @@ save3p:     bss     ,2
         eight
 rsave:  bss ,8
 
-TAM_main:
+_main:
 
     eax0    _a
     eax1    u
@@ -44,13 +47,13 @@ TAM_main:
 msgResult:  acc /Result: /
 
 d9a:    desc9a  IBS,IBSsz
-IBS:    aci     /If this works, I'll be surprised.../
-        equ     IBSsz, 35
+IBS:    aci     /If this works, that means were in TAM$.../
+        equ     IBSsz, 42
 
 
 R_mods:
-    push
-
+push
+return
     tsp2	ioa
     acc     /R mods ...\r\n/
 
@@ -652,6 +655,9 @@ aa4:    oct     670
 IT_12:
 
         " return to caller
+        tsp2    ioa
+        acc     /That's all folks!!! (TAM$_main)\r\n/
+        
         return
 
 
@@ -733,4 +739,24 @@ x:      oct -1,-2,-3,0,1,2,3,4,5,42,616,77, 02012, -255, 123, 100,200,300,400,50
 y:      dec 0,1,2,3,4,5,6,7,8,9,10
 z:      dec 11,12,13,14,15,16,17,18,19,20
     
+"
+" some floating point stuff to play with ...
+"
+pi:     dec     3.1415926535897932
+E:      dec     2.718281828
+fltTmp: dec     -123.4567
 
+
+_print: push
+return
+
+        fld     pi
+        emcall  6
+        
+        fld     E
+        emcall  6
+
+        fld     fltTmp
+        emcall  6
+        
+        return
