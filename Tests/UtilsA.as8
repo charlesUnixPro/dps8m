@@ -218,8 +218,8 @@ ioa:    sreg    saveX
         sprp3   save3p      " save a packed version of pr3
         lprp3   save2p      " get PR2's segment number into PR3
         
-        stx3	ioax3       " save X3
-        stx6	ioax6       " save X6
+        "stx3	ioax3       " save X3
+        "stx6	ioax6       " save X6
 
         lda     pr2|0       " get character count from string
         arl     27          " ..
@@ -408,8 +408,8 @@ ioact:	desc9a	erbuf,*
         tra     ioaloop		" and loop
 
 ioaend: asx3	save2+1		"set correct X3 return value (if used parameters != supplied parameters then this may meet a horrible death)
-ioax6:	eax6	*           "restore X6
-ioax3:	eax3	*           "restore X3
+"ioax6:	eax6	*           "restore X6
+"ioax3:	eax3	*           "restore X3
         lprp3   save3p
         lprp2   save2p
         lreg    saveX
