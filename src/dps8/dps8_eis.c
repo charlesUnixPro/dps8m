@@ -1615,7 +1615,7 @@ void btd(DCDstruct *ins)
     
     rIR = e->_flags;
     if (TSTF(rIR, I_OFLOW))
-        ;   // XXX generate overflow fault
+        doFault(ins, overflow_fault, 0, "btd() overflow!");   // XXX generate overflow fault
     
 }
 
