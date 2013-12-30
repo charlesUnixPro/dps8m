@@ -1530,7 +1530,8 @@ enum _processor_addressing_mode {
     UNKNOWN_MODE = 0,
     ABSOLUTE_MODE,
     APPEND_MODE,
-    BAR_MODE
+    BAR_MODE,
+    TEMPORARY_ABSOLUTE_MODE
 };// processorAddressingMode;
 
 enum _processor_operating_mode {
@@ -1886,8 +1887,8 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 typedef unsigned flag_t;    // efficient unsigned flag
 
 // The CPU supports 3 addressing modes
-
-typedef enum { ABSOLUTE_mode = ABSOLUTE_MODE, APPEND_mode = APPEND_MODE, BAR_mode = BAR_MODE } addr_modes_t;
+// [CAC] I tell a lie: 4 modes....
+typedef enum { ABSOLUTE_mode = ABSOLUTE_MODE, APPEND_mode = APPEND_MODE, BAR_mode = BAR_MODE, TEMPORARY_ABSOLUTE_mode = TEMPORARY_ABSOLUTE_MODE} addr_modes_t;
 
 
 

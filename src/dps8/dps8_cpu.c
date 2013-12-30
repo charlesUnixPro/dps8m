@@ -968,13 +968,12 @@ dis_entry:
 		    // which there is a bit set in the interrupt present
 		    // register.  
 
-                    // XXX safe store
-                    // safe_store ()
+                    cu_safe_store ();
 
                     addr_modes_t am = get_addr_mode();  // save address mode
 
 		    // Temporary absolute mode
-		    set_addr_mode (ABSOLUTE_mode);
+		    set_addr_mode (TEMPORARY_ABSOLUTE_mode);
 
 		    // Set to ring 0
 		    PPR . PRR = 0;
@@ -989,11 +988,20 @@ dis_entry:
 
                     cpu . interrupt_flag = false;
 
-                    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-
                     sim_debug (DBG_MSG, & cpu_dev, "leaving DIS_cycle\n");
                     sim_printf ("leaving DIS_cycle\n");
                     cpu . cycle = FETCH_cycle;
+
+                    if (xrv == CONT_TRA)
+                    {
+                        set_addr_mode(ABSOLUTE_mode);
+                        sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
+                        longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
+                    }
+    
+                    // XXX more better to do cu_safe_restore and get the addr mode from the restored IR
+
+                    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
 
                     if (0 && xrv)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
                         longjmp(jmpMain, JMP_RETRY);    // retry instruction
@@ -1061,14 +1069,15 @@ jmpNext:;
 
 static void setDegenerate()
 {
-    TPR.TRR = 0;
-    TPR.TSR = 0;
-    TPR.TBR = 0;
+    sim_debug (DBG_DEBUG, & cpu_dev, "setDegenerate\n");
+    //TPR.TRR = 0;
+    //TPR.TSR = 0;
+    //TPR.TBR = 0;
     
-    PPR.PRR = 0;
-    PPR.PSR = 0;
+    //PPR.PRR = 0;
+    //PPR.PSR = 0;
     
-    PPR.P = 1;
+    //PPR.P = 1;
 }
 
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
@@ -1688,6 +1697,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     }
 
 
+static addr_modes_t secret_addressing_mode;
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -1700,6 +1710,9 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 addr_modes_t get_addr_mode(void)
 {
+    if (secret_addressing_mode == TEMPORARY_ABSOLUTE_mode)
+        return ABSOLUTE_mode; // This is not the mode you are looking for
+
     //if (IR.abs_mode)
     if (TSTF(rIR, I_ABS))
         return ABSOLUTE_mode;
@@ -1723,44 +1736,42 @@ addr_modes_t get_addr_mode(void)
 void set_addr_mode(addr_modes_t mode)
 {
     if (mode == ABSOLUTE_mode) {
-        //IR.abs_mode = 1;
         SETF(rIR, I_ABS);
-        
-        // FIXME: T&D tape section 3 wants not-bar-mode true in absolute mode,
-        // but section 9 wants false?
-        //IR.not_bar_mode = 1;
         SETF(rIR, I_NBAR);
         
         PPR.P = 1;
         
-        // if (switches . degenerate_mode)
-        setDegenerate();
+        if (switches . degenerate_mode)
+          setDegenerate();
         
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
-        //if (! IR.abs_mode && IR.not_bar_mode)
         if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting append mode.\n");
-        //IR.abs_mode = 0;
         CLRF(rIR, I_ABS);
         
-        //IR.not_bar_mode = 1;
         SETF(rIR, I_NBAR);
         
     } else if (mode == BAR_mode) {
-        //IR.abs_mode = 0;
         CLRF(rIR, I_ABS);
-        //IR.not_bar_mode = 0;
         CLRF(rIR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
+    } else if (mode == TEMPORARY_ABSOLUTE_mode) {
+        PPR.P = 1;
+        
+        if (switches . degenerate_mode)
+          setDegenerate();
+        
+        sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting temporary absolute mode.\n");
+
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         cancel_run(STOP_BUG);
     }
-    
+    secret_addressing_mode = mode;
     //processorAddressingMode = mode;
 }
 
