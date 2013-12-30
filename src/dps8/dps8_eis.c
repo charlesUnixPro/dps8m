@@ -1615,7 +1615,7 @@ void btd(DCDstruct *ins)
     
     rIR = e->_flags;
     if (TSTF(rIR, I_OFLOW))
-        ;   // XXX generate overflow fault
+        doFault(ins, overflow_fault, 0, "btd() overflow!");   // XXX generate overflow fault
     
 }
 
@@ -1832,7 +1832,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(ins, 0,0,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(ins, illproc_fault,0,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
                     
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -1845,7 +1845,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(ins, 0,0,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(ins, illproc_fault,0,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -1853,7 +1853,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(ins, 0,0,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, illproc_fault, 0,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -1864,7 +1864,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == N-1) // last had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        ; // XXX generate ill proc fault
+                         doFault(ins, illproc_fault, 0,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -1872,7 +1872,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(ins, 0,0,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault
+                        doFault(ins, illproc_fault, 0,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;

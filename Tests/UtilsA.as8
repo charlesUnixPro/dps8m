@@ -197,6 +197,7 @@ typeChr:bss     ,16
 
         eight
 saveX:  bss     ,8
+saveIR: bss     ,1
 
 "	tsp2	snr|ioa     " to print messages
 "	acc	'message'
@@ -212,14 +213,15 @@ saveX:  bss     ,8
 "   ^G   GEBCD (6-bit) descriptor
 "   ^4   decimal (4-bit) descroptor
 
-ioa:    sreg    saveX
+ioa:    sti     saveIR
+        sreg    saveX
         spri2   save2       " save pr2 for return to caller
         sprp2   save2p      " save a packed version of pr2
         sprp3   save3p      " save a packed version of pr3
         lprp3   save2p      " get PR2's segment number into PR3
         
-        stx3	ioax3       " save X3
-        stx6	ioax6       " save X6
+        "stx3	ioax3       " save X3
+        "stx6	ioax6       " save X6
 
         lda     pr2|0       " get character count from string
         arl     27          " ..
@@ -332,7 +334,8 @@ ioa_g:  mvt     (),()
 
         tra     ioaloop
 
-ioa_d:	btd     (),()       " convert decimal number
+ioa_d:	tov     *+1         " sometimes OV is set when we get here! Why?
+        btd     (),()       " convert decimal number
         desc9a	errarg,4    " 36-bit integer
         desc4ls	errnum,12   " max 12-digits (incl sign)
 
@@ -413,6 +416,7 @@ ioax3:	eax3	*           "restore X3
         lprp3   save3p
         lprp2   save2p
         lreg    saveX
+        ldi     saveIR
         rtcd    save2       " and return
 
 ioakey: aci	"AGwondagS4"
