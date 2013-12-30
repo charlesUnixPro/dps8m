@@ -40,6 +40,7 @@ CTAB dps8_cmds[] =
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n"},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" },
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
+    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
     { NULL, NULL, 0, NULL}
 };
 

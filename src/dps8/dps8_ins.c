@@ -347,6 +347,77 @@ bool _illmod[] = {
 
 //=============================================================================
 
+static long long theMatrix [1024] // 1024 opcodes (2^10)
+                           [2]    // opcode extension
+                           [2]    // bit 29
+                           [64];  // Tag
+
+void initializeTheMatrix (void)
+{
+    memset (theMatrix, 0, sizeof (theMatrix));
+}
+
+void addToTheMatrix (int32 opcode, bool opcodeX, bool a, word6 tag)
+{
+    // safety
+    int _opcode = opcode & 01777;
+    int _opcodeX = opcodeX ? 1 : 0;
+    int _a = a ? 1 : 0;
+    int _tag = tag & 077;
+    theMatrix [_opcode] [_opcodeX] [_a] [_tag] ++;
+}
+
+t_stat displayTheMatrix (int32 arg, char * buf)
+{
+    long long count;
+    for (int opcode = 0; opcode < 1024; opcode ++)
+    for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
+    for (int a = 0; a < 2; a ++)
+    for (int tag = 0; tag < 64; tag ++)
+    if ((count = theMatrix [opcode] [opcodeX] [a] [tag]))
+    {
+        // disAssemble doesn't quite do what we want so copy the good bits
+        static char result[132] = "???";
+        strcpy(result, "???");
+        // get mnemonic ...
+        // non-EIS first
+        if (!opcodeX)
+        {
+            if (NonEISopcodes[opcode].mne)
+                strcpy(result, NonEISopcodes[opcode].mne);
+        }
+        else
+        {
+            // EIS second...
+            if (EISopcodes[opcode].mne)
+                strcpy(result, EISopcodes[opcode].mne);
+            
+            if (EISopcodes[opcode].ndes > 0)
+            {
+                // XXX need to reconstruct multi-word EIS instruction.
+
+            }
+        }
+    
+        if (a)
+            strcat (result, " prn|nnnn");
+        else
+            strcat (result, " nnnn");
+
+        // get mod
+        if (extMods[tag].mod)
+        {
+            strcat(result, ",");
+            strcat(result, extMods[tag].mod);
+        }
+        if (result [0] == '?')
+            sim_printf ("%20lld: ? opcode 0%04o X %d a %d tag 0%02do\n", count, opcode, opcodeX, a, tag);
+        else
+            sim_printf ("%20lld: %s\n", count, result);
+    }
+    return SCPE_OK;
+}
+
 t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = ci->IWB;          ///< instruction working buffer
@@ -358,6 +429,8 @@ t_stat executeInstruction(DCDstruct *ci)
     const bool   i = ci->i;               ///< interrupt inhibit bit.
     const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
     
+    addToTheMatrix (opcode, opcodeX, a, tag);
+
     TPR.CA = ci->address;                 // address from opcode
     ry = ci->address;                     ///< 18-bit address field from instruction
     rY = ci->address;

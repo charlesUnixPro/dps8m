@@ -2970,6 +2970,9 @@ void cu_safe_store(void);
 t_stat executeInstruction(DCDstruct *ci);
 t_stat doXED(word36 *Ypair);
 void cu_safe_restore (void);
+void initializeTheMatrix (void);
+void addToTheMatrix (int32 opcode, bool opcodeX, bool a, word6 tag);
+t_stat displayTheMatrix (int32 arg, char * buf);
 
 /* dps8_iom.c */
 

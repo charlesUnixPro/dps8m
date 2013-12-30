@@ -478,6 +478,8 @@ t_stat cpu_reset (DEVICE *dptr)
 
     cpu_reset_array ();
 
+    initializeTheMatrix();
+
     return SCPE_OK;
 }
 
@@ -857,6 +859,7 @@ static bool sample_interrupts (void)
 // This is part of the simh interface
 t_stat sim_instr (void)
 {
+    //switches.degenerate_mode=1;
     // Heh. This needs to be static; longjmp resets the value to NULL
     static DCDstruct *ci = NULL;
     
