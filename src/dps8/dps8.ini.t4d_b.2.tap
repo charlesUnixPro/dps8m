@@ -17,27 +17,27 @@ set cpu config=steady_clock=enable
 set cpu config=degenerate_mode=enable
 set cpu config=append_after=enable
 
-;set CPU DEBUG=ALL
-;set CPU DEBUG=TRACE;REGDUMPAQI
-;set CPU DEBUG=TRACE
-;set CPU debug=appending
-;set CPU DEBUG=REGDUMPDSBR
+;set cpu debug=all
+;set cpu debug=trace;regdumpaqi
+;set cpu debug=trace
+;set cpu debug=appending
+;set cpu debug=regdumpdsbr
 
-;set IOM DEBUG
-;set SCU DEBUG=ALL
-;set CLK DEBUG
-;set TIMER  DEBUG
-;set CON-TEL  DEBUG
-;set TAPE DEBUG
+;set iom debug
+;set scu debug=all
+;set clk debug
+;set timer  debug
+;set con-tel  debug
+;set tape debug
 
-set TAPE WATCH
-;attach -r TAPE0  20184.tap 
-;attach -r TAPE1  20184.tap 
+set tape watch
+;attach -r tape0  20184.tap 
+;attach -r tape1  20184.tap 
 ;set tape0 rewind
 set tape1 rewind
 ;boot iom1
 
 ;set debug dps8.log
-attach -r TAPE1 t4d_b.2.tap
+attach -r tape1 t4d_b.2.tap
 echo Booting T4D_B.2
 boot iom1
