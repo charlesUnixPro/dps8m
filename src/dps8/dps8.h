@@ -29,10 +29,6 @@
 
 #include "sim_defs.h"                                   /* simulator defns */
 
-extern long sim_deb_start;
-#undef sim_debug
-#define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
-
 #include "sim_tape.h"
 
 // patch supplied by Dave Jordan (jordandave@gmail.com) 29 Nov 2012
@@ -73,6 +69,10 @@ typedef __int128_t  int128;
 
 typedef word36      float36;    // single precision float
 typedef word72      float72;    // double precision float
+
+extern uint64 sim_deb_start;
+#undef sim_debug
+#define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
 
 #define PRIVATE static
 

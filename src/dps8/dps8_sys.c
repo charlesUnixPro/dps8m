@@ -181,12 +181,12 @@ exit:
     return rc;
   }
 
-long sim_deb_start;
+uint64 sim_deb_start;
 
 static t_stat dps_debug_start (int32 arg, char * buf)
   {
-    sim_deb_start = atol (buf);
-    sim_printf ("Debug set to start at cycle: %ld\n", sim_deb_start);
+    sim_deb_start = strtoull (buf, NULL, 0);
+    sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
     return SCPE_OK;
   }
 

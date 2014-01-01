@@ -449,6 +449,10 @@ t_stat executeInstruction(DCDstruct *ci)
         {
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
+        if (get_addr_mode() == BAR_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
     }
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
@@ -3058,13 +3062,17 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             return CONT_TRA;
         
         case 0715:  ///< tss
+            if (TPR.CA >= ((word18) BAR.BOUND) << 9)
+            {
+                doFault (i, acc_viol_fault, ACV15, "TSS boundary violation");
+                break;
+            }
             /// C(TPR.CA) + (BAR base) → C(PPR.IC)
             /// C(TPR.TSR) → C(PPR.PSR)
-            /// XXX partially implemented
-            PPR.IC = TPR.CA + (BAR.BASE << 9);
+            PPR.IC = TPR.CA /* + (BAR.BASE << 9) */; // getBARaddress does the adding
             PPR.PSR = TPR.TSR;
-            
-            
+
+            set_addr_mode (BAR_mode);
             return CONT_TRA;
             
         case 0700:  ///< tsx0

@@ -189,6 +189,7 @@ void do_cams (word36 Y)
  */
 static _ptw0* fetchDSPTW(word15 segno)
 {
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
         doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
@@ -205,6 +206,7 @@ static _ptw0* fetchDSPTW(word15 segno)
     PTW0.F = TSTBIT(PTWx1, 2);
     PTW0.FC = PTWx1 & 3;
     
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, DSBR.ADDR, PTWx1, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
     return &PTW0;
 }
 /**
@@ -341,6 +343,8 @@ static _sdw0* fetchPSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%0 U %o F %o\n",
+ y1, p->ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
     return &SDW0;
 }
 
@@ -1181,7 +1185,7 @@ doAppendDataRead(DCDstruct *i, word36 *readData, bool bNotOperand)
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
         }
-        if (apndTrace && bNotOperand)
+        if (apndTrace && GET_A(i->IWB))
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
         }
@@ -1617,7 +1621,7 @@ doAppendDataWrite(DCDstruct *i, word36 writeData, bool bNotOperand)
         {
             if (didITSITP)
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
-            else if (bNotOperand)
+            else if (GET_A(i->IWB))
             {
                 sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
             }

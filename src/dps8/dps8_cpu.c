@@ -684,17 +684,15 @@ static REG cpu_reg[] = {
     
     { ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
     
-    //{ ORDATA (PR0, PR[0], 18) },
-    //{ ORDATA (PR1, PR[1], 18) },
-    //{ ORDATA (PR2, PR[2], 18) },
-    //{ ORDATA (PR3, PR[3], 18) },
-    //{ ORDATA (PR4, PR[4], 18) },
-    //{ ORDATA (PR5, PR[5], 18) },
-    //{ ORDATA (PR6, PR[6], 18) },
-    //{ ORDATA (PR7, PR[7], 18) },
+    { ORDATA (PR0, PR[0], 18) },
+    { ORDATA (PR1, PR[1], 18) },
+    { ORDATA (PR2, PR[2], 18) },
+    { ORDATA (PR3, PR[3], 18) },
+    { ORDATA (PR4, PR[4], 18) },
+    { ORDATA (PR5, PR[5], 18) },
+    { ORDATA (PR6, PR[6], 18) },
+    { ORDATA (PR7, PR[7], 18) },
     
-    
-    //  { ORDATA (BAR, rBAR, 18) },
     
     /*
      { ORDATA (EBR, ebr, EBR_N_EBR) },
@@ -1908,7 +1906,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Port enable:              %01o(8)\n", switches . port_enable);
     sim_printf("Port configuration:       %012llo(8)\n", switches . port_config);
     sim_printf("Port interlace:           %02o(8)\n", switches . port_interlace);
-    sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
+    sim_printf("Processor mode:           %s [%o]\n", switches . proc_mode ? "Multics" : "GCOS", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
     sim_printf("Invert Absolute:          %01o(8)\n", switches . invert_absolute);
     sim_printf("Bit 29 test code:         %01o(8)\n", switches . b29_test);
@@ -1958,6 +1956,13 @@ static config_value_list_t cfg_on_off [] =
     { NULL }
   };
 
+static config_value_list_t cpu_mode [] =
+  {
+    { "gcos", 0 },
+    { "multics", 1 },
+    { NULL }
+  };
+
 static config_list_t cpu_config_list [] =
   {
     /*  0 */ { "faultbase", 0, 0177, multics_fault_base },
@@ -1966,7 +1971,7 @@ static config_list_t cpu_config_list [] =
     /*  3 */ { "portenable", 0, 017, NULL },
     /*  4 */ { "portconfig", 0, 0777777777777, NULL },
     /*  5 */ { "portinterlace", 0, 017, NULL },
-    /*  6 */ { "mode", 0, 01, NULL }, // XXX use keywords
+    /*  6 */ { "mode", 0, 01, cpu_mode }, // XXX use keywords
     /*  7 */ { "speed", 0, 017, NULL }, // XXX use keywords
 
     // Hacks
