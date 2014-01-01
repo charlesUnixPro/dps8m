@@ -1068,6 +1068,7 @@ jmpNext:;
 }
 
 
+#if 0
 static void setDegenerate()
 {
     sim_debug (DBG_DEBUG, & cpu_dev, "setDegenerate\n");
@@ -1080,6 +1081,7 @@ static void setDegenerate()
     
     //PPR.P = 1;
 }
+#endif
 
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
 
@@ -1139,6 +1141,7 @@ APPEND_MODE:;
                 break;
             case ABSOLUTE_MODE:
                 
+#if 0
                 if (switches . degenerate_mode)
                   {
                     setDegenerate ();
@@ -1147,6 +1150,7 @@ APPEND_MODE:;
                         goto APPEND_MODE;
                     break;
                   }
+#endif
 //#if OLDWAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
                 // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
@@ -1233,6 +1237,7 @@ APPEND_MODE:;
                 break;
             case ABSOLUTE_MODE:
 
+#if 0
                 if (switches . degenerate_mode)
                   {
                     setDegenerate ();
@@ -1242,6 +1247,7 @@ APPEND_MODE:;
                     //    goto APPEND_MODE;
                     break;
                   }
+#endif
 //#if OLD_WAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
                 if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
@@ -1742,9 +1748,10 @@ void set_addr_mode(addr_modes_t mode)
         
         PPR.P = 1;
         
+#if 0
         if (switches . degenerate_mode)
           setDegenerate();
-        
+#endif 
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
         if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
@@ -1763,8 +1770,10 @@ void set_addr_mode(addr_modes_t mode)
     } else if (mode == TEMPORARY_ABSOLUTE_mode) {
         PPR.P = 1;
         
+#if 0
         if (switches . degenerate_mode)
           setDegenerate();
+#endif
         
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting temporary absolute mode.\n");
 
@@ -1939,7 +1948,8 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           auto_append_disable = n // still need for 20184, not for t4d
 //           lprp_highonly = n // deprecated
 //           steadyclock = on|off
-//           degenerate_mode = n
+//           degenerate_mode = n // deprecated
+//           append_after = n
 
 static config_value_list_t multics_fault_base [] =
   {
@@ -1971,7 +1981,7 @@ static config_list_t cpu_config_list [] =
     /*  3 */ { "portenable", 0, 017, NULL },
     /*  4 */ { "portconfig", 0, 0777777777777, NULL },
     /*  5 */ { "portinterlace", 0, 017, NULL },
-    /*  6 */ { "mode", 0, 01, cpu_mode }, // XXX use keywords
+    /*  6 */ { "mode", 0, 01, cpu_mode }, 
     /*  7 */ { "speed", 0, 017, NULL }, // XXX use keywords
 
     // Hacks

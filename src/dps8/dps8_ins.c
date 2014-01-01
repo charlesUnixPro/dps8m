@@ -494,7 +494,7 @@ t_stat executeInstruction(DCDstruct *ci)
             
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
-            // XXX [CAC] I disagres. See AL39, pg 311.
+            // XXX [CAC] I disagree. See AL39, pg 311.
             
             // HWR I agree with CAC that this should not set the processor into APPEND mode, but it breaks TestFXE just now. Fix TestFXE
 #if NOT_NEEDED

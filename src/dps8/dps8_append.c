@@ -240,6 +240,7 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     }
     
+#if 0
     if (switches . degenerate_mode && (! i -> a) && (get_addr_mode () == ABSOLUTE_mode))
       {
         sim_debug (DBG_APPENDING, & cpu_dev, "fetchSDWfromSDWAM: degenerate case\n");
@@ -265,6 +266,7 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
         SDW = & degenerate_SDW;
         return SDW;
       }
+#endif
 
     for(int _n = 0 ; _n < 64 ; _n++)
     {
