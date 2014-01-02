@@ -202,6 +202,7 @@ static struct s_tape_state {
     t_mtrlnt tbc; // Number of bytes read into buffer
     uint words_processed; // Number of Word36 processed from the buffer
     //bitstream_t *bitsp;
+    int rec_num; // track tape position
 } tape_state[max_channels];
 
 static struct
@@ -364,8 +365,6 @@ int mt_iom_cmd(chan_devinfo* devinfop)
               {
                 ret = sim_tape_rdrecf(unitp, tape_statep->bufp, &tbc, bufsz);
                 // XXX put unit number in here...
-                if (unitp->flags & UNIT_WATCH)
-                  sim_printf ("Tape %ld reads a record\n", UNIT_NUM (unitp));
               }
             if (ret != 0) {
                 if (ret == MTSE_TMK || ret == MTSE_EOM) {
@@ -387,8 +386,12 @@ int mt_iom_cmd(chan_devinfo* devinfop)
                     return 1;
                 }
             }
+            tape_statep -> rec_num ++;
             tape_statep -> tbc = tbc;
             tape_statep -> words_processed = 0;
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld reads record %d\n",
+                          UNIT_NUM (unitp), tape_statep -> rec_num);
 
             *majorp = 0;
             *subp = 0;
@@ -420,8 +423,10 @@ int mt_iom_cmd(chan_devinfo* devinfop)
                 sim_debug (DBG_NOTIFY, &tape_dev, "mt_iom_cmd: Backspace one record\n");
                 // XXX put unit number in here...
                 if (unitp->flags & UNIT_WATCH)
-                  sim_printf ("Tape %ld backspaces a record\n", UNIT_NUM (unitp));
+                  sim_printf ("Tape %ld backspaces over record %d\n",
+                              UNIT_NUM (unitp), tape_statep -> rec_num);
 
+                tape_statep -> rec_num --;
                 devinfop->have_status = 1;  // TODO: queue
                 *majorp = 0;
                 *subp = 0;
