@@ -362,15 +362,15 @@ IR_MOD_2:;
     
 IT_MOD:;
 //    IT_SD     = 004,
-//    IT_SCR	= 005,
+//    IT_SCR    = 005,
 //    IT_CI     = 010,
 //    IT_I      = 011,
 //    IT_SC     = 012,
 //    IT_AD     = 013,
 //    IT_DI     = 014,
-//    IT_DIC	= 015,
+//    IT_DIC    = 015,
 //    IT_ID     = 016,
-//    IT_IDC	= 017
+//    IT_IDC    = 017
     word12 tally;
     word6 idwtag, delta;
     word36 data;
@@ -379,6 +379,40 @@ IT_MOD:;
     switch (Td)
     {
         // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
+        // CAC: AL39: "The appending hardware mechanism may be invoked for 
+        // an instruction by setting bit 29 of the instruction word ON to 
+        // cause a reference to a properly loaded pointer register or by the 
+        // use of indirect-to-segment (its) or indirect-to-pointer (itp) 
+        // modification in an indirect word.
+
+        // Special Address Modifiers
+        //
+        // Whenever the processor is forming a virtual address two special
+        // address modifiers may be specified and are effective under certain
+        // restrictive conditions. The special address modifiers are shown in
+        // Table 6-4 and discussed in the paragraphs below.
+        //
+        // The conditions for which the special address modifiers are effective
+        // are as follows:
+        //
+        //   1. The instruction word (or preceding indirect word) must specify
+        //   indirect then register or register then indirect modification.
+        //
+        //   2. The computed address for the indirect word must be even.
+        //
+        // If these conditions are satisfied, the processor examines the
+        // indirect word TAG field for the special address modifiers.
+        //
+        // If either condition is violated, the indirect word TAG field is
+        // interpreted as a normal address modifier and the presence of a
+        // special address modifier will cause an illegal procedure, illegal
+        // modifier, fault.
+        //
+        //  TAG Value Coding Symbol Name
+        //     41          itp      Indirect to pointer
+        //     43          its      Indirect to segment
+        //
+
         case SPEC_ITP:
         case SPEC_ITS:
             //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
