@@ -9,6 +9,8 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_iom.h"
+#include "dps8_disk.h"
 
 // XXX We use this where we assume there is only one unit
 #define ASSUME0 0

@@ -87,6 +87,9 @@
 
 #include "sim_tape.h"
 
+#include "dps8_iom.h"
+#include "dps8_mt.h"
+
 static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -202,6 +205,7 @@ static struct s_tape_state {
     t_mtrlnt tbc; // Number of bytes read into buffer
     uint words_processed; // Number of Word36 processed from the buffer
     //bitstream_t *bitsp;
+// XXX bug: 'sim> set tapeN rewind' doesn't reset rec_num
     int rec_num; // track tape position
 } tape_state[max_channels];
 
