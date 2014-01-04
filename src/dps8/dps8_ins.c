@@ -5770,11 +5770,23 @@ t_stat doXED(word36 *Ypair)
     
     DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
     
+// XXX The conditions are more rigorous: see AL39, pg 327
+    // If we are in a fault handler, the IC points to the faulting instruction
+    // but we technically are executing an even instruction
+    if (/* rIC % 2 == 0 && // Even address */
+        xec -> i == 0) // Not inhibited
+      cpu . interrupt_flag = sample_interrupts ();
+    else
+      cpu . interrupt_flag = false;
+
     t_stat ret = executeInstruction(xec);
     
     if (ret)
         return (ret);
     
+    if (cpu . interrupt_flag)
+        return (CONT_INTR);
+
     _xec.IWB = Ypair[1];
     _xec.e = &_eis;
     

@@ -834,7 +834,7 @@ static uint get_highest_intr (void)
     return 1;
   }
 
-static bool sample_interrupts (void)
+bool sample_interrupts (void)
   {
     return events . int_pending;
   }
@@ -954,6 +954,8 @@ t_stat sim_instr (void)
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
+        case JMP_INTR:
+            goto jmpIntr;
 #endif
         case JMP_STOP:
             return stop_reason;

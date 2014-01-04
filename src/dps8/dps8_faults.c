@@ -486,6 +486,11 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         //f == &_faults[FAULT_MME3] ||
         //f == &_faults[FAULT_MME4])
         //PPR.IC = addr;
+    
+     // Don't! T4D says the IC remains pointing at the faulting
+     // instruction
+     // PPR.IC = addr;
+
     t_stat xrv = doXED(faultPair);
     
     bFaultCycle = false;                // exit FAULT CYCLE
@@ -498,13 +503,15 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
     }
     
-    // XXX more better to do the safe_restore, and get the saved mode from the restored data
+    // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
     set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-    //cu_safe_restore ();
+    cu_safe_restore ();
     
     sim_debug (DBG_FAULT, & cpu_dev, "Fault pair resumes\n");
     if (xrv == 0)
         longjmp(jmpMain, JMP_NEXT);     // execute next instruction
+    else if (xrv = CONT_INTR)
+        longjmp(jmpMain, JMP_INTR);     // execute next instruction
     else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
         longjmp(jmpMain, JMP_RETRY);    // retry instruction
 #endif
