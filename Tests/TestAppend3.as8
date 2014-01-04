@@ -5,47 +5,45 @@
 "
 " start simple. Try to have segment 0 talk to segment 1 and vice-versa .....
 "
-    go      start3
-	segment	3
+    "go      start3
+	"segment	3
         
 start3:
 
-hello3: "lda msg3,   sc
-        "emcall      1
-        "ttf         hello3
-        "tra         L0
+hello3: lda msg3,   sc
+        emcall      1
+        ttf         hello3
+        tra         L0
 
 L0:     lda         data0
         emCall      3
-        "lda         lfd
-        "emCall      1
-        
+        emcall      8       " crlf
+
         lda         data1
         emCall      3
-        "lda         lfd
-        "emCall      1
-        
+        emcall      8       " crlf
+
         lda         data2
         emCall      3
-        "lda         lfd
-        "emCall      1
-        
+        emcall      8       " crlf
+
         lda         data3
         emCall      3
-        "lda         lfd
-        "emCall      1
+        emcall      8       " crlf
 
+        tra         pr0|0300
         dis
-    
+
+
+msg3:   tallyb      msg3d, 33, 0 
+msg3d:  aci         /More stuff (from Segment 3) ...\r\n/
+
 "
 " data ...
 "
-        org 060
-data0:  oct 42
-data1:  oct 1
-data2:  oct 2
-data3:  oct 3
-
-msg3:   tallyb      msg3d, 31, 0 
-msg3d:  aci         /More stuff (from Segment 3) .../
+        org         060
+data0:  zero        042, 042    "oct 42
+data1:  zero        1,2         "oct 1
+data2:  zero        3,4         "oct 2
+data3:  zero        5,6         "oct 3
 lfd:    oct         12

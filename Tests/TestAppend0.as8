@@ -5,28 +5,53 @@
 "
 " start simple. Try to have segment 0 talk to segment 1 and vice-versa .....
 "
-        go      start
-	segment	0	        
+"        go      start
+"	segment	0	        
+    entrypoint  start
 
 start:
         lpri    __pr    " set up pr's so we can addess segments easily ....
-
-hello:  lda     msg0, sc
+        emcall  17
+        
+hello:  lda     msg0, sc    " print hello message
         emCall  1
         ttf     hello
 
-        tra     pr1|0
+        lda         pr3|060
+        emCall      3
+        emcall      8       " crlf
+
+        lda         pr3|061
+        emCall      3
+        emcall      8       " crlf
+
+        lda         pr3|062
+        emCall      3
+        emcall      8       " crlf
+
+        lda         pr3|063
+        emCall      3
+        emcall      8       " crlf
+
+        tra     pr1|0       " jump to segment 1 offset 0
     
-        org     010
+        org     0100
 GoodBye:lda     msg1, sc
         emCall  1
         ttf     GoodBye
 
         ldq     pr2|0
-        
+        emcall  13
+        emcall  8
+
         lda     itswrd,*
+        emcall  3
+        emcall  8
+
         ldq     itpwrd,*
-        
+        emcall  13
+        emcall  8
+
         lda     =0123
         sta     itswrd3,*
 
@@ -35,28 +60,29 @@ GoodBye:lda     msg1, sc
 
         tra     pr3|0
 L0:     
-        dis
+        tra dis300
 
     
 "
 " data ...
 "
-msg0:   tallyb      msg0d, 33, 0   "address, count, byte offset
-msg0d:  aci         /Hello world from TestAppend0 ...../
+msg0:   tallyb      msg0d, 34, 0   "address, count, byte offset
+msg0d:  aci         /Hello world from TestAppend0 ...\r\n/
 
-msg1:   tallyb      msg1d, 25, 0   "address, count, byte offset
-msg1d:  aci         /Back at segment 0 we are!/
+msg1:   tallyb      msg1d, 27, 0   "address, count, byte offset
+msg1d:  aci         /Back at segment 0 we are!\r\n/
 
         even
-itswrd: its     2, 010   " same as ldq pr2|0
-itpwrd: itp     1, 010   
+itswrd: its     2, 062   " same as ldq pr2|062
+itpwrd: itp     1, 060
 
 itswrd3:its     3, 061   
 itpwrd3:itp     3, 062
 
         "mod    16
+        sixteen
 __pr:
-        its     0,0		pr0 -> seg 0 etc
+        its     0,0		"pr0 -> seg 0 etc
         its     1,0
         its     2,0
         its     3,0
@@ -64,3 +90,6 @@ __pr:
         its     5,0
         its     6,0
         its     7,0
+        
+        org     0300
+dis300: dis

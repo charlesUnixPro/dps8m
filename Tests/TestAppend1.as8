@@ -5,8 +5,8 @@
 "
 " start simple. Try to have segment 0 talk to segment 1 and vice-versa .....
 "
-        go      start
-	segment	1
+    "    go      start
+	" segment	1
         
 start:
 	lda	one
@@ -20,16 +20,16 @@ hello:  lda msg0,   sc
 
 L0:     
      tra    2|0
-	
-     dis
-    
+	    
 "
 " data ...
 "
 msg0b:   tallyb     msg0d, 1, 0   "address, count, byte offset
-msg0:   tallyb      msg0d, 26, 0   "address, count, byte offset
-msg0d:  aci         /This is from Segment 1 .../
+msg0:   tallyb      msg0d, 28, 0   "address, count, byte offset
+msg0d:  aci         /This is from Segment 1 ...\r\n/
 
+    org 060
+    
 one:	dec	1
 two:	dec	2
 three:	dec	3

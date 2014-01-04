@@ -81,7 +81,8 @@ dm4:    desc4a  msg4, 12
 msg4:   ac4     /0123456789+-/
 
 
-        even
+        "even
+        sixteen
 __pr:
         its     0,0		"pr0 -> seg 0 etc
         its     1,0
