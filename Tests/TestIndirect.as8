@@ -24,21 +24,21 @@ main:
     tsx2    setupFXE
     push
 
-" LDA     I
-" tsp2	pr4|I, *        " ioa
-" acc     /Howdy world this is 'TestIndirect'! - It's /
+    LDA     I
+    tsp2	pr4|I, *        " ioa
+    acc     /Howdy world this is 'TestIndirect'! - It's /
 
-    "tsp2    rd_clockA
+    tsp2    rd_clockA
     "tsp2    <UtilsA>|[rd_clockA]
-"    tsp2    lp|D,*
+    "tsp2    lp|D,*
     "tsp2    UtilsA$rd_clockA
 
-"    staq	Date        " MM/DD HH:MM
+    staq	Date        " MM/DD HH:MM
         
-"    tsp2	ioa
-"    acc     /'^g^g'\r\n/
-"    nop     Date
-"    nop     Date+1
+    tsp2	ioa
+    acc     /'^g^g'\r\n/
+    nop     Date
+    nop     Date+1
 
    " sprpap      g
    " sprp4       f

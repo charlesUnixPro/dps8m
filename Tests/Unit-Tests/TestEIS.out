@@ -1,7 +1,7 @@
-
-dps-8/m simulator V4.0-0 Beta        git commit id: f386776a
 2398 (004536) words loaded
-This is TestEIS ... 6/09 16:30 
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+This is TestEIS ... 1/04 11:03 
 BTD Tests ...
 Result: 055065061062 (-512) (Should be 055065061062 (-512))
 Result: 000065065053 (55+) (Should be 000065065053 (55+))
@@ -78,7 +78,7 @@ SZTR Tests ....
 1. Passed
 Result: 000000200000
 2. Passed
-Result: 000000400000
+Result: 000000400220
 AD2D Tests ....
 1. Result: 053071070066 063066066000 (Should be 053071070066 063066066000)
 2. Result: 053061063063 064000000000 (Should be 053061063063 064000000000)
@@ -108,8 +108,8 @@ CMPN Tests ...
 1. Result FLD2 = FLD1
 2. Result FLD2 = FLD1
 3. Result FLD2 > FLD1
-
-cpuCycles = 25641
+
+cpuCycles = 25637
 TestEIS-10> g 0
 
 DIS instruction, IC: 003252 (000000616000)

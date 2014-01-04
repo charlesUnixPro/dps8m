@@ -1,63 +1,87 @@
-!SEGMENT 0
+!SIZE 000303
 !GO 000000
-000000 xxxx 000056173000         lpri    __pr    " set up pr's so we can addess segments easily ....
-000001 xxxx 000024235052 hello:  lda     msg0, sc
-000002 xxxx 000001420400         emCall  1
-000003 xxxx 000001607000         ttf     hello
-000004 xxxx 100000710100         tra     pr1|0
-000010 xxxx 000036235052 GoodBye:lda     msg1, sc
-000011 xxxx 000001420400         emCall  1
-000012 xxxx 000010607000         ttf     GoodBye
-000013 xxxx 200000236100         ldq     pr2|0
-000014 xxxx 000046235020         lda     itswrd,*
-000015 xxxx 000050236020         ldq     itpwrd,*
-000016 xxxx 000076235000         lda     =0123
-000017 xxxx 000052755020         sta     itswrd3,*
-000020 xxxx 000077235000         lda     =0456
-000021 xxxx 000054755020         sta     itpwrd3,*
-000022 xxxx 300000710100         tra     pr3|0
-000023 xxxx 000000616000         dis
-000024 xxxx 000025004140 msg0:   tallyb      msg0d, 33, 0   "address, count, byte offset 
-000025 xxxx 110145154154 msg0d:  aci         /Hello world from TestAppend0 ...../ 
-000026 xxxx 157040167157  
-000027 xxxx 162154144040  
-000030 xxxx 146162157155  
-000031 xxxx 040124145163  
-000032 xxxx 164101160160  
-000033 xxxx 145156144060  
-000034 xxxx 040056056056  
-000035 xxxx 056056000000  
-000036 xxxx 000037003140 msg1:   tallyb      msg1d, 25, 0   "address, count, byte offset 
-000037 xxxx 102141143153 msg1d:  aci         /Back at segment 0 we are!/ 
-000040 xxxx 040141164040  
-000041 xxxx 163145147155  
-000042 xxxx 145156164040  
-000043 xxxx 060040167145  
-000044 xxxx 040141162145  
-000045 xxxx 041000000000  
-000046 xxxx 000002000043 itswrd: its     2, 010   " same as ldq pr2|0 
-000047 xxxx 000010000000
-000050 xxxx 100000000041 itpwrd: itp     1, 010    
-000051 xxxx 000010000000
-000052 xxxx 000003000043 itswrd3:its     3, 061    
-000053 xxxx 000061000000
-000054 xxxx 300000000041 itpwrd3:itp     3, 062 
-000055 xxxx 000062000000
-000056 xxxx 000000000043         its     0,0		pr0 -> seg 0 etc 
-000057 xxxx 000000000000
-000060 xxxx 000001000043         its     1,0 
-000061 xxxx 000000000000
-000062 xxxx 000002000043         its     2,0 
-000063 xxxx 000000000000
-000064 xxxx 000003000043         its     3,0 
-000065 xxxx 000000000000
-000066 xxxx 000004000043         its     4,0 
-000067 xxxx 000000000000
-000070 xxxx 000005000043         its     5,0 
-000071 xxxx 000000000000
-000072 xxxx 000006000043         its     6,0 
-000073 xxxx 000000000000
-000074 xxxx 000007000043         its     7,0 
-000075 xxxx 000000000000
-000076 xxxx 000000000123 lit Lit000016
-000077 xxxx 000000000456 lit Lit000020
+000000 xxxx 000160173000         lpri    __pr    " set up pr's so we can addess segments easily ....
+000001 xxxx 000021420400         emcall  17
+000002 xxxx 000122235052 hello:  lda     msg0, sc    " print hello message
+000003 xxxx 000001420400         emCall  1
+000004 xxxx 000002607000         ttf     hello
+000005 xxxx 300060235100         lda         pr3|060
+000006 xxxx 000003420400         emCall      3
+000007 xxxx 000010420400         emcall      8       " crlf
+000010 xxxx 300061235100         lda         pr3|061
+000011 xxxx 000003420400         emCall      3
+000012 xxxx 000010420400         emcall      8       " crlf
+000013 xxxx 300062235100         lda         pr3|062
+000014 xxxx 000003420400         emCall      3
+000015 xxxx 000010420400         emcall      8       " crlf
+000016 xxxx 300063235100         lda         pr3|063
+000017 xxxx 000003420400         emCall      3
+000020 xxxx 000010420400         emcall      8       " crlf
+000021 xxxx 100000710100         tra     pr1|0       " jump to segment 1 offset 0
+000100 xxxx 000134235052 GoodBye:lda     msg1, sc
+000101 xxxx 000001420400         emCall  1
+000102 xxxx 000100607000         ttf     GoodBye
+000103 xxxx 200000236100         ldq     pr2|0
+000104 xxxx 000015420400         emcall  13
+000105 xxxx 000010420400         emcall  8
+000106 xxxx 000144235020         lda     itswrd,*
+000107 xxxx 000003420400         emcall  3
+000110 xxxx 000010420400         emcall  8
+000111 xxxx 000146236020         ldq     itpwrd,*
+000112 xxxx 000015420400         emcall  13
+000113 xxxx 000010420400         emcall  8
+000114 xxxx 000301235000         lda     =0123
+000115 xxxx 000150755020         sta     itswrd3,*
+000116 xxxx 000302235000         lda     =0456
+000117 xxxx 000152755020         sta     itpwrd3,*
+000120 xxxx 300000710100         tra     pr3|0
+000121 xxxx 000300710000         tra dis300
+000122 xxxx 000123004240 msg0:   tallyb      msg0d, 34, 0   "address, count, byte offset
+000123 xxxx 110145154154 msg0d:  aci         /Hello world from TestAppend0 ...\r\n/
+000124 xxxx 157040167157 
+000125 xxxx 162154144040 
+000126 xxxx 146162157155 
+000127 xxxx 040124145163 
+000130 xxxx 164101160160 
+000131 xxxx 145156144060 
+000132 xxxx 040056056056 
+000133 xxxx 015012000000 
+000134 xxxx 000135003340 msg1:   tallyb      msg1d, 27, 0   "address, count, byte offset
+000135 xxxx 102141143153 msg1d:  aci         /Back at segment 0 we are!\r\n/
+000136 xxxx 040141164040 
+000137 xxxx 163145147155 
+000140 xxxx 145156164040 
+000141 xxxx 060040167145 
+000142 xxxx 040141162145 
+000143 xxxx 041015012000 
+000144 xxxx 000002000043 itswrd: its     2, 062   " same as ldq pr2|062
+000145 xxxx 000062000000 
+000146 xxxx 100000000041 itpwrd: itp     1, 060
+000147 xxxx 000060000000 
+000150 xxxx 000003000043 itswrd3:its     3, 061   
+000151 xxxx 000061000000 
+000152 xxxx 300000000041 itpwrd3:itp     3, 062
+000153 xxxx 000062000000 
+000154 xxxx 000000011000         sixteen "(allocating 4 nop's)
+000155 xxxx 000000011000 
+000156 xxxx 000000011000 
+000157 xxxx 000000011000 
+000160 xxxx 000000000043         its     0,0		"pr0 -> seg 0 etc
+000161 xxxx 000000000000 
+000162 xxxx 000001000043         its     1,0
+000163 xxxx 000000000000 
+000164 xxxx 000002000043         its     2,0
+000165 xxxx 000000000000 
+000166 xxxx 000003000043         its     3,0
+000167 xxxx 000000000000 
+000170 xxxx 000004000043         its     4,0
+000171 xxxx 000000000000 
+000172 xxxx 000005000043         its     5,0
+000173 xxxx 000000000000 
+000174 xxxx 000006000043         its     6,0
+000175 xxxx 000000000000 
+000176 xxxx 000007000043         its     7,0
+000177 xxxx 000000000000 
+000300 xxxx 000000616000 dis300: dis
+000301 xxxx 000000000123 octal literal (=o123)
+000302 xxxx 000000000456 octal literal (=o456)

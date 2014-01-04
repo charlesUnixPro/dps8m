@@ -1,29 +1,54 @@
-
-dps-8/m simulator V4.0-0 Beta        git commit id: f386776a
 zero-initialized segments 0 .. 7
 zero-initialized SDWAM
-Writing SDW to address 00001000 (DSBR.ADDR+2*0 offset) 
-61 (000075) words loaded into segment 0(0) at address 000000
-Writing SDW to address 00001002 (DSBR.ADDR+2*1 offset) 
-21 (000025) words loaded into segment 1(1) at address 000100
-Writing SDW to address 00001004 (DSBR.ADDR+2*2 offset) 
-26 (000032) words loaded into segment 2(2) at address 000200
-Writing SDW to address 00001006 (DSBR.ADDR+2*3 offset) 
-23 (000027) words loaded into segment 3(3) at address 000300
+Writing SDW to address 00007000 (DSBR.ADDR+2*0 offset) 
+85 (000125) words loaded into segment 0(0) at address 000000
+Writing SDW to address 00007002 (DSBR.ADDR+2*1 offset) 
+20 (000024) words loaded into segment 1(1) at address 001750
+Writing SDW to address 00007004 (DSBR.ADDR+2*2 offset) 
+33 (000041) words loaded into segment 2(2) at address 003720
+Writing SDW to address 00007006 (DSBR.ADDR+2*3 offset) 
+33 (000041) words loaded into segment 3(3) at address 005670
 *** Descriptor Segment Base Register (DSBR) ***
-DSBR: ADDR=001000 BND=00000 U=1 STACK=0000
+DSBR: ADDR=007000 BND=00000 U=1 STACK=0000
 *** Descriptor Segment Table ***
-Seg 0 - ADDR=000000 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=4 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=100
-Seg 1 - ADDR=000100 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=2 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=25
-Seg 2 - ADDR=000200 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=2 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=32
-Seg 3 - ADDR=000300 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=4 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=76
+Seg 0 - ADDR=000000 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=15 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=303
+Seg 1 - ADDR=001750 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=4 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=63
+Seg 2 - ADDR=003720 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=4 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=65
+Seg 3 - ADDR=005670 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=4 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=65
 Seg 4 - *** Uninitialized ***
 Seg 5 - *** Uninitialized ***
 Seg 6 - *** Uninitialized ***
 Seg 7 - *** Uninitialized ***
-Hello world from TestAppend0 ....This is from Segment 1 ...From Segment 2 This is ...>Back at segment 0 we are!000000 000616000000 000123000000 000456000000 000003
-cpuCycles = 364
-TestAppend-16> g 0
 
-DIS instruction, IC: 000010 (000036235052)
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+PR[0]/ap: SNR=00000 RNR=0 WORDNO=000000 BITNO:00
+PR[1]/ab: SNR=00001 RNR=0 WORDNO=000000 BITNO:00
+PR[2]/bp: SNR=00002 RNR=0 WORDNO=000000 BITNO:00
+PR[3]/bb: SNR=00003 RNR=0 WORDNO=000000 BITNO:00
+PR[4]/lp: SNR=00004 RNR=0 WORDNO=000000 BITNO:00
+PR[5]/lb: SNR=00005 RNR=0 WORDNO=000000 BITNO:00
+PR[6]/sp: SNR=00006 RNR=0 WORDNO=000000 BITNO:00
+PR[7]/sb: SNR=00007 RNR=0 WORDNO=000000 BITNO:00
+Hello world from TestAppend0 ...
+000042 000042
+000001 000002
+000003 000004
+000005 000006
+This is from Segment 1 ...
+From Segment 2 This is ...
+000000 000616
+Back at segment 0 we are!
+000060 235000
+000000 000006
+000000 000001
+More stuff (from Segment 3) ...
+000000 000616
+000000 000123
+000000 000456
+012345 654321
+
+cpuCycles = 512
+TestAppend-17> g 0
+
+DIS instruction, IC: 000300 (000000616000)
 Goodbye

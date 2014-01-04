@@ -52,8 +52,8 @@ IBS:    aci     /If this works, that means were in TAM$.../
 
 
 R_mods:
-push
-return
+    push
+
     tsp2	ioa
     acc     /R mods ...\r\n/
 
@@ -748,7 +748,10 @@ fltTmp: dec     -123.4567
 
 
 _print: push
-return
+
+
+        tsp2    ioa
+        acc     /\r\nThis is from TAM$_print ...\r\n/
 
         fld     pi
         emcall  6
