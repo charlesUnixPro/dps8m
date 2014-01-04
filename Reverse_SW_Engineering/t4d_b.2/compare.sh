@@ -17,7 +17,7 @@ if [ "${1}" == "" ]; then
 fi
 N=${1}
 
-if [ "${N}" == "1" ]; then
+if [ "${N}" == "1" -o "${N}" == "2" ]; then
   ORIGIN=030
 else
   ORIGIN=010000
