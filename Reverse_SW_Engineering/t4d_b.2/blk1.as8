@@ -2127,8 +2127,30 @@ modify_code:
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 ""
 ""   Loop, incrementing the address field of the instruct at l6044.
-""   If the address % 3 == 0 
 ""
+
+"    addr = l1401
+"    A = addr
+"    if ((A & 000003000000) == 0)
+"    {
+"        if (A == 140000000000)
+"            A = 0
+"        A += 001000000000
+"        addr = A
+"
+"        A = * HIGH18(addr);
+"        if (A & 400000000000)
+"          goto l6060
+"    }
+"    A = addr
+"    A += 000001000000
+"    addr = A
+"    addr2 = A
+"    if (A == 004200000000)
+"      dis
+" l6060:
+"    A = * HIGHT18(addr2)
+
 
 l6032:
 
@@ -2154,13 +2176,17 @@ l6032:
 	ada	C_001000000000
 	sta	l6275
 
-	" this instruction modified
+	" this instruction modified; it's address field is incremented
 l6044:	lda	l1401
-	ana	C_400000000000
-	tze	* + 2
-	tra	l6060
 
-	" else address % 3 != 0
+        " check high bit in A
+	ana	C_400000000000
+	tze	* + 2	" high bit in A not set
+	tra	l6060	" high bit in A set
+
+	" address % 3 != 0
+
+" address % 3 != 0
 
 	"  increment address field by one
 

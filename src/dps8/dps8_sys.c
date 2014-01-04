@@ -40,6 +40,7 @@ CTAB dps8_cmds[] =
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n"},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" },
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
+    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -180,12 +181,12 @@ exit:
     return rc;
   }
 
-long sim_deb_start;
+uint64 sim_deb_start;
 
 static t_stat dps_debug_start (int32 arg, char * buf)
   {
-    sim_deb_start = atol (buf);
-    sim_printf ("Debug set to start at cycle: %ld\n", sim_deb_start);
+    sim_deb_start = strtoull (buf, NULL, 0);
+    sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
     return SCPE_OK;
   }
 
@@ -414,8 +415,11 @@ sysinfo_t sys_opts =
   {
     0, /* clock speed */
     {
-      0, /* iom_times.connect */
-      0  /* iom_times.chan_activate */
+// I get too much jitter in cpuCycles when debugging 20184; try turning queing
+// off here (changing 0 to -1)
+// still get a little jitter, and once a hang in DIS. very strange
+      -1, /* iom_times.connect */
+      -1  /* iom_times.chan_activate */
     },
     {
 // XXX This suddenly started working when I reworked the iom code for multiple units.

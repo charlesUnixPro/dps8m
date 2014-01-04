@@ -1,0 +1,83 @@
+
+    option  Multics     " Multics style calling conventions
+
+    entrypoint main
+    
+	name	main
+	segdef	main
+
+	segref	UtilsA, ioa,rd_clockA
+	segref	lot_,lot_
+    segref  stack_0, stack_0
+
+    segref  TAM, _main, pi, E, fltTmp, _print
+
+    "segref  indirect_tests
+
+    link    I, <UtilsA>|[ioa]
+    link    D, <UtilsA>|[rd_clockA]
+
+    link    T, <TAM>|[_main]
+    link    P, <TAM>|[_print]
+
+main:
+    tsx2    setupFXE
+    push
+
+" LDA     I
+" tsp2	pr4|I, *        " ioa
+" acc     /Howdy world this is 'TestIndirect'! - It's /
+
+    "tsp2    rd_clockA
+    "tsp2    <UtilsA>|[rd_clockA]
+"    tsp2    lp|D,*
+    "tsp2    UtilsA$rd_clockA
+
+"    staq	Date        " MM/DD HH:MM
+        
+"    tsp2	ioa
+"    acc     /'^g^g'\r\n/
+"    nop     Date
+"    nop     Date+1
+
+   " sprpap      g
+   " sprp4       f
+   " short_call  TAM_main
+   " lprp4       f
+   " lprpap      g
+
+    call    P(ap|0)
+
+    "call    TAM_main(ap|0)
+    call T(ap|0)
+
+    "
+    " dink with a few fp numbers in TAM$
+    "
+    fld     pi
+    emcall  6
+
+    fld     E
+    emcall  6
+
+    fmp     pi  " pi * e = 8.5397341
+    emcall  6
+
+    call    P(ap|0)
+    
+	dis
+    
+
+	even
+
+g:  bss 1
+f:  bss 1
+
+Date:	bss     2
+
+    INCLUDE     setupFXE.as8
+
+	end
+
+
+

@@ -1956,27 +1956,62 @@ l12061:	oct	012053000220
 	lda	0013053	" 013053235000
 	inhibit	on
 	dis	0013037	" 013037616200
-" 013040:
 	inhibit	off
-	lda	0015264	" 015264235000
-	sta	0020000	" 020000755000
-	lda	0015265	" 015265235000
+" 013040:
+" Set up the SDW
+
+" SDW even word 000220000004
+"   ADDR 00022000
+"   R1 0
+"   R2 0
+"   R3 0
+"   F  1
+"   FC 0
+	lda	0015264	" contains 000220000004
+	sta	0020000	
+
+" SDW odd word 000007600000
+"   BOUND 00000
+"   R,E,W,P,U 1
+"   G,C, ER 0
+
+	lda	0015265	" contains 000007600000
 	sta	0020001	" 020001755000
-	lda	0015275	" 015275235000
+	lda	0015275	" contains 000000001000 : mme 0
 	sta	0022000	" 022000755000
-	lprp0	0015266	" 015266760000
-	ldbr	0015270	" 015270232000
+	lprp0	0015266	" contains 0
+
+" ldbr (00020000 0000   00000 0200000)
+"    DSBR.ADDR <- 00020000
+"    DSBR.BOUND <- 00000
+"    DSBR.U <- 1
+"    CDSR.STACK <- 0
+
+	ldbr	0015270	" contains 000200000000 000000200000
 " 013050:
 	ldi	0000000,dl	" 000000634007
+
+" bug20
+" This should xfer to 00020000, (DSBR.ADDR + OFFSET of 0)
+" But we are out of bounds, so we should fault? We didn't!
+" No we are not out of bounds... BOUND 0 means segno 0-7 ok.
+
 	tra pr0|00	" 000000710100
+
+" The tra did:
+"	mme	0
+" The mme did:
+"	scu	015300
+"	tra	l13054
+
 	inhibit	on
 	dis	0013052	" 013052616200
 	inhibit	off
-	tra	0013054	" 013054710000
-	lda	0015304	" 015304235000
-	ana	l15345	" 015345375000
-	sba	0015272	" 015272175000
-	tze	0013061	" 013061600000
+	tra	l13054	" * + 1
+l13054:	lda	0015304	" trace shows 000000000220 s.b. SCU[4], the IC
+	ana	l15345	" trace shows res is 000000000220
+	sba	0015272	" contains 000000000200
+	tze	0013061	" didn't xfer
 " 013060:
 	inhibit	on
 	dis	0013060	" 013060616200 -- bug17
@@ -1984,7 +2019,7 @@ l12061:	oct	012053000220
 	lda	0013061,du	" 013061235003
 	sta	0015322	" 015322755000
 	lda	0007771	" 007771235000
-	ana	0015342	" 015342375000
+	ana	0015342	" contains 777777000000
 	ada	0015343	" 015343075000
 	sta	0013067	" 013067755000
 	inhibit	on

@@ -379,6 +379,7 @@ ioamov:	als     18          "place in AU
         sta     ertally		"and save
         tze     ioanomov	"skip zero length move
 
+        eax5    0           " 0 => x5 (what was x5 used for?)
         mlr     (rl,ql),(rl,x5)	"copy the string
         desc9a	errtemp,au
         desc9a	erbuf,au

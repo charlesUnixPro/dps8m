@@ -64,6 +64,7 @@ CFLAGS += -Wall
 CFLAGS += -DUSE_INT64
 
 LDFLAGS = -g
+#LDFLAGS += -Wl,--cref -Wl,-Map=dps8.map
 
 # Dese make debugging hard; also, I don't belive that -fwhole-program is appropriate
 # CFLAGS += -flto -fwhole-program

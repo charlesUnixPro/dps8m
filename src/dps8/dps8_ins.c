@@ -12,7 +12,7 @@
 word36 Ypair[2];        ///< 2-words
 static word36 Yblock8[8];      ///< 8-words
 static word36 Yblock16[16];    ///< 16-words
-static int testABSA (DCDstruct * i, word36 * result);
+static int doABSA (DCDstruct * i, word36 * result);
 
 static t_stat doInstruction(DCDstruct *i);
 
@@ -136,6 +136,8 @@ static void scu2words(t_uint64 *words)
     words[4] = rIR; // HWR
     
     words[4] = setbits36(words[4], 0, 18, PPR.IC);
+    //if (switches . invert_absolute)
+      //words [4] ^= I_ABS;
     
     words[5] = setbits36(0, 0, 18, TPR.CA);
     words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
@@ -145,7 +147,8 @@ static void scu2words(t_uint64 *words)
     words[5] = setbits36(words[5], 24, 1, cu.xdo);
     words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
     
-    encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
+    // XXX CAC word 6 is the current instuction, not the IR
+    // encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
     //words[6] = ins;  // I think HWR
     
     words[7] = cu.IRODD;
@@ -161,6 +164,49 @@ void cu_safe_store(void)
     // in FAULT mode can save the state as it existed at the time of the fault rather than
     // as it exists at the time the scu instruction is executed.
     scu2words(scu_data);
+}
+
+void cu_safe_restore (void)
+{
+    // BUG:  We don't track much of the data that should be tracked
+    
+    PPR.PRR  = getbits36(scu_data[0], 0, 3);
+    PPR.PSR  = getbits36(scu_data[0], 3, 15);
+    PPR.P    = getbits36(scu_data[0], 18, 1);
+    // 19 "b" XSF
+    // 20 "c" SDWAMN
+    cu.SD_ON = getbits36(scu_data[0], 21, 1);
+    // 22 "e" PTWAM
+    cu.PT_ON = getbits36(scu_data[0], 23, 1);
+    // 24..32 various
+    // 33-35 FCT
+    
+    // scu_data[1]
+    
+    TPR.TRR  =  getbits36(scu_data[2], 0, 3);
+    TPR.TSR  = getbits36(scu_data[2], 3, 15);
+    switches.cpu_num = getbits36(scu_data[2], 27, 3);
+    cu.delta = getbits36(scu_data[2], 30, 6);
+    
+    TPR.TBR  = getbits36(scu_data[3], 30, 6);
+    
+    //save_IR(&scu_data[4]);
+    rIR      = getbits36(scu_data[4], 18, 18); // HWR
+    PPR.IC   = getbits36(scu_data[4], 0, 18);
+    
+    TPR.CA   = getbits36(0, 0, 18);
+    cu.repeat_first = getbits36(scu_data[5], 18, 1);
+    cu.rpt   = getbits36(scu_data[5], 19, 1);
+    // BUG: Not all of CU data exists and/or is saved
+    cu.xde   = getbits36(scu_data[5], 24, 1);
+    cu.xdo   = getbits36(scu_data[5], 24, 1);
+    cu.CT_HOLD = getbits36(scu_data[5], 30, 6);
+    
+    // XXX This will take some thought
+    //encode_instr(&cu.IR, &scu_data[6]);    // BUG: cu.IR isn't kept fully up-to-date
+    //scu_data[6] = ins;  // I think HWR
+    
+    cu.IRODD = scu_data [7];
 }
 
 PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
@@ -305,6 +351,77 @@ bool _illmod[] = {
 
 //=============================================================================
 
+static long long theMatrix [1024] // 1024 opcodes (2^10)
+                           [2]    // opcode extension
+                           [2]    // bit 29
+                           [64];  // Tag
+
+void initializeTheMatrix (void)
+{
+    memset (theMatrix, 0, sizeof (theMatrix));
+}
+
+void addToTheMatrix (int32 opcode, bool opcodeX, bool a, word6 tag)
+{
+    // safety
+    int _opcode = opcode & 01777;
+    int _opcodeX = opcodeX ? 1 : 0;
+    int _a = a ? 1 : 0;
+    int _tag = tag & 077;
+    theMatrix [_opcode] [_opcodeX] [_a] [_tag] ++;
+}
+
+t_stat displayTheMatrix (int32 arg, char * buf)
+{
+    long long count;
+    for (int opcode = 0; opcode < 1024; opcode ++)
+    for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
+    for (int a = 0; a < 2; a ++)
+    for (int tag = 0; tag < 64; tag ++)
+    if ((count = theMatrix [opcode] [opcodeX] [a] [tag]))
+    {
+        // disAssemble doesn't quite do what we want so copy the good bits
+        static char result[132] = "???";
+        strcpy(result, "???");
+        // get mnemonic ...
+        // non-EIS first
+        if (!opcodeX)
+        {
+            if (NonEISopcodes[opcode].mne)
+                strcpy(result, NonEISopcodes[opcode].mne);
+        }
+        else
+        {
+            // EIS second...
+            if (EISopcodes[opcode].mne)
+                strcpy(result, EISopcodes[opcode].mne);
+            
+            if (EISopcodes[opcode].ndes > 0)
+            {
+                // XXX need to reconstruct multi-word EIS instruction.
+
+            }
+        }
+    
+        if (a)
+            strcat (result, " prn|nnnn");
+        else
+            strcat (result, " nnnn");
+
+        // get mod
+        if (extMods[tag].mod)
+        {
+            strcat(result, ",");
+            strcat(result, extMods[tag].mod);
+        }
+        if (result [0] == '?')
+            sim_printf ("%20lld: ? opcode 0%04o X %d a %d tag 0%02do\n", count, opcode, opcodeX, a, tag);
+        else
+            sim_printf ("%20lld: %s\n", count, result);
+    }
+    return SCPE_OK;
+}
+
 t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = ci->IWB;          ///< instruction working buffer
@@ -316,6 +433,8 @@ t_stat executeInstruction(DCDstruct *ci)
     const bool   i = ci->i;               ///< interrupt inhibit bit.
     const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
     
+    addToTheMatrix (opcode, opcodeX, a, tag);
+
     TPR.CA = ci->address;                 // address from opcode
     ry = ci->address;                     ///< 18-bit address field from instruction
     rY = ci->address;
@@ -333,6 +452,10 @@ t_stat executeInstruction(DCDstruct *ci)
         if (get_addr_mode() == APPEND_mode)
         {
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
+        if (get_addr_mode() == BAR_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
     }
     
@@ -367,8 +490,6 @@ t_stat executeInstruction(DCDstruct *ci)
             doFault(ci, illproc_fault, 0, "Illegal DU/DL modification");
     }
     
-        
-    
     if (iwb->ndes == 0)
     {
         if (a && !(iwb->flags & IGN_B29))   // a should now always be correct so B29 tst may not be necesary....
@@ -377,16 +498,21 @@ t_stat executeInstruction(DCDstruct *ci)
             
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
-            // XXX [CAC] I disagres. See AL39, pg 311.
+            // XXX [CAC] I disagree. See AL39, pg 311.
             
             // HWR I agree with CAC that this should not set the processor into APPEND mode, but it breaks TestFXE just now. Fix TestFXE
-            if (switches . auto_append_disable == 0)
-                 set_addr_mode(APPEND_mode);
+#if NOT_NEEDED
+//            if (switches . auto_append_disable == 0)
+//                 set_addr_mode(APPEND_mode);
+#endif
         }
 // XXX Experimental code
-        if (a && (iwb->flags & TRANSFER_INS))
+        if (! switches . append_after)
         {
-            set_addr_mode(APPEND_mode);
+            if (a && (iwb->flags & TRANSFER_INS))
+            {
+                set_addr_mode(APPEND_mode);
+            }
         }
         
         // if instructions need an operand (CY) to operate, read it now. Else defer AM calcs until instruction execution
@@ -413,6 +539,14 @@ t_stat executeInstruction(DCDstruct *ci)
     //t_stat ret = opcodeX ? DoEISInstruction(ci) : DoBasicInstruction(ci);
     t_stat ret = doInstruction(ci);
     
+    if (switches . append_after)
+    {
+        if (iwb->ndes == 0 && a && (iwb->flags & TRANSFER_INS))
+        {
+          set_addr_mode(APPEND_mode);
+        }
+    }
+
     cpuCycles += 1; // bump cycle counter
     
     if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
@@ -2932,13 +3066,17 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             return CONT_TRA;
         
         case 0715:  ///< tss
+            if (TPR.CA >= ((word18) BAR.BOUND) << 9)
+            {
+                doFault (i, acc_viol_fault, ACV15, "TSS boundary violation");
+                break;
+            }
             /// C(TPR.CA) + (BAR base) → C(PPR.IC)
             /// C(TPR.TSR) → C(PPR.PSR)
-            /// XXX partially implemented
-            PPR.IC = TPR.CA + (BAR.BASE << 9);
+            PPR.IC = TPR.CA /* + (BAR.BASE << 9) */; // getBARaddress does the adding
             PPR.PSR = TPR.TSR;
-            
-            
+
+            set_addr_mode (BAR_mode);
             return CONT_TRA;
             
         case 0700:  ///< tsx0
@@ -3947,7 +4085,15 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Write (i, tprca + 1, scu_data [1], DataWrite, i->tag);
             Write (i, tprca + 2, scu_data [2], DataWrite, i->tag);
             Write (i, tprca + 3, scu_data [3], DataWrite, i->tag);
+// Bug DIS@0013060 31184718 blk10 absulte mode bit inverted in SCU instruction
+#if 0
+            word36 tmp = scu_data [4];
+            if (switches . invert_absolute)
+              tmp ^= I_ABS;
+            Write (i, tprca + 4, tmp, DataWrite, i->tag);
+#else
             Write (i, tprca + 4, scu_data [4], DataWrite, i->tag);
+#endif
             Write (i, tprca + 5, scu_data [5], DataWrite, i->tag);
             Write (i, tprca + 6, scu_data [6], DataWrite, i->tag);
             Write (i, tprca + 7, scu_data [7], DataWrite, i->tag);
@@ -4012,7 +4158,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                         return STOP_UNIMP;
                     case 0040:
                     case 0050:  // return clock/calendar in AQ
-                        goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
+                        if (! switches . steady_clock)
+                          goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
+                        rA = 0;
+                        rQ = cpuCycles;
+                        break;
                         
                         
                     case 0060:
@@ -4207,7 +4357,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 #endif
           {
             word36 result;
-            int rc = testABSA (i, & result);
+            int rc = doABSA (i, & result);
             if (rc)
               return rc;
             rA = result;
@@ -5627,11 +5777,19 @@ emCall(DCDstruct *i)
             sim_printf("%12.8Lg", eaq);
             break;
         }
+        case 7:   ///< dump index registers
+        {
+            //sim_printf("Index registers * * *\n");
+            for(int i = 0 ; i < 8 ; i += 4)
+                sim_printf("r[%d]=%06o r[%d]=%06o r[%d]=%06o r[%d]=%06o\n", i+0, rX[i+0], i+1, rX[i+1], i+2, rX[i+2], i+3, rX[i+3]);
+            
+        }
+            
             
     }
 }
 
-static int testABSA (DCDstruct * i, word36 * result)
+static int doABSA (DCDstruct * i, word36 * result)
   {
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
@@ -5639,99 +5797,72 @@ static int testABSA (DCDstruct * i, word36 * result)
         doFault (i, illproc_fault, 0, "ABSA in absolute mode.\n");
         return CONT_FAULT;
       }
-    // Too many fingers have poked at i->address
-    word18 addr = (i -> IWB >> 18) & 0777777;
 
-// test code
+    // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
+    // violation, out of segment bounds, fault.
 
-    // AL39, fig 6-7.
-    // Too many fingers in the pie i-> address is not what is wanted
-    word3 n = (addr /*i -> address */  >> 15) & 07;
-    word15 offset = addr /* i -> address */ & 077777;
-
-    word15 segno = PR [n] . SNR;
-    word24 y1 = (2 * segno) % 1024;
-    word24 x1 = (2 * segno - y1) / 1024;
-
-    word36 sdwe, sdwo;
-    core_read (DSBR . ADDR + x1, & sdwe);
-    core_read (DSBR . ADDR + x1 + 1, & sdwo);
-
-    word14 BOUND = (sdwo >> (35 - 14)) & 037777;
-    word18 bound = ((word18) BOUND) << 4;
-    word24 seg_addr = (sdwe >> 12) & 077777777;
-
-    word36 res;
-    // BOUND: 14 high-order bits of the largest 18-bit modulo 16 offset that 
-    // may be accessed without causing a descriptor violation, out of segment 
-    // bounds, fault.
-
-    int av = 0;
-    word15 moffset = (((long) offset) & 0777760);
-    if (moffset >= bound)
+    if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
       {
-        //// Guessing they want the offending offset in 24:12 format, like SDWe
-        //res = ((word36) offset) << 12;
-        // Guessing they want the offending offset final address in 24:12 format, lide SDWe
-        res = ((word36) ((offset + seg_addr) & 077777777)) << 12;
-        //res = ((word36) ((offset + seg_addr) & 077777760)) << 12;
-        av = 1;
-      }
-    else
-      //res = (sdwe & 0777777700000)/* + (((word36) offset) << 12)*/; // Mod 16:
-      res = 0;
-    
-#if 1
-    // Code pattern is
-    //  absa pr0|00
-    //  sta xx
-    //  lda yy "contains the expected answer
-    //
-    // or
-    //  absa pr0|00
-    //  dis
-    // which would seem to want it to fault
-
-    // Fetch the *+1 instruction
-    word36 dis = M [PPR . IC + 1];
-    if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
-      {
-        //sim_printf ("Taking fault\n");
-        // AL39: Address Appending: A segment boundary check is made in 
-	// every cycle except PSDW. If a boundary violation is
-        // detected, an access violation, out of segment bounds, fault is 
-        // generated and the execution of the instruction interrupted.
         doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+        return CONT_FAULT;
       }
-    // Fetch the  LDA instruction
-    word36 lda = M [PPR . IC + 2];
-    //sim_printf ("lda %012llo\n",  lda);
-    // Extract the address
-    word18 ans_addr = GETHI (lda);
-    // Get the answer
-    word36 ans = M [ans_addr];
-    //sim_printf ("addr %06o\n", addr);
-#if 0
-    sim_printf ("ABSA@%06o n %o os %05o tag %02o SNR: %05o ADDR: %06o x1: %4d SDW: %012llo %012llo B: %06o SA: %09o %d A: %012llo R: %012llo\n",
-       rIC, n, offset, i -> tag, PR [n] . SNR, DSBR . ADDR, x1, M [0], M [1], bound, seg_addr, av, ans, res);
+
+    // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+
+    word36 SDWe, SDWo;
+    core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
+    core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
+
+    // 3. If SDW.F = 0, then generate directed fault n where n is given in
+    // SDW.FC. The value of n used here is the value assigned to define a
+    // missing segment fault or, simply, a segment fault.
+
+    // ABSA doesn't care if the page isn't resident
 
 
-    //word15 segno = PR [n] . SNR;
-    //word12 offset = i -> address & 07777;
-    //word12 ins_segno = offset / 1024;
-    //if (2 * ins_segno >= 16 * (DSBR.BND + 1))
-      //sim_printf ("Access violation\n");
+    // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
 
-    if (ans != res)
+    word14 BOUND = (SDWo >> (35 - 14)) & 037777;
+    if (TPR . CA >= 16 * (BOUND + 1))
       {
-         sim_printf ("Wrong! computed %012llo, wanted %012llo\n", res, ans);
-         res = ans;
+        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+        return CONT_FAULT;
+      }
+
+
+    // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
+
+    // ABSA doesn't care
+
+
+    // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+
+    word24 ADDR = (SDWe >> 12) & 077777760;
+    word36 res = (word36) ADDR + (word36) TPR.CA;
+    res &= 077777777; //24 bit math
+    res <<= 12; // 24:12 format
+
+#if 0
+      {
+        word36 dis = M [PPR . IC + 1];
+        if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
+          sim_printf ("we didn't fault\n");
+        else
+          {
+            // Fetch the  LDA instruction
+            word36 lda = M [PPR . IC + 2];
+            //sim_printf ("lda %012llo\n",  lda);
+            // Extract the address
+            word18 ans_addr = GETHI (lda);
+            // Get the answer
+            word36 ans = M [ans_addr];
+           sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
+             SDWe, SDWo, ADDR, ans >> 12, res >> 12);
+         }
       }
 #endif
-#endif
 
-    //* result = res;
-    * result = ans;
+    * result = res;
     return SCPE_OK;
   }
 

@@ -70,6 +70,8 @@ static DEBTAB cpu_dt[] = {
     { "NOTIFY",     DBG_NOTIFY      },
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
+    { "FAULT",      DBG_FAULT       },
+
     { NULL,         0               }
 };
 
@@ -478,6 +480,8 @@ t_stat cpu_reset (DEVICE *dptr)
 
     cpu_reset_array ();
 
+    initializeTheMatrix();
+
     return SCPE_OK;
 }
 
@@ -534,8 +538,8 @@ word36 XECD2; /*!< XED instr#2 */
 
 //word18	rIC;	/*!< instruction counter */
 // same as PPR.IC
-word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
-IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
+ //word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
+//IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
 
 
 word27	rTR;	/*!< timer [map: TR, 9 0's] */
@@ -682,17 +686,15 @@ static REG cpu_reg[] = {
     
     { ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
     
-    //{ ORDATA (PR0, PR[0], 18) },
-    //{ ORDATA (PR1, PR[1], 18) },
-    //{ ORDATA (PR2, PR[2], 18) },
-    //{ ORDATA (PR3, PR[3], 18) },
-    //{ ORDATA (PR4, PR[4], 18) },
-    //{ ORDATA (PR5, PR[5], 18) },
-    //{ ORDATA (PR6, PR[6], 18) },
-    //{ ORDATA (PR7, PR[7], 18) },
+    { ORDATA (PR0, PR[0], 18) },
+    { ORDATA (PR1, PR[1], 18) },
+    { ORDATA (PR2, PR[2], 18) },
+    { ORDATA (PR3, PR[3], 18) },
+    { ORDATA (PR4, PR[4], 18) },
+    { ORDATA (PR5, PR[5], 18) },
+    { ORDATA (PR6, PR[6], 18) },
+    { ORDATA (PR7, PR[7], 18) },
     
-    
-    //  { ORDATA (BAR, rBAR, 18) },
     
     /*
      { ORDATA (EBR, ebr, EBR_N_EBR) },
@@ -936,10 +938,10 @@ static enum { IB_EMPTY, IB_SINGLE, IB_PAIR } instr_buf_state;
 
 t_stat sim_instr (void)
   {
-    // Heh. These need to be static; longjmp resets values
+    // Heh. This needs to be static; longjmp resets the value to NULL
     static DCDstruct _ci;
     static DCDstruct * ci = & _ci;
-
+    
     adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
     apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
     
@@ -982,7 +984,6 @@ t_stat sim_instr (void)
 
         switch (cpu . cycle)
           {
-
             case DIS_cycle:
                 // spining wheels waiting for interrupt
                 // if interruot, set INTERRUPT_cycle
@@ -1026,7 +1027,7 @@ t_stat sim_instr (void)
                         //addr_modes_t am = get_addr_mode();
 
                         // Temporary absolute mode
-                        set_addr_mode (ABSOLUTE_mode);
+                        set_addr_mode (TEMPORARY_ABSOLUTE_mode);
 
                         // Set to ring 0
                         PPR . PRR = 0;
@@ -1164,7 +1165,7 @@ t_stat sim_instr (void)
 		// processor in temporary absolute mode.
     
                 PPR.PRR = 0;
-                set_addr_mode (ABSOLUTE_mode);
+                set_addr_mode (TEMPORARY_ABSOLUTE_mode);
     
                 cpu . cycle = FAULT_EXEC_cycle;
 #if 0
@@ -1456,6 +1457,21 @@ t_stat sim_instr (void)
 //--- }
 
 
+#if 0
+static void setDegenerate()
+{
+    sim_debug (DBG_DEBUG, & cpu_dev, "setDegenerate\n");
+    //TPR.TRR = 0;
+    //TPR.TSR = 0;
+    //TPR.TBR = 0;
+    
+    //PPR.PRR = 0;
+    //PPR.PSR = 0;
+    
+    //PPR.P = 1;
+}
+#endif
+
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
 
 #define DOITSITP(indword, Tag) ((_TM(Tag) == TM_IR || _TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)))
@@ -1469,41 +1485,19 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
 {
     sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
     
+    rY = addr;
+    TPR.CA = addr;  //XXX for APU
+    
     switch (accessType)
     {
-        // absolute mode fetches are always in absolute mode?
         case InstructionFetch:
             core_read(addr, dat);
             break;
-            
-        case DataRead:
-        case OperandRead:
-            if (i->a)
-                doAppendCycle(i, accessType, Tag, -1, dat);
-            else
-                core_read(addr, dat);
-            break;
-       
-        case IndirectRead:
-            if (DOITSITP(*dat, Tag))
-            {
-                if (apndTrace)
-                {
-                    sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
-                }
-                doAppendCycle(i, accessType, Tag, -1, dat);
-            } else
-                core_read(addr, dat);
-            
-            break;
-            
-        case APUDataRead:        // append operations from absolute mode
-        case APUOperandRead:
-            doAppendCycle(i, accessType, Tag, -1, dat);
-            break;
-            
         default:
-            sim_printf("doAbsoluteRead(Entry): unsupported accessType=%d\n", accessType);
+            //if (i->a)
+                doAppendCycle(i, accessType, Tag, -1, dat);
+            //else
+            //    core_read(addr, dat);
             break;
     }
     return SCPE_OK;
@@ -1533,16 +1527,20 @@ t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType accty
             case APPEND_MODE:
 APPEND_MODE:;
                 doAppendCycle(i, acctyp, Tag, -1, dat);
-                
-                //word24 fa = doFinalAddressCalculation(acctyp, TPR.TSR, TPR.CA, &acvf);
-                //if (fa)
-                //    core_read(fa, dat);
-                
-                //rY = finalAddress;
-                //*dat = CY;  // XXX this may be a nasty loop
                 break;
             case ABSOLUTE_MODE:
-#if OLDWAY
+                
+#if 0
+                if (switches . degenerate_mode)
+                  {
+                    setDegenerate ();
+                    doAppendCycle(i, acctyp, Tag, -1, dat);
+                    if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
+                        goto APPEND_MODE;
+                    break;
+                  }
+#endif
+//#if OLDWAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
                 // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
                 
@@ -1551,19 +1549,11 @@ APPEND_MODE:;
                 else
                     core_read(addr, dat);
                 if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                {
-                    if (apndTrace)
-                    {
-                        sim_debug(DBG_APPENDING, &cpu_dev, "Read(%06o %012llo %02o): going into APPENDING mode\n", addr, *dat, Tag);
-                    }
-                    
-                    //processorAddressingMode = APPEND_MODE;
-                    set_addr_mode(APPEND_mode);
-                    goto APPEND_MODE;   // ???
-                }
-#endif
-                doAbsoluteRead(i, addr, dat, acctyp, Tag);
+                    goto APPEND_MODE;
                 
+//#endif
+                //doAppendCycle(i, acctyp, Tag, -1, dat);
+
                 break;
             case BAR_MODE:
                 // XXX probably not right.
@@ -1592,11 +1582,11 @@ t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType a
     {
         case DataWrite:
         case OperandWrite:
-            if (i->a)
+            //if (i->a)
                 doAppendCycle(i, accessType, Tag, -1, NULL);
-            else
-                core_write(addr, dat);
-            break;
+            //else
+            //    core_write(addr, dat);
+            //break;
             
         case APUDataWrite:      // append operations from absolute mode
         case APUOperandWrite:
@@ -1607,6 +1597,8 @@ t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType a
             sim_printf("doAbsoluteWrite(Entry): unsupported accessType=%d\n", accessType);
             break;
     }
+    doAppendCycle(i, accessType, Tag, -1, NULL);
+
     return SCPE_OK;
 }
 
@@ -1631,13 +1623,21 @@ t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acct
 APPEND_MODE:;
 #endif
                 doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
-                //word24 fa = doFinalAddressCalculation(acctyp, TPR.TSR, TPR.CA, &acvf);
-                //if (fa)
-                //    core_write(fa, dat);
-                
                 break;
             case ABSOLUTE_MODE:
-#if OLD_WAY
+
+#if 0
+                if (switches . degenerate_mode)
+                  {
+                    setDegenerate ();
+                    doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
+                    // XXX what kind of dataop can put a write operation into appending mode?
+                    //if (DOITSITP(dat, Tag))
+                    //    goto APPEND_MODE;
+                    break;
+                  }
+#endif
+//#if OLD_WAY
                 // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
                 if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
                     doAppendCycle(i, acctyp, Tag, dat, NULL);
@@ -1650,8 +1650,8 @@ APPEND_MODE:;
                 //   processorAddressingMode = APPEND_MODE;
                 //    goto APPEND_MODE;   // ???
                 //}
-#endif
-                doAbsoluteWrite(i, addr, dat, acctyp, Tag);
+//#endif
+                // doAppendCycle(i, acctyp, Tag, dat, NULL);
                 break;
             case BAR_MODE:
                 // XXX probably not right.
@@ -1758,8 +1758,16 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
         return STOP_BKPT;
     else
 #endif
-        for (int j = 0 ; j < n ; j ++)
-            Read(i, addr + j, Yblock + j, acctyp, Tag);
+//    int slop = addr % n;
+//    if (slop)
+//    {
+//        addr -= slop;       // back to last n byte boundary;
+//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
+//            addr = 0;
+//    }
+    
+    for (int j = 0 ; j < n ; j ++)
+        Read(i, addr + j, Yblock + j, acctyp, Tag);
     
     return SCPE_OK;
 }
@@ -1788,8 +1796,17 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
         return STOP_BKPT;
     else
 #endif
-        for (int j = 0 ; j < n ; j ++)
-            Write(i, addr + j, Yblock[j], acctyp, Tag);
+    
+//    int slop = addr % n;  
+//    if (slop)
+//    {
+//        addr -= slop;       // back to last n byte boundary;
+//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
+//            addr = 0;
+//    }
+//
+    for (int j = 0 ; j < n ; j ++)
+        Write(i, addr + j, Yblock[j], acctyp, Tag);
     
     return SCPE_OK;
 }
@@ -1957,6 +1974,8 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
 // XXX experimental code; there may be a better way to do this, especially
 // if a pointer to a malloc is getting zapped
 // Yep, I was right
+// HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
+    
     //memset (p, 0, sizeof (struct DCDstruct));
 // Try the obivous ones
     p->opcode  = 0;
@@ -1966,7 +1985,9 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
     p->i       = 0;
     p->tag     = 0;
     
-
+    p->iwb = 0;
+    p->IWB = 0;
+    
     Read(p, addr, &p->IWB, InstructionFetch, 0);
     
     cpu.read_addr = addr;
@@ -2072,6 +2093,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     }
 
 
+static addr_modes_t secret_addressing_mode;
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -2084,6 +2106,9 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 addr_modes_t get_addr_mode(void)
 {
+    if (secret_addressing_mode == TEMPORARY_ABSOLUTE_mode)
+        return ABSOLUTE_mode; // This is not the mode you are looking for
+
     //if (IR.abs_mode)
     if (TSTF(rIR, I_ABS))
         return ABSOLUTE_mode;
@@ -2107,39 +2132,45 @@ addr_modes_t get_addr_mode(void)
 void set_addr_mode(addr_modes_t mode)
 {
     if (mode == ABSOLUTE_mode) {
-        IR.abs_mode = 1;
         SETF(rIR, I_ABS);
-        
-        // FIXME: T&D tape section 3 wants not-bar-mode true in absolute mode,
-        // but section 9 wants false?
-        IR.not_bar_mode = 1;
         SETF(rIR, I_NBAR);
         
         PPR.P = 1;
+        
+#if 0
+        if (switches . degenerate_mode)
+          setDegenerate();
+#endif 
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
-        if (! IR.abs_mode && IR.not_bar_mode)
+        if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting append mode.\n");
-        IR.abs_mode = 0;
         CLRF(rIR, I_ABS);
         
-        IR.not_bar_mode = 1;
         SETF(rIR, I_NBAR);
         
     } else if (mode == BAR_mode) {
-        IR.abs_mode = 0;
         CLRF(rIR, I_ABS);
-        IR.not_bar_mode = 0;
         CLRF(rIR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
+    } else if (mode == TEMPORARY_ABSOLUTE_mode) {
+        PPR.P = 1;
+        
+#if 0
+        if (switches . degenerate_mode)
+          setDegenerate();
+#endif
+        
+        sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting temporary absolute mode.\n");
+
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         cancel_run(STOP_BUG);
     }
-    
+    secret_addressing_mode = mode;
     //processorAddressingMode = mode;
 }
 
@@ -2273,13 +2304,16 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Port enable:              %01o(8)\n", switches . port_enable);
     sim_printf("Port configuration:       %012llo(8)\n", switches . port_config);
     sim_printf("Port interlace:           %02o(8)\n", switches . port_interlace);
-    sim_printf("Processor mode:           %01o(8)\n", switches . proc_mode);
+    sim_printf("Processor mode:           %s [%o]\n", switches . proc_mode ? "Multics" : "GCOS", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
     sim_printf("Invert Absolute:          %01o(8)\n", switches . invert_absolute);
     sim_printf("Bit 29 test code:         %01o(8)\n", switches . b29_test);
     sim_printf("DIS enable:               %01o(8)\n", switches . dis_enable);
     sim_printf("AutoAppend disable:       %01o(8)\n", switches . auto_append_disable);
     sim_printf("LPRPn set high bits only: %01o(8)\n", switches . lprp_highonly);
+    sim_printf("Steady clock:             %01o(8)\n", switches . steady_clock);
+    sim_printf("Degenerate mode:          %01o(8)\n", switches . degenerate_mode);
+    sim_printf("Append after:             %01o(8)\n", switches . append_after);
 
     return SCPE_OK;
 }
@@ -2296,15 +2330,35 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           portinterlace = n
 //           mode = n
 //           speed = n
+//    Hacks:
 //           invertabsolute = n
 //           b29test = n // deprecated
 //           dis_enable = n
 //           auto_append_disable = n // still need for 20184, not for t4d
 //           lprp_highonly = n // deprecated
+//           steadyclock = on|off
+//           degenerate_mode = n // deprecated
+//           append_after = n
 
 static config_value_list_t multics_fault_base [] =
   {
     { "multics", 2 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_on_off [] =
+  {
+    { "off", 0 },
+    { "on", 1 },
+    { "disable", 0 },
+    { "enable", 1 },
+    { NULL }
+  };
+
+static config_value_list_t cpu_mode [] =
+  {
+    { "gcos", 0 },
+    { "multics", 1 },
     { NULL }
   };
 
@@ -2316,16 +2370,19 @@ static config_list_t cpu_config_list [] =
     /*  3 */ { "portenable", 0, 017, NULL },
     /*  4 */ { "portconfig", 0, 0777777777777, NULL },
     /*  5 */ { "portinterlace", 0, 017, NULL },
-    /*  6 */ { "mode", 0, 01, NULL }, // XXX use keywords
+    /*  6 */ { "mode", 0, 01, cpu_mode }, 
     /*  7 */ { "speed", 0, 017, NULL }, // XXX use keywords
 
     // Hacks
 
-    /*  8 */ { "invertabsolute", 0, 1, NULL }, // XXX use keywords
-    /*  9 */ { "b29test", 0, 1, NULL }, // XXX use keywords
-    /* 10 */ { "dis_enable", 0, 1, NULL }, // XXX use keywords
-    /* 11 */ { "auto_append_disable", 0, 1, NULL }, // XXX use keywords
-    /* 12 */ { "lprp_highonly", 0, 1, NULL }, // XXX use keywords
+    /*  8 */ { "invertabsolute", 0, 1, cfg_on_off }, 
+    /*  9 */ { "b29test", 0, 1, cfg_on_off }, 
+    /* 10 */ { "dis_enable", 0, 1, cfg_on_off }, 
+    /* 11 */ { "auto_append_disable", 0, 1, cfg_on_off }, 
+    /* 12 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
+    /* 13 */ { "steady_clock", 0, 1, cfg_on_off },
+    /* 14 */ { "degenerate_mode", 0, 1, cfg_on_off },
+    /* 15 */ { "append_after", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2406,6 +2463,18 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 12: // LPRP_HIGHONLY
               switches . lprp_highonly = v;
+              break;
+
+            case 13: // STEADY_CLOCK
+              switches . steady_clock = v;
+              break;
+
+            case 14: // DEGENERATE_MODE
+              switches . degenerate_mode = v;
+              break;
+
+            case 15: // APPEND_AFTER
+              switches . append_after = v;
               break;
 
             default:

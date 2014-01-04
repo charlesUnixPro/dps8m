@@ -404,6 +404,8 @@ For now, at least, we must remember a few things:
 
 void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
 {
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d, fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037)  // quicker?
     {
@@ -444,10 +446,10 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
           }
       }
     else
-      {
-        // TODO: safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
-        cu_safe_store ();
-      }
+    {
+        // safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
+      cu_safe_store ();
+    }
     
     cpu . cycle = FAULT_cycle;
     longjmp (jmpMain, JMP_ENTRY);
@@ -466,6 +468,8 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
   
     bFaultCycle = true;                 // enter FAULT CYCLE
     
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault pair address %08o\n", addr);
+
     word36 faultPair[2];
     core_read2(addr, faultPair, faultPair+1);
     // In the FAULT CYCLE, the processor safe-stores the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction, then enters temporary absolute mode, forces the current ring of execution C(PPR.PRR) to 0, and generates a computed address for the fault trap pair by concatenating the setting of the FAULT BASE switches on the processor configuration panel with twice the fault number (see Table 7-1). This computed address and the operation code for the Execute Double (xed) instruction are forced into the instruction register and executed as an instruction. Note that the execution of the instruction is not done in a normal EXECUTE CYCLE but in the FAULT CYCLE with the processor in temporary absolute mode.
@@ -474,17 +478,31 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     
     PPR.PRR = 0;
     
-    set_addr_mode(ABSOLUTE_mode);
+    set_addr_mode(TEMPORARY_ABSOLUTE_mode);
     
+    // MME expects the IC to point to the code being XEDed
+    //if (f == &_faults[FAULT_MME] ||
+        //f == &_faults[FAULT_MME2] ||
+        //f == &_faults[FAULT_MME3] ||
+        //f == &_faults[FAULT_MME4])
+        //PPR.IC = addr;
     t_stat xrv = doXED(faultPair);
     
     bFaultCycle = false;                // exit FAULT CYCLE
     bTroubleFaultCycle = false;
+
     if (xrv == CONT_TRA)
+    {
+        set_addr_mode(ABSOLUTE_mode);
+        sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
+    }
     
+    // XXX more better to do the safe_restore, and get the saved mode from the restored data
     set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
+    //cu_safe_restore ();
     
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault pair resumes\n");
     if (xrv == 0)
         longjmp(jmpMain, JMP_NEXT);     // execute next instruction
     else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)

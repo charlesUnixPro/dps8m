@@ -29,23 +29,7 @@ else
   NN=0${N}
 fi
 
-#gpp -n \
-#    -U "" "" "(" "," ")" "(" ")" "#" "" \
-#    -M "\n#\w" "\n" " " " " "\n" "" "" \
-#    +c "/*" "*/" +c "//" "\n" +c "\\\n" "" \
-#    +s "\"" "\"" "\\" +s "'" "'" "\\" \
-##gpp -C -c "/*" -c "//" -c "\\\n" \
-#       -s "\"" -s "'" \
-#        +ccss "\"" "\n" \
-#       -n \
-#gpp -n \
-#    -U "" "" "(" "," ")" "(" ")" "#" "" \
-#    -M "\n#\w" "\n" " " " " "\n" "" "" \
-#    +ccss "\"" "\n" \
-# < blk${N}.as8 > blk${N}.s.tmp
-#sed 's/"/\/\//' < blk${N}.as8 | cpp -CC -x assembler-with-cpp | tail -n +43 | sed 's/\/\//"/' > blk${N}.s.tmp
-
-top=..
+top=../..
 tu=${top}/src/tapeUtils/
 as8=${top}/src/as8+/
 
@@ -59,9 +43,10 @@ ${as8}/as8+ blk${N}.s.tmp -o blk${N}.oct
 ${tu}/pack blk${N}.oct blk${N}.pck.tmp
 
 # Compare original tape blk to pack
-cmp ${tu}/tests/verify000000${NN}.pck blk${N}.pck.tmp
+cmp ${tu}/t4d_b.2/t4d_b.2.tap.000000${NN}.dat blk${N}.pck.tmp
 
 [ "$?" != "0" ] && ( \
-${tu}/disasm ${ORIGIN} blk${N}.pck.tmp > blk${N}.pck.dis.tmp;  \
-${as8}/as8+ blk${N}.pck.dis.tmp -o blk${N}.oct.dis.oct.tmp;  \
-xxdiff ${tu}/tests/verify000000${NN}.oct blk${N}.oct.dis.oct.tmp )
+${tu}/unpack $ORIGIN ${tu}/t4d_b.2/t4d_b.2.tap.000000${NN}.dat blk${N}.oct.tmp; \
+${tu}/unpack $ORIGIN blk${N}.pck.tmp blk${N}.pck.oct.tmp; \
+xxdiff blk${N}.oct.tmp blk${N}.pck.oct.tmp \
+)
