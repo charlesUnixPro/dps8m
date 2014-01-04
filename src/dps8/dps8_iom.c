@@ -1281,15 +1281,6 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
           }
     }
 
-    // Since interrupts aren't working yet....
-    //PPR.IC = 0330;
-    //PPR.IC = 030;
-    //sim_printf ("Faking interrupt\n");
-    // XXX Very odd. Commenting out the next two lines breaks t4d boot, but
-    // not 20184?
-    sim_printf ("Faking DIS\n");
-    cpu . cycle = DIS_cycle;
-
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;
   }

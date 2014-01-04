@@ -832,7 +832,7 @@ static uint get_highest_intr (void)
     return 1;
   }
 
-static bool sample_interrupts (void)
+bool sample_interrupts (void)
   {
     return events . int_pending;
   }
@@ -870,6 +870,8 @@ t_stat sim_instr (void)
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
+        case JMP_INTR:
+            goto jmpIntr;
         case JMP_STOP:
             return stop_reason;
 
@@ -917,7 +919,7 @@ jmpRetry:;
         ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct
         
 // XXX The conditions are more rigorous: see AL39, pg 327
-        if (rIC % 1 == 0 && // Even address
+        if (rIC % 2 == 0 && // Even address
             ci -> i == 0) // Not inhibited
           cpu . interrupt_flag = sample_interrupts ();
         else
@@ -941,7 +943,8 @@ jmpRetry:;
                 // avoid clean up for no interrupt pending.
 
                 uint intr_pair_addr;
-dis_entry:
+dis_entry:;
+jmpIntr:;
                 intr_pair_addr = get_highest_intr ();
                 if (intr_pair_addr != 1) // no interrupts 
                   {
@@ -972,9 +975,13 @@ dis_entry:
                     word36 faultPair[2];
                     core_read2(intr_pair_addr, faultPair, faultPair+1);
 
-                    t_stat xrv = doXED(faultPair);
+                    // Don't! T4D says the IC remains pointing at the faulting
+                    // instructiion
+                    //PPR.IC = intr_pair_addr;
 
                     cpu . interrupt_flag = false;
+
+                    t_stat xrv = doXED(faultPair);
 
                     sim_debug (DBG_MSG, & cpu_dev, "leaving DIS_cycle\n");
                     sim_printf ("leaving DIS_cycle\n");
@@ -987,9 +994,16 @@ dis_entry:
                         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
                     }
     
-                    // XXX more better to do cu_safe_restore and get the addr mode from the restored IR
+                    // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
 
                     set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
+
+                    cu_safe_restore ();
+
+                    if (xrv == CONT_INTR)
+                    {
+                        longjmp(jmpMain, JMP_INTR);    
+                    }
 
                     if (0 && xrv)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
                         longjmp(jmpMain, JMP_RETRY);    // retry instruction

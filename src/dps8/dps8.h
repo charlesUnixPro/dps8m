@@ -558,6 +558,7 @@ extern const char *sim_stop_messages[];
 // not really STOP codes, but get returned from instruction loops
 #define CONT_TRA    -1  ///< encountered a transfer instruction dont bump rIC
 #define CONT_FAULT  -2  ///< instruction encountered some kind of fault
+#define CONT_INTR   -3  ///< instruction saw interrupt go up
 
 //! some breakpoint stuff ...
 enum eMemoryAccessType {
@@ -1725,6 +1726,7 @@ extern int stop_reason;     ///< sim_instr return value for JMP_STOP
 #define JMP_NEXT        2   ///< goto next sequential instruction
 #define JMP_TRA         3   ///< treat return as if it were a TRA instruction with rIC already set to where to jump to
 #define JMP_STOP        4   ///< treat return as if it were an attempt to unravel the stack and gracefully exit out of sim_instr
+#define JMP_INTR        5   // Interrupt detected during processing
 
 /*
  * Stuff to do with the local loader/binder/linker
@@ -2829,6 +2831,8 @@ void set_addr_mode(addr_modes_t mode);
 
 void ic_history_init(void);
 t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
+
+bool sample_interrupts (void);
 
 /* dps8_append.c */
 
