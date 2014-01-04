@@ -80,7 +80,7 @@ extern uint64 sim_deb_start;
 
 #define PASIZE          24                              /*!< phys addr width */
 #define MAXMEMSIZE      (1 << PASIZE)                   /*!< maximum memory */
-#define INIMEMSIZE      001000000                       /*!< 2**18 */
+#define INIMEMSIZE      MAXMEMSIZE /* 001000000 */                      /*!< 2**18 */
 #define PAMASK          ((1 << PASIZE) - 1)
 #define MEMSIZE         INIMEMSIZE                      /*!< fixed, KISS */
 #define MEM_ADDR_NXM(x) ((x) >= MEMSIZE)
@@ -1858,7 +1858,12 @@ enum relocationCodes
 // === Misc constants and macros
 
 // Clocks
+#ifdef USE_IDLE
+#define CLK_TR_HZ (512*1024) // should be 512 kHz, but we'll use 512 Hz for now
+#else
 #define CLK_TR_HZ (512*1) // should be 512 kHz, but we'll use 512 Hz for now
+#endif
+
 #define TR_CLK 1 /* SIMH allows clock ids 0..7 */
 
 // Memory
@@ -2101,15 +2106,21 @@ typedef struct {
 } events_t;
 
 
+#define N_CPU_PORTS 4
 // Physical Switches
 typedef struct {
     // Switches on the Processor's maintenance and configuration panels
     uint FLT_BASE; // normally 7 MSB of 12bit fault base addr
     uint cpu_num;  // zero for CPU 'A', one for 'B' etc.
     word36 data_switches;
-    uint port_enable; // 4 bits; enable ports A-D
-    word36 port_config; // Read by rsw instruction; format unknown
-    uint port_interlace; // 4 bits  Read by rsw instruction; 
+    //uint port_enable; // 4 bits; enable ports A-D
+    //word36 port_config; // Read by rsw instruction; format unknown
+    //uint port_interlace; // 4 bits  Read by rsw instruction; 
+    uint assignment [N_CPU_PORTS];
+    uint interlace [N_CPU_PORTS]; // 0/2/4
+    uint enable [N_CPU_PORTS];
+    uint init_enable [N_CPU_PORTS];
+    uint store_size [N_CPU_PORTS]; // 0-7 encoding 32K-4M
     uint proc_mode; // 1 bit  Read by rsw instruction; format unknown
     uint proc_speed; // 4 bits Read by rsw instruction; format unknown
     uint invert_absolute; // If non-zero, invert the sense of the ABSOLUTE bit in the STI instruction
@@ -2121,118 +2132,6 @@ typedef struct {
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after; // 
 } switches_t;
-
-
-// I/O Multiplexer
-enum { max_channels = 32 }; // enums are more constant than consts...
-
-// Much of this is from AN87 as 43A23985 lacked details of 0..11 and 22..36
-typedef struct pcw_s {
-    int dev_cmd;    // 6 bits; 0..5
-    int dev_code;   // 6 bits; 6..11
-    int ext;        // 6 bits; 12..17; address extension
-    int cp;         // 3 bits; 18..20, must be all ones
-    flag_t mask;    // extension control or mask; 1 bit; bit 21
-    int control;    // 2 bits; bit 22..23
-    int chan_cmd;   // 6 bits; bit 24..29;
-    // AN87 says: 00 single record xfer, 02 non data xfer,
-    // 06 multi-record xfer, 10 single char record xfer
-    int chan_data;  // 6 bits; bit 30..35; often some sort of count
-    //
-    int chan;       // 6 bits; bits 3..8 of word 2
-} pcw_t;
-
-typedef struct dcw_s {
-    enum { ddcw, tdcw, idcw } type;
-    union {
-        pcw_t instr;
-        struct {
-            uint daddr; // data address; 18 bits at 0..17);
-            uint cp;    // char position; 3 bits 18..20
-            uint tctl;  // tally control; 1 bit at 21
-            uint type;  // 2 bits at 22..23
-            uint tally; // 12 bits at 24..35
-        } ddcw;
-        struct {
-            uint addr;
-            flag_t ec;  // extension control
-            flag_t i;   // IDCW control
-            flag_t r;   // relative addressing control
-        } xfer;
-    } fields;
-} dcw_t;
-
-
-// Channel Status Word -- from AN87, 3-11
-typedef struct {
-    int chan;       // not part of the status word; simulator only
-    int major;
-    int substatus;
-    // even/odd bit
-    // status marker bit
-    // soft, 2 bits set to zero by hw
-    // initiate bit
-    // chan_stat; 3 bits; 1=busy, 2=invalid chan, 3=incorrect dcw, 4=incomplete
-    // iom_stat; 3 bits; 1=tro, 2=2tdcw, 3=bndry, 4=addr ext, 5=idcw,
-    int addr_ext;   // BUG: not maintained
-    int rcount; // 3 bits; residue in (from) PCW or last IDCW count (chan-data)
-    // addr;    // addr of *next* data word to be transmitted
-    // char_pos
-    flag_t read;    // was last or current operation a read or a write
-    // type;    // 1 bit
-    // dcw_residue; // residue in tally of last dcw
-    flag_t power_off;
-} chan_status_t;
-
-typedef enum {
-    chn_idle,       // Channel ready to receive a PCW from connect channel
-    chn_pcw_rcvd,   // PCW received from connect channel
-    chn_pcw_sent,   // PCW (not IDCW) sent to device
-    chn_pcw_done,   // Received results from device
-    chn_cmd_sent,   // A command was sent to a device
-    chn_io_sent,    // A io transfer is in progress
-    chn_need_status,// Status service needed
-    chn_err,        // BUG: may not need this state
-} chn_state;
-
-// Used to communicate between the IOM and devices
-typedef struct {
-    int iom_unit_num;
-    int chan;
-    void* statep; // For use by device specific code
-    int dev_cmd; // 6 bits
-    // XXX Caution; this is the unit number from the IOM, it is NOT the
-    // same as unit number. E.g.
-    //    dev_code       simh
-    //      0            cardreader[0]
-    //      1            tape[0]
-    //      2            tape[1]
-    //      3            disk[0]
-
-    int dev_code; // 6 bits
-    int chan_data; // 6 bits; often some sort of count
-    flag_t have_status; // set to true by the device when operation is complete
-    int major;
-    int substatus;
-    flag_t is_read;
-    int time; // request by device for queuing via sim_activate()
-} chan_devinfo;
-
-typedef struct {
-    uint32 dcw; // bits 0..17
-    flag_t ires;    // bit 18; IDCW restrict
-    flag_t hrel;    // bit 19; hardware relative addressing
-    flag_t ae;      // bit 20; address extension
-    flag_t nc;      // bit 21; no tally; zero means update tally
-    flag_t trunout; // bit 22; signal tally runout?
-    flag_t srel;    // bit 23; software relative addressing; not for Multics!
-    int32 tally;    // bits 24..35
-    // following not valid for paged mode; see B15; but maybe IOM-B non existant
-    uint32 lbnd;
-    uint32 size;
-    uint32 idcw;    // ptr to most recent dcw, idcw, ...
-} lpw_t;
-
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
 typedef struct {
@@ -2252,15 +2151,6 @@ typedef struct {
         int xfer;
     } mt_times;
     flag_t warn_uninit; // Warn when reading uninitialized memory
-    flag_t startup_interrupt;
-    // The CPU is supposed to start with a startup fault.  This will cause
-    // a series of trouble faults until the IOM finally writes a DIS from
-    // the tape label onto the troube fault vector location.  In order to
-    // reduce debugging clutter, the emulator allows starting the CPU off
-    // with an interrupt that we know has a DIS instruction trap.  This
-    // interrupt is hinted at in AN70.  This will cause the CPU to start off
-    // waiting for the next interrupt (from the IOM after it loads the first
-    // tape record and sends a terminate interrupt).
 } sysinfo_t;
 
 // Statistics
@@ -2954,12 +2844,6 @@ void parseNumericOperandDescriptor(int k, EISstruct *e);
 void EISwrite49(EISaddr *p, int *pos, int tn, int c49);
 void EISloadInputBufferNumeric(DCDstruct *i, int k);
 
-/* dps8_disk.c */
-
-void disk_init(void);
-int disk_iom_cmd(chan_devinfo* devinfop);
-int disk_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
-
 /* dps8_faults.c */
 
 void check_events (void);
@@ -2998,14 +2882,6 @@ extern DEVICE mpc_dev;
 t_stat cable_to_mpc (int mpc_unit_num, int dev_code, enum dev_type  mpc_dev_type, int mt_unit_num);
 t_stat cable_mpc (int mpc_unit_num, int iom_unit_num, int chan_num);
 #endif
-
-/* dps8_mt.c */
-
-void mt_init(void);
-int mt_iom_cmd(chan_devinfo* devinfop);
-int mt_iom_io(int iom_unit_num, int chan, int dev_code, t_uint64 *wordp, int* majorp, int* subp);
-t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code);
-int get_mt_numunits (void);
 
 /* dps8_scu.c */
 

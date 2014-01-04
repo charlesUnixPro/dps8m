@@ -1,3 +1,6 @@
+// I/O Multiplexer
+enum { max_channels = 32 }; // enums are more constant than consts...
+
 // Used to communicate between the IOM and devices
 typedef struct {
     int iom_unit_num;
