@@ -9,6 +9,10 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_iom.h"
+#include "dps8_mt.h"
+#include "dps8_disk.h"
+#include "dps8_utils.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -430,27 +434,146 @@ sysinfo_t sys_opts =
 // XXX Need to fix the cpu code to either do actual fault loop on unitialized memory, or force it into the wait for interrupt sate; and respond to the interrupt from the IOM's completion of the read.
 //
       -1, /* mt_times.read */
-      0  /* mt_times.xfer */
+      -1  /* mt_times.xfer */
     },
-    0, /* warn_uninit */
-    0  /* startup_interrupt */
+    0 /* warn_uninit */
   };
 
-// from MM
+static char * encode_timing (int timing)
+  {
+    static char buf [64];
+    if (timing < 0)
+      return "Off";
+    sprintf (buf, "%d", timing);
+    return buf;
+  }
+
+static t_stat sys_show_config (FILE * st, UNIT * uptr, int val, void * desc)
+  {
+    sim_printf ("Connect time:             %s\n",
+                encode_timing (sys_opts . iom_times . connect));
+    sim_printf ("Activate time:            %s\n",
+                encode_timing (sys_opts . iom_times . chan_activate));
+    sim_printf ("MT Read time:             %s\n",
+                encode_timing (sys_opts . mt_times . read));
+    sim_printf ("MT Xfer time:             %s\n",
+                encode_timing (sys_opts . mt_times . xfer));
+
+    return SCPE_OK;
+}
+
+static config_value_list_t cfg_timing_list [] =
+  {
+    { "disable", -1 },
+    { NULL }
+  };
+
+static config_list_t sys_config_list [] =
+  {
+    /*  0 */ { "connect_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
+    /*  1 */ { "activate_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
+    /*  2 */ { "mt_read_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
+    /*  3 */ { "mt_xfer_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
+ };
+
+static t_stat sys_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+  {
+    config_state_t cfg_state = { NULL };
+
+    for (;;)
+      {
+        int64_t v;
+        int rc = cfgparse ("sys_set_config", cptr, sys_config_list, & cfg_state, & v);
+        switch (rc)
+          {
+            case -2: // error
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG;
+
+            case -1: // done
+              break;
+
+            case  0: // CONNECT_TIME
+              sys_opts . iom_times . connect = v;
+              break;
+
+            case  1: // ACTIVATE_TIME
+              sys_opts . iom_times . chan_activate = v;
+              break;
+
+            case  2: // MT_READ_TIME
+              sys_opts . mt_times . read = v;
+              break;
+
+            case  3: // MT_XFER_TIME
+              sys_opts . mt_times . xfer = v;
+              break;
+
+            default:
+              sim_debug (DBG_ERR, & iom_dev, "sys_set_config: Invalid cfgparse rc <%d>\n", rc);
+              sim_printf ("error: iom_set_config: invalid cfgparse rc <%d>\n", rc);
+              cfgparse_done (& cfg_state);
+              return SCPE_ARG;
+          } // switch
+        if (rc < 0)
+          break;
+      } // process statements
+    cfgparse_done (& cfg_state);
+    return SCPE_OK;
+  }
 
 
-//-----------------------------------------------------------------------------
-// *** Other devices
+static MTAB sys_mod [] =
+  {
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
+      0,            /* match */
+      "CONFIG",     /* print string */
+      "CONFIG",         /* match string */
+      sys_set_config,         /* validation routine */
+      sys_show_config, /* display routine */
+      NULL          /* value descriptor */
+    },
+    { 0 }
+  };
 
 
-//=============================================================================
 
+static t_stat sys_reset (DEVICE *dptr)
+  {
+    return SCPE_OK;
+  }
+
+DEVICE sys_dev = {
+    "SYS",       /* name */
+    NULL,        /* units */
+    NULL,        /* registers */
+    sys_mod,     /* modifiers */
+    0,           /* #units */
+    8,           /* address radix */
+    PASIZE,      /* address width */
+    1,           /* address increment */
+    8,           /* data radix */
+    36,          /* data width */
+    NULL,        /* examine routine */
+    NULL,        /* deposit routine */
+    & sys_reset, /* reset routine */
+    NULL,        /* boot routine */
+    NULL,        /* attach routine */
+    NULL,        /* detach routine */
+    NULL,        /* context */
+    0,           /* flags */
+    0,           /* debug control flags */
+    0,           /* debug flag names */
+    NULL,        /* memory size change */
+    NULL         /* logical name */
+};
 
 
 // This is part of the simh interface
 DEVICE * sim_devices [] =
   {
-    & cpu_dev,
+    & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
     & scu_dev,
@@ -458,6 +581,7 @@ DEVICE * sim_devices [] =
     // & mpc_dev,
 //    & opcon_dev, // Not hooked up yet
 //    & disk_dev, // Not hooked up yet
+    & sys_dev,
 
     NULL
 };

@@ -345,7 +345,7 @@ static _sdw0* fetchPSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%0 U %o F %o\n",
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, p->ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
     return &SDW0;
 }

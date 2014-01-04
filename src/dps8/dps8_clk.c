@@ -28,7 +28,11 @@ DEVICE clk_dev = {
     8,           /* data width */
     NULL,        /* examine routine */
     NULL,        /* deposit routine */
+#ifdef USE_IDLE
+    activate_timer, /* reset routine */
+#else
     NULL,        /* reset routine */
+#endif
     NULL,        /* boot routine */
     NULL,        /* attach routine */
     NULL,        /* detach routine */
@@ -44,7 +48,11 @@ DEVICE clk_dev = {
 static t_stat clk_svc(UNIT *up)
 {
     // only valid for TR
+#ifdef USE_IDLE
+    sim_activate (& TR_clk_unit [0], sim_rtcn_init(CLK_TR_HZ, TR_CLK));
+#else
     (void) sim_rtcn_calb (CLK_TR_HZ, TR_CLK);   // calibrate clock
+#endif
     uint32 t = sim_is_active(&TR_clk_unit[0]);
     sim_debug (DBG_INFO, & clk_dev, "clk_svc: TR has %d time units left\n", t);
     return 0;
@@ -69,8 +77,13 @@ static int activate_timer (void)
         sim_cancel(&TR_clk_unit[0]);   // BUG: do we need to cancel?
     }
     
+#ifdef USE_IDLE
+    if (! sim_is_active (& TR_clk_unit [0]))
+      sim_activate (& TR_clk_unit[ 0], sim_rtcn_init(CLK_TR_HZ, TR_CLK));
+#else
     (void) sim_rtcn_init(CLK_TR_HZ, TR_CLK);
     sim_activate(&TR_clk_unit[0], rTR);
+#endif
     if ((t = sim_is_active(&TR_clk_unit[0])) == 0)
         sim_debug (DBG_DEBUG, & TR_clk_unit, "activate_timer: TR is not running\n", t);
     else

@@ -25,7 +25,6 @@ void cpu_reset_array (void);
 
 #define N_CPU_UNITS 1
 // The DPS8M had only 4 ports
-#define N_CPU_PORTS 4
 
 UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
@@ -389,6 +388,9 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
 t_stat cpu_reset_mm (DEVICE *dptr)
 {
     
+#ifdef USE_IDLE
+    sim_set_idle (cpu_unit, 512*1024, NULL, NULL);
+#endif
     sim_debug (DBG_INFO, & cpu_dev, "CPU reset: Running\n");
     
     ic_history_init();
@@ -405,25 +407,6 @@ t_stat cpu_reset_mm (DEVICE *dptr)
     
     set_addr_mode(ABSOLUTE_mode);
     
-    // We statup with either a fault or an interrupt.  So, a trap pair from the
-    // appropriate location will end up being the first instructions executed.
-#ifdef PUTBACK_WHEN_WE_WANT_TO_StART_NORMALLY
-    if (sys_opts.startup_interrupt) {
-        // We'll first generate interrupt #4.  The IOM will have initialized
-        // memory to have a DIS (delay until interrupt set) instruction at the
-        // memory location used to hold the trap words for this interrupt.
-        cpu.cycle = INTERRUPT_cycle;
-        events.int_pending = 1;
-        events.interrupts[4] = 1;   // system fault, IOM zero, channels 0-31 -- MDD-005
-    } else {
-        // Generate a startup fault.
-        // We'll end up in a loop of trouble faults for opcode zero until the IOM
-        // finally overwites the trouble fault vector with a DIS from the tape
-        // label.
-        cpu.cycle = FETCH_cycle;
-        fault_gen(startup_fault);   // pressing POWER ON button causes this fault
-    }
-#endif
     cpu.cycle = FETCH_cycle;
 
 //#if FEAT_INSTR_STATS
@@ -682,7 +665,7 @@ static REG cpu_reg[] = {
     { ORDATA (BAR.BASE,  BAR.BASE,  9) },
     { ORDATA (BAR.BOUND, BAR.BOUND, 9) },
     
-    { ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
+    //{ ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
     
     { ORDATA (PR0, PR[0], 18) },
     { ORDATA (PR1, PR[1], 18) },
@@ -857,7 +840,11 @@ static bool sample_interrupts (void)
 // This is part of the simh interface
 t_stat sim_instr (void)
 {
-    //switches.degenerate_mode=1;
+
+#ifdef USE_IDLE
+    sim_rtcn_init (0, 0);
+#endif
+
     // Heh. This needs to be static; longjmp resets the value to NULL
     static DCDstruct *ci = NULL;
     
@@ -875,7 +862,7 @@ t_stat sim_instr (void)
     {
         case 0:
             reason = 0;
-            cpuCycles = 0;
+            //cpuCycles = 0;
             break;
         case JMP_NEXT:
             goto jmpNext;
@@ -1083,7 +1070,9 @@ static void setDegenerate()
 }
 #endif
 
+#if 0
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
+#endif
 
 #define DOITSITP(indword, Tag) ((_TM(Tag) == TM_IR || _TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)))
 //bool DOITSITP(indword, Tag)
@@ -1832,6 +1821,7 @@ void ic_history_init(void)
 // should then be renamed.
 
 #define N_CPU_UNITS_MAX 1
+
 static struct
   {
     struct
@@ -1912,9 +1902,13 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Fault base:               %03o(8)\n", switches . FLT_BASE);
     sim_printf("CPU number:               %01o(8)\n", switches . cpu_num);
     sim_printf("Data switches:            %012llo(8)\n", switches . data_switches);
-    sim_printf("Port enable:              %01o(8)\n", switches . port_enable);
-    sim_printf("Port configuration:       %012llo(8)\n", switches . port_config);
-    sim_printf("Port interlace:           %02o(8)\n", switches . port_interlace);
+    for (int i = 0; i < N_CPU_PORTS; i ++)
+      {
+        sim_printf("Port%c enable:             %01o(8)\n", 'A' + i, switches . enable [i]);
+        sim_printf("Port%c init enable:        %01o(8)\n", 'A' + i, switches . init_enable [i]);
+        sim_printf("Port%c assignment:         %01o(8)\n", 'A' + i, switches . assignment [i]);
+        sim_printf("Port%c interlace:          %01o(8)\n", 'A' + i, switches . assignment [i]);
+      }
     sim_printf("Processor mode:           %s [%o]\n", switches . proc_mode ? "Multics" : "GCOS", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
     sim_printf("Invert Absolute:          %01o(8)\n", switches . invert_absolute);
@@ -1951,7 +1945,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           degenerate_mode = n // deprecated
 //           append_after = n
 
-static config_value_list_t multics_fault_base [] =
+static config_value_list_t cfg_multics_fault_base [] =
   {
     { "multics", 2 },
     { NULL }
@@ -1966,34 +1960,78 @@ static config_value_list_t cfg_on_off [] =
     { NULL }
   };
 
-static config_value_list_t cpu_mode [] =
+static config_value_list_t cfg_cpu_mode [] =
   {
     { "gcos", 0 },
     { "multics", 1 },
     { NULL }
   };
 
+static config_value_list_t cfg_port_letter [] =
+  {
+    { "a", 0 },
+    { "b", 1 },
+    { "c", 2 },
+    { "d", 3 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_interlace [] =
+  {
+    { "off", 0 },
+    { "2", 2 },
+    { "4", 4 },
+    { NULL }
+  };
+
+static config_value_list_t cfg_size_list [] =
+  {
+    { "32", 32 },
+    { "64", 64 },
+    { "128", 128 },
+    { "256", 256 },
+    { "512", 512 },
+    { "1024", 1024 },
+    { "2048", 2048 },
+    { "4096", 4096 },
+    { "32K", 32 },
+    { "64K", 64 },
+    { "128K", 128 },
+    { "256K", 256 },
+    { "512K", 512 },
+    { "1024K", 1024 },
+    { "2048K", 2048 },
+    { "4096K", 4096 },
+    { "1M", 1024 },
+    { "2M", 2048 },
+    { "4M", 4096 },
+    { NULL }
+  };
+
 static config_list_t cpu_config_list [] =
   {
-    /*  0 */ { "faultbase", 0, 0177, multics_fault_base },
+    /*  0 */ { "faultbase", 0, 0177, cfg_multics_fault_base },
     /*  1 */ { "num", 0, 07, NULL },
     /*  2 */ { "data", 0, 0777777777777, NULL },
-    /*  3 */ { "portenable", 0, 017, NULL },
-    /*  4 */ { "portconfig", 0, 0777777777777, NULL },
-    /*  5 */ { "portinterlace", 0, 017, NULL },
-    /*  6 */ { "mode", 0, 01, cpu_mode }, 
-    /*  7 */ { "speed", 0, 017, NULL }, // XXX use keywords
+    /*  3 */ { "mode", 0, 01, cfg_cpu_mode }, 
+    /*  4 */ { "speed", 0, 017, NULL }, // XXX use keywords
+    /*  5 */ { "port", 0, N_CPU_PORTS - 1, cfg_port_letter },
+    /*  6 */ { "assignment", 0, 7, NULL },
+    /*  7 */ { "interlace", 0, 1, cfg_interlace },
+    /*  8 */ { "enable", 0, 1, cfg_on_off },
+    /*  9 */ { "init_enable", 0, 1, cfg_on_off },
+    /* 10 */ { "store_size", 1, 0, cfg_size_list },
 
     // Hacks
 
-    /*  8 */ { "invertabsolute", 0, 1, cfg_on_off }, 
-    /*  9 */ { "b29test", 0, 1, cfg_on_off }, 
-    /* 10 */ { "dis_enable", 0, 1, cfg_on_off }, 
-    /* 11 */ { "auto_append_disable", 0, 1, cfg_on_off }, 
-    /* 12 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
-    /* 13 */ { "steady_clock", 0, 1, cfg_on_off },
-    /* 14 */ { "degenerate_mode", 0, 1, cfg_on_off },
-    /* 15 */ { "append_after", 0, 1, cfg_on_off },
+    /* 11 */ { "invertabsolute", 0, 1, cfg_on_off }, 
+    /* 12 */ { "b29test", 0, 1, cfg_on_off }, 
+    /* 13 */ { "dis_enable", 0, 1, cfg_on_off }, 
+    /* 14 */ { "auto_append_disable", 0, 1, cfg_on_off }, 
+    /* 15 */ { "lprp_highonly", 0, 1, cfg_on_off }, 
+    /* 16 */ { "steady_clock", 0, 1, cfg_on_off },
+    /* 17 */ { "degenerate_mode", 0, 1, cfg_on_off },
+    /* 18 */ { "append_after", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2008,6 +2046,8 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
         sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
         return SCPE_ARG;
       }
+
+    static int port_num = 0;
 
     config_state_t cfg_state = { NULL };
 
@@ -2024,67 +2064,79 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
             case -1: // done
               break;
 
-            case 0: // FAULTBASE
+            case  0: // FAULTBASE
               switches . FLT_BASE = v;
               break;
 
-            case 1: // NUM
+            case  1: // NUM
               switches . cpu_num = v;
               break;
 
-            case 2: // DATA
+            case  2: // DATA
               switches . data_switches = v;
               break;
 
-            case 3: // PORTENABLE
-              switches . port_enable = v;
-              break;
-
-            case 4: // PORTCONFIG
-              switches . port_config = v;
-              break;
-
-            case 5: // PORTINTERLACE
-              switches . port_interlace = v;
-              break;
-
-            case 6: // MODE
+            case  3: // MODE
               switches . proc_mode = v;
               break;
 
-            case 7: // SPEED
+            case  4: // SPEED
               switches . proc_speed = v;
               break;
 
-            case 8: // INVERTABSOLUTE
+            case  5: // PORT
+              port_num = v;
+              break;
+
+            case  6: // ASSIGNMENT
+              switches . assignment [port_num] = v;
+              break;
+
+            case  7: // INTERLACE
+              switches . interlace [port_num] = v;
+              break;
+
+            case  8: // ENABLE
+              switches . enable [port_num] = v;
+              break;
+
+            case  9: // INIT_ENABLE
+              switches . init_enable [port_num] = v;
+              break;
+
+            case 10: // STORE_SIZE
+              switches . store_size [port_num] = v;
+              break;
+
+            case 11: // INVERTABSOLUTE
               switches . invert_absolute = v;
               break;
 
-            case 9: // B29TEST
+            case 12: // B29TEST
               switches . b29_test = v;
               break;
 
-            case 10: // DIS_ENABLE
+            case 13: // DIS_ENABLE
               switches . dis_enable = v;
               break;
 
-            case 11: // AUTO_APPEND_DISABLE
+            case 14: // AUTO_APPEND_DISABLE
               switches . auto_append_disable = v;
               break;
 
-            case 12: // LPRP_HIGHONLY
+            case 15: // LPRP_HIGHONLY
               switches . lprp_highonly = v;
               break;
 
-            case 13: // STEADY_CLOCK
+            case 16: // STEADY_CLOCK
               switches . steady_clock = v;
               break;
 
-            case 14: // DEGENERATE_MODE
+            case 17: // DEGENERATE_MODE
               switches . degenerate_mode = v;
               break;
 
-            case 15: // APPEND_AFTER
+            case 18: // APPEND_AFTER
               switches . append_after = v;
               break;
 

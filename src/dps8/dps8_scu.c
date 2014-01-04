@@ -125,9 +125,6 @@
  *     switch setting, the IOM can set only 8 of these program interrupt
  *     cells."
  *
- *    [CAC] XXX I don't understand "in the SC containing the base address
- *    of the IOM".
- *
  */
 
 
@@ -412,7 +409,7 @@
  * 2 - marker
  * 3 - special
  *
- * THe low order three bits determines the IOM and IOM channel 
+ * The low order three bits determines the IOM and IOM channel 
  * group.
  *
  * 0 - IOM 0 channels 32-63
@@ -531,10 +528,10 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 //#define N_SCU_UNITS_MAX 4
 #define N_SCU_UNITS_MAX 2 // DPS 8M only supports two SCUs
                           // [CAC] I believe that this is because the
-                          // 8MW SCU supported much more memory then
+                          // 4MW SCU supported much more memory then
                           // the earlier units, and two fully loaded
-                          // 8MW's maxed out memory.
-                          // 8MW lower store max size: 4M words
+                          // 4MW's maxed out memory.
+                          // 4MW lower store max size: 4M words
                           //     + upper store = 8M
                           //     * 2 SCUs = 16M 
                           // The phys addr width is 24 bits, and 2^24 = 16M

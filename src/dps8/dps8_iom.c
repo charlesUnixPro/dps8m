@@ -257,9 +257,98 @@
 //
 
 #include <stdio.h>
+#include <sys/time.h>
 
 #include "dps8.h"
 #include "dps8_utils.h"
+#include "dps8_iom.h"
+#include "dps8_mt.h"
+#include "dps8_disk.h"
+
+// Much of this is from AN87 as 43A23985 lacked details of 0..11 and 22..36
+typedef struct pcw_s {
+    int dev_cmd;    // 6 bits; 0..5
+    int dev_code;   // 6 bits; 6..11
+    int ext;        // 6 bits; 12..17; address extension
+    int cp;         // 3 bits; 18..20, must be all ones
+    flag_t mask;    // extension control or mask; 1 bit; bit 21
+    int control;    // 2 bits; bit 22..23
+    int chan_cmd;   // 6 bits; bit 24..29;
+    // AN87 says: 00 single record xfer, 02 non data xfer,
+    // 06 multi-record xfer, 10 single char record xfer
+    int chan_data;  // 6 bits; bit 30..35; often some sort of count
+    //
+    int chan;       // 6 bits; bits 3..8 of word 2
+} pcw_t;
+
+typedef struct dcw_s {
+    enum { ddcw, tdcw, idcw } type;
+    union {
+        pcw_t instr;
+        struct {
+            uint daddr; // data address; 18 bits at 0..17);
+            uint cp;    // char position; 3 bits 18..20
+            uint tctl;  // tally control; 1 bit at 21
+            uint type;  // 2 bits at 22..23
+            uint tally; // 12 bits at 24..35
+        } ddcw;
+        struct {
+            uint addr;
+            flag_t ec;  // extension control
+            flag_t i;   // IDCW control
+            flag_t r;   // relative addressing control
+        } xfer;
+    } fields;
+} dcw_t;
+
+
+// Channel Status Word -- from AN87, 3-11
+typedef struct {
+    int chan;       // not part of the status word; simulator only
+    int major;
+    int substatus;
+    // even/odd bit
+    // status marker bit
+    // soft, 2 bits set to zero by hw
+    // initiate bit
+    // chan_stat; 3 bits; 1=busy, 2=invalid chan, 3=incorrect dcw, 4=incomplete
+    // iom_stat; 3 bits; 1=tro, 2=2tdcw, 3=bndry, 4=addr ext, 5=idcw,
+    int addr_ext;   // BUG: not maintained
+    int rcount; // 3 bits; residue in (from) PCW or last IDCW count (chan-data)
+    // addr;    // addr of *next* data word to be transmitted
+    // char_pos
+    flag_t read;    // was last or current operation a read or a write
+    // type;    // 1 bit
+    // dcw_residue; // residue in tally of last dcw
+    flag_t power_off;
+} chan_status_t;
+
+typedef enum {
+    chn_idle,       // Channel ready to receive a PCW from connect channel
+    chn_pcw_rcvd,   // PCW received from connect channel
+    chn_pcw_sent,   // PCW (not IDCW) sent to device
+    chn_pcw_done,   // Received results from device
+    chn_cmd_sent,   // A command was sent to a device
+    chn_io_sent,    // A io transfer is in progress
+    chn_need_status,// Status service needed
+    chn_err,        // BUG: may not need this state
+} chn_state;
+
+
+typedef struct {
+    uint32 dcw; // bits 0..17
+    flag_t ires;    // bit 18; IDCW restrict
+    flag_t hrel;    // bit 19; hardware relative addressing
+    flag_t ae;      // bit 20; address extension
+    flag_t nc;      // bit 21; no tally; zero means update tally
+    flag_t trunout; // bit 22; signal tally runout?
+    flag_t srel;    // bit 23; software relative addressing; not for Multics!
+    int32 tally;    // bits 24..35
+    // following not valid for paged mode; see B15; but maybe IOM-B non existant
+    uint32 lbnd;
+    uint32 size;
+    uint32 idcw;    // ptr to most recent dcw, idcw, ...
+} lpw_t;
 
 static t_stat iom_show_mbx (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat iom_show_config (FILE *st, UNIT *uptr, int val, void *desc);
@@ -527,8 +616,6 @@ static struct unit_data unit_data [N_IOM_UNITS_MAX];
  */
 
 
-#include <sys/time.h>
-
 typedef struct {
     int chan;
     int dev_code;
@@ -546,7 +633,7 @@ typedef struct {
     dcw_t dcw;      // most recent (in progress) dcw
     int control;    // Indicates next action; mostly from PCW/IDCW ctrl fields
     int err;        // BUG: temporary hack to replace "ret" auto vars...
-    chan_devinfo *devinfop;
+    chan_devinfo devinfo;
     lpw_t lpw;
 } channel_t;
 
@@ -764,13 +851,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
     unitp -> u4 = dev_code;
     unitp -> u5 = iom_unit_num;
 
-    channel_t* chanp = get_chan (iom_unit_num, chan_num, dev_code);
-    if (chanp != NULL)
-      {
-        chanp -> unitp = unitp;
-      }
-    else
-sim_printf ("?????\n"); // XXX
+    iom [iom_unit_num]  . channels [chan_num] [dev_code] . channel_state . unitp = unitp;
 
     return SCPE_OK;
   }
@@ -1200,13 +1281,15 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
           }
     }
 
-// XXX
-// Since interrupts aren't working yet....
-//PPR.IC = 0330;
-//PPR.IC = 030;
-//sim_printf ("Faking interrupt\n");
-sim_printf ("Faking DIS\n");
-cpu . cycle = DIS_cycle;
+    // Since interrupts aren't working yet....
+    //PPR.IC = 0330;
+    //PPR.IC = 030;
+    //sim_printf ("Faking interrupt\n");
+    // XXX Very odd. Commenting out the next two lines breaks t4d boot, but
+    // not 20184?
+    sim_printf ("Faking DIS\n");
+    cpu . cycle = DIS_cycle;
+
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;
   }
@@ -1246,20 +1329,18 @@ t_stat channel_svc (UNIT * up)
     if (chanp == NULL)
         return SCPE_ARG;
 
-    if (chanp->devinfop == NULL) {
-        sim_debug (DBG_WARN, &iom_dev, "channel_svc: No context info for IOM %c channel %d dev_code %d.\n", 'A' + iom_unit_num, chan, dev_code);
-    } else {
-        // FIXME: It might be more realistic for the service routine to to call
-        // device specific routines.  However, instead, we have the device do
-        // all the work ahead of time and the queued service routine is just
-        // reporting that the work is done.
-        chanp->status.major = chanp->devinfop->major;
-        chanp->status.substatus = chanp->devinfop->substatus;
-        chanp->status.rcount = chanp->devinfop->chan_data;
-        chanp->status.read = chanp->devinfop->is_read;
-        chanp->have_status = 1;
-    }
+    // FIXME: It might be more realistic for the service routine to to call
+    // device specific routines.  However, instead, we have the device do
+    // all the work ahead of time and the queued service routine is just
+    // reporting that the work is done.
+    chanp->status.major = chanp->devinfo . major;
+    chanp->status.substatus = chanp->devinfo . substatus;
+    chanp->status.rcount = chanp->devinfo . chan_data;
+    chanp->status.read = chanp->devinfo . is_read;
+    chanp->have_status = 1;
+
     do_channel(iom_unit_num, chanp);
+
     return SCPE_OK;
 }
 
@@ -1290,32 +1371,18 @@ void iom_init (void)
             for (int dev_code = 0; dev_code < N_DEV_CODES; dev_code ++)
               {
                 iom [unit_num] . channels [chan] [dev_code] . type = DEVT_NONE;
-                channel_t * chanp = get_chan (unit_num, chan, dev_code);
-                if (chanp != NULL)
-                  {
-                    chanp -> chan = chan;
-                    chanp -> dev_code = dev_code;
-                    chanp -> status . chan = chan;  // BUG/TODO: remove this member
-                    chanp -> unitp = NULL;
-                    chanp -> state = chn_idle;
-                    chanp -> xfer_running = 0;
-                    // FIXME: BUG/TODO: flag channels as "masked"
-                    memset (& chanp -> lpw, 0, sizeof (chanp -> lpw));
-                    // DEVICEs ctxt pointers used to point at chanp->devinfo,
-                    // but now both are ptrs to the same object so that either
-                    // may do the allocation
-                    if (chanp -> devinfop == NULL)
-                      {
-                         // Deleting this causes mt_svc to fail on boot with times >= 0
-                         chanp->devinfop = malloc(sizeof(*(chanp->devinfop)));
-                      }
-                    if (chanp->devinfop != NULL)
-                      {
-                        chanp -> devinfop -> iom_unit_num = unit_num;
-                        chanp -> devinfop -> chan = chan;
-                        chanp -> devinfop -> statep = NULL;
-                      }
-                  }
+                channel_t * chanp = & iom [unit_num]  . channels [chan] [dev_code] . channel_state;
+                chanp -> chan = chan;
+                chanp -> dev_code = dev_code;
+                chanp -> status . chan = chan;  // BUG/TODO: remove this member
+                chanp -> unitp = NULL;
+                chanp -> state = chn_idle;
+                chanp -> xfer_running = 0;
+                // FIXME: BUG/TODO: flag channels as "masked"
+                memset (& chanp -> lpw, 0, sizeof (chanp -> lpw));
+                chanp -> devinfo . iom_unit_num = unit_num;
+                chanp -> devinfo . chan = chan;
+                chanp -> devinfo . statep = NULL;
               }
           }
       }
@@ -1588,34 +1655,12 @@ static int activate_chan (int iom_unit_num, int chan, int dev_code, pcw_t* pcwp)
         chan_devinfo * devinfop = devp -> ctxt;
         if (devinfop == NULL)
           {
-            // devinfop = &chanp->devinfo;
-            if (chanp -> devinfop == NULL)
-              {
-                devinfop = malloc (sizeof (* devinfop));
-                devinfop -> iom_unit_num = iom_unit_num;
-                devinfop -> chan = chan;
-                devinfop -> statep = NULL;
-                chanp -> devinfop = devinfop;
-              }
-#if 0 // [CAC] the cable command does this
-            else
-              // XXX What is this?
-              if (chanp -> devinfop -> chan == -1)
-                {
-                  chanp -> devinfop -> chan = chan;
-                  sim_debug (DBG_NOTIFY, & iom_dev, "activate_chan: OPCON found on channel %#o\n", chan);
-                }
-#endif
-            devinfop = chanp -> devinfop;
+            devinfop = & chanp -> devinfo;
             devp -> ctxt = devinfop;
           }
-        else if (chanp->devinfop == NULL)
+        else if (devinfop != & chanp->devinfo)
           {
-            chanp -> devinfop = devinfop;
-          }
-        else if (devinfop != chanp->devinfop)
-          {
-            sim_debug (DBG_ERR, & iom_dev, "activate_chan: Channel %u dev_code %d and device mismatch with %d %d and %d %d\n", chan, dev_code, devinfop -> chan, devinfop -> dev_code, chanp -> devinfop -> chan, chanp -> devinfop -> dev_code);
+            sim_debug (DBG_ERR, & iom_dev, "activate_chan: Channel %u dev_code %d and device mismatch with %d %d and %d %d\n", chan, dev_code, devinfop -> chan, devinfop -> dev_code, chanp -> devinfo . chan, chanp -> devinfo . dev_code);
             cancel_run (STOP_BUG);
           }
       }
@@ -2331,7 +2376,7 @@ static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *contr
         // to continue doing list services or not is given by the control
         // words.  However, lists sometimes have an I-DCW with a control
         // of 0 (terminate at end of I/O op) but with an IO-DCW after said I-DCW
-        sim_debug (DBG_ERR, &iom_dev, "do_dcw: %s\n", dcw2text(&dcw));
+        sim_debug (DBG_INFO, &iom_dev, "do_dcw: %s\n", dcw2text(&dcw));
         *controlp = dcw.fields.instr.control;
         int ret = dev_send_idcw(iom_unit_num, chan, dev_code, &dcw.fields.instr);
         if (ret != 0)
@@ -2490,7 +2535,7 @@ static int dev_send_idcw(int iom_unit_num, int chan, int dev_code, pcw_t *p)
             // Device asked us to queue a delayed status return.  FIXME: Should queue the work, not
             // the reporting.
             int si = sim_interval;
-            if (sim_activate(devp->units, devinfop->time) == SCPE_OK) {
+            if (sim_activate(chanp->unitp, devinfop->time) == SCPE_OK) {
                 sim_debug (DBG_DEBUG, &iom_dev, "dev_send_idcw: Sim interval changes from %d to %d.  Q count is %d.\n", si, sim_interval, sim_qcount());
                 sim_debug (DBG_DEBUG, &iom_dev, "dev_send_idcw: Device will be returning major code 0%o substatus 0%o in %d time units.\n", devinfop->major, devinfop->substatus, devinfop->time);
             } else {
@@ -3456,6 +3501,10 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //             initenable=n
 //             halfsize=n
 //          bootskip=n // Hack: forward skip n records after reading boot record
+//          connect_time=n
+//          activate_time=n
+//          mt_read_time=n
+//          mt_xfer_time=n
 
 static config_value_list_t cfg_os_list [] =
   {
@@ -3493,7 +3542,10 @@ static config_list_t iom_config_list [] =
     /* 10 */ { "enable", 0, 1, NULL },
     /* 11 */ { "initenable", 0, 1, NULL },
     /* 12 */ { "halfsize", 0, 1, NULL },
-    /* 13 */ { "bootskip", 0, 1000, NULL }, // t4d testing hack
+
+// Hacks
+
+    /* 13 */ { "bootskip", 0, 100000, NULL }, // t4d testing hack (doesn't help)
     { NULL }
   };
 

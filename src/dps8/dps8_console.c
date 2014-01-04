@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_iom.h"
 
 /*
  console.c -- operator's console

@@ -4180,20 +4180,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                   break;
 
                 case 1: // configuration switches for ports A, B, C, D
-                  rA = switches . port_config;
-                  break;
-
-//
-// y = 2:
-//
-//   0     0 0 0 0            1 1 1     1 1 1 2 2 2 2 2 2 2   2 2     3 3   3
-//   0     3 4 5 6            2 3 4     7 8 9 0 1 2 3 4 5 6   8 9     2 3   5
-//  --------------------------------------------------------------------------
-//  |A|B|C|D|   |              | |       | | | |   | | | |     |       |     |
-//  --------- b |   FLT BASE   |c|0 0 0 0|d|e|f|0 0|g|h|i|0 0 0| SPEED | CPU |
-//  |a|a|a|a|   |              | |       | | | |   | | | |     |       |     |
-//  --------------------------------------------------------------------------
-//
 // y = 1:
 //
 //   0               0 0               1 1               2 2               3
@@ -4217,50 +4203,119 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 //   SPEED: 0000 = 8/70, 0100 = 8/52
 //   CPU: Processor number
 //   ADR: Address assignment switch setting for port
+//         This defines the base address for the SCU
 //   j: port enabled flag
 //   k: system initialize enabled flag
 //   l: interface enabled flag
 //   MEM coded memory size
-//     000 32K
-//     001 64K
-//     010 128K
-//     011 256K
-//     100 512K
-//     101 1024K
-//     110 2048K
-//     111 4096K
+//     000 32K     2^15
+//     001 64K     2^16
+//     010 128K    2^17
+//     011 256K    2^18
+//     100 512K    2^19
+//     101 1024K   2^20
+//     110 2048K   2^21
+//     111 4096K   2^22
+
+                  rA  = 0;
+                  rA |= (switches . assignment  [0] & 07L)  << (35 -  (2 +  0));
+                  rA |= (switches . enable      [0] & 01L)  << (35 -  (3 +  0));
+                  rA |= (switches . init_enable [0] & 01L)  << (35 -  (4 +  0));
+                  rA |= (switches . interlace   [0] ? 1:0)  << (35 -  (5 +  0));
+                  rA |= (switches . store_size  [0] & 07L)  << (35 -  (8 +  0));
+
+                  rA |= (switches . assignment  [1] & 07L)  << (35 -  (2 +  9));
+                  rA |= (switches . enable      [1] & 01L)  << (35 -  (3 +  9));
+                  rA |= (switches . init_enable [1] & 01L)  << (35 -  (4 +  9));
+                  rA |= (switches . interlace   [1] ? 1:0)  << (35 -  (5 +  9));
+                  rA |= (switches . store_size  [1] & 07L)  << (35 -  (8 +  9));
+
+                  rA |= (switches . assignment  [2] & 07L)  << (35 -  (2 + 18));
+                  rA |= (switches . enable      [2] & 01L)  << (35 -  (3 + 18));
+                  rA |= (switches . init_enable [2] & 01L)  << (35 -  (4 + 18));
+                  rA |= (switches . interlace   [2] ? 1:0)  << (35 -  (5 + 18));
+                  rA |= (switches . store_size  [2] & 07L)  << (35 -  (8 + 18));
+
+                  rA |= (switches . assignment  [3] & 07L)  << (35 -  (2 + 27));
+                  rA |= (switches . enable      [3] & 01L)  << (35 -  (3 + 27));
+                  rA |= (switches . init_enable [3] & 01L)  << (35 -  (4 + 27));
+                  rA |= (switches . interlace   [3] ? 1:0)  << (35 -  (5 + 27));
+                  rA |= (switches . store_size  [3] & 07L)  << (35 -  (8 + 27));
+                  break;
 
                 case 2: // fault base and processor number  switches
+// y = 2:
+//
+//   0     0 0 0 0            1 1 1     1 1 1 2 2 2 2 2 2 2   2 2     3 3   3
+//   0     3 4 5 6            2 3 4     7 8 9 0 1 2 3 4 5 6   8 9     2 3   5
+//  --------------------------------------------------------------------------
+//  |A|B|C|D|   |              | |       | | | |   | | | |     |       |     |
+//  --------- b |   FLT BASE   |c|0 0 0 0|d|e|f|0 0|g|h|i|0 0 0| SPEED | CPU |
+//  |a|a|a|a|   |              | |       | | | |   | | | |     |       |     |
+//  --------------------------------------------------------------------------
+//
 
 // DPS 8M processors:
-// C(Port interface, Ports A-D) → C(A) 0,3
+// C(Port interlace, Ports A-D) -> C(A) 0,3
 // 01 → C(A) 4,5
-// C(Fault base switches) → C(A) 6,12
-// 1 → C(A) 13
-// 0000 → C(A) 14,17
-// 111 → C(A) 18,20
-// 00 → C(A) 21,22
-// 1 → C(A) 23
-// C(Processor mode sw) → C(A) 24
-// 1 → C(A) 25
-// 000 → C(A) 26,28
-// C(Processor speed) → C (A) 29,32
-// C(Processor number switches) → C(A) 33,35
+// C(Fault base switches) -> C(A) 6,12
+// 1 -> C(A) 13
+// 0000 -> C(A) 14,17
+// 111 -> C(A) 18,20
+// 00 -> C(A) 21,22
+// 1 -> C(A) 23
+// C(Processor mode sw) -> C(A) 24
+// 1 -> C(A) 25
+// 000 -> C(A) 26,28
+// C(Processor speed) -> C (A) 29,32
+// C(Processor number switches) -> C(A) 33,35
 
                   rA = 0;
-                  rA |= (switches . port_interlace & 017L) << (35 -  3);
-                  rA |= (0b01L)  /* DPS8M */               << (35 -  5);
-                  rA |= (switches . FLT_BASE & 0177L)      << (35 - 12);
-                  rA |= (0b1L)                             << (35 - 13);
-                  rA |= (0b0000L)                          << (35 - 17);
-                  rA |= (0b111L)                           << (35 - 20);
-                  rA |= (0b00L)                            << (35 - 22);
-                  rA |= (0b1L)  /* DPS8M */                << (35 - 23);
-                  rA |= (switches . proc_mode & 01L)       << (35 - 24);
-                  rA |= (0b1L)                             << (35 - 25);
-                  rA |= (0b000L)                           << (35 - 28);
-                  rA |= (switches . proc_speed & 017L)     << (35 - 32);
-                  rA |= (switches . cpu_num & 07L)         << (35 - 35);
+                  rA |= (switches . interlace [0] == 2 ? 1LL : 0LL) << (35 -  0);
+                  rA |= (switches . interlace [1] == 2 ? 1LL : 0LL) << (35 -  1);
+                  rA |= (switches . interlace [2] == 2 ? 1LL : 0LL) << (35 -  2);
+                  rA |= (switches . interlace [3] == 2 ? 1LL : 0LL) << (35 -  3);
+                  rA |= (0b01L)  /* DPS8M */                        << (35 -  5);
+                  rA |= (switches . FLT_BASE & 0177LL)              << (35 - 12);
+                  rA |= (0b1L)                                      << (35 - 13);
+                  rA |= (0b0000L)                                   << (35 - 17);
+                  rA |= (0b111L)                                    << (35 - 20);
+                  rA |= (0b00L)                                     << (35 - 22);
+                  rA |= (0b1L)  /* DPS8M */                         << (35 - 23);
+                  rA |= (switches . proc_mode & 01LL)               << (35 - 24);
+                  rA |= (0b1L)                                      << (35 - 25);
+                  rA |= (0b000L)                                    << (35 - 28);
+                  rA |= (switches . proc_speed & 017LL)             << (35 - 32);
+                  rA |= (switches . cpu_num & 07LL)                 << (35 - 35);
+                  break;
+
+                case 3: // configuration switches for ports E-H, which
+                        // the DPS didn't have (SCUs had more memory, so
+                        // fewer SCUs were needed
+                  rA = 0;
+                  break;
+
+                case 4:
+                  // I suspect the this is a L68 only, but AL39 says both
+                  // port interlace and half/full size
+                  // The DPS doesn't seem to have the half/full size switches
+                  // so we'll always report full, and the interlace bits were
+                  // squeezed into RSW 2
+
+//  0                       1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2           3
+//  0                       2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9           5
+// -------------------------------------------------------------------------
+// |                         | A | B | C | D | E | F | G | H |             |
+// |0 0 0 0 0 0 0 0 0 0 0 0 0---------------------------------0 0 0 0 0 0 0|
+// |                         |f|g|f|g|f|g|f|g|f|g|f|g|f|g|f|g|             |
+// -------------------------------------------------------------------------
+//                         13 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1             7
+
+                  rA  = 0;
+                  rA |= (switches . interlace [0] == 2 ? 1LL : 0LL) << (35 - 13);
+                  rA |= (switches . interlace [1] == 2 ? 1LL : 0LL) << (35 - 15);
+                  rA |= (switches . interlace [2] == 2 ? 1LL : 0LL) << (35 - 17);
+                  rA |= (switches . interlace [3] == 2 ? 1LL : 0LL) << (35 - 19);
                   break;
 
                 default:
@@ -4280,12 +4335,35 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
 
-            // XXX ASSUME0
-            // [CAC] I'm still unclear on the mechanics of SCU addressing
-            // so I will assmue SCU0 here
-            uint scu_unit_num = 0;
+// XXX It is unclear but reasonable the the 2^1 factor is correct
+// portconfig coded size 0 is 32K, which is 2^15
+// 111 is 4096K; which is 2^22; 
+// this is the bank size, and each SCU has two banks, so 2^1
+// so  2 ^ ((mem coded size) + 15 + 1) should be the memory of a SCU
+
+            word24 work = TPR.CA;
+            int cpu_port_num = -1; // Not known
+            int port_num;
+            for (port_num = 0; port_num < N_CPU_PORTS; port_num ++)
+              {
+                if (switches . enable [port_num])
+                  {
+                    word24 sz = switches . store_size [port_num] << 16;
+                    word24 base = switches . assignment [port_num] * sz;
+                    if (work >= base && work < base + sz)
+                      {
+                        cpu_port_num = port_num;
+                        break;
+                      }
+                  }
+              }
+            if (cpu_port_num < 0)
+              {
+                sim_debug (DBG_DEBUG, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", work);
+                cpu_port_num = 0;
+              }
             uint scu_port_num = CY & 03;
-            scu_cioc (scu_unit_num, scu_port_num);
+            scu_cioc ((uint) cpu_port_num, scu_port_num);
           }
           break;
    
