@@ -447,6 +447,9 @@ DEVICE iom_dev = {
 };
 
 
+t_stat boot_svc (UNIT * unitp);
+static UNIT boot_channel_unit = { UDATA (& boot_svc, 0, 0) };
+
 static void fetch_abs_word(word24 addr, word36 *data)
 {
     core_read(addr, data);
@@ -1104,8 +1107,9 @@ static void init_memory_iom (uint unit_num)
     
   }
 
-t_stat iom_boot (int32 unit_num, DEVICE * dptr)
+t_stat boot_svc (UNIT * unitp)
   {
+    int unit_num = boot_channel_unit . u5;
     // XXX the docs say press sysinit, then boot; simh doesn't have an
     // explicit "sysinit", so we ill treat  "reset iom" as sysinit.
     // The docs don't say what the behavior is is you dont press sysinit
@@ -1285,6 +1289,14 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
     return SCPE_OK;
   }
 
+t_stat iom_boot (int32 unit_num, DEVICE * dptr)
+  {
+    boot_channel_unit . u5 = unit_num;
+    sim_activate (& boot_channel_unit, sys_opts . iom_times . boot_time );
+
+    // returning OK from the simh BOOT command causes simh to start the CPU
+    return SCPE_OK;
+  }
 // ============================================================================
 
 /*

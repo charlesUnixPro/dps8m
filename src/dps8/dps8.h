@@ -2147,6 +2147,7 @@ typedef struct {
     struct {
         int connect;    // Delay between CIOC instr & connect channel operation
         int chan_activate;  // Time for a list service to send a DCW
+        int boot_time; // delay between CPU start and IOM starting boot process
     } iom_times;
     struct {
         int read;

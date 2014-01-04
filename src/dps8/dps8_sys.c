@@ -423,7 +423,8 @@ sysinfo_t sys_opts =
 // off here (changing 0 to -1)
 // still get a little jitter, and once a hang in DIS. very strange
       -1, /* iom_times.connect */
-      -1  /* iom_times.chan_activate */
+      -1,  /* iom_times.chan_activate */
+      10, /* boot_time */
     },
     {
 // XXX This suddenly started working when I reworked the iom code for multiple units.
@@ -450,10 +451,12 @@ static char * encode_timing (int timing)
 
 static t_stat sys_show_config (FILE * st, UNIT * uptr, int val, void * desc)
   {
-    sim_printf ("Connect time:             %s\n",
+    sim_printf ("IOM connect time:         %s\n",
                 encode_timing (sys_opts . iom_times . connect));
-    sim_printf ("Activate time:            %s\n",
+    sim_printf ("IOM activate time:        %s\n",
                 encode_timing (sys_opts . iom_times . chan_activate));
+    sim_printf ("IOM boot time:            %s\n",
+                encode_timing (sys_opts . iom_times . boot_time));
     sim_printf ("MT Read time:             %s\n",
                 encode_timing (sys_opts . mt_times . read));
     sim_printf ("MT Xfer time:             %s\n",
@@ -474,6 +477,7 @@ static config_list_t sys_config_list [] =
     /*  1 */ { "activate_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
     /*  2 */ { "mt_read_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
     /*  3 */ { "mt_xfer_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
+    /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
  };
 
 static t_stat sys_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
@@ -507,6 +511,10 @@ static t_stat sys_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case  3: // MT_XFER_TIME
               sys_opts . mt_times . xfer = v;
+              break;
+
+            case  4: // IOM_BOOT_TIME
+              sys_opts . iom_times . boot_time = v;
               break;
 
             default:
