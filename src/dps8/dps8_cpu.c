@@ -439,6 +439,8 @@ static void init_scpage_map (void)
     // For each port (which is connected to a SCU
     for (int port_num = 0; port_num < N_CPU_PORTS; port_num ++)
       {
+        if (! switches . enable [port_num])
+          continue;
         // Calculate the amount of memory in the SCU in words
         uint store_size = switches . store_size [port_num];
         uint sz = 1 << (store_size + 16);
