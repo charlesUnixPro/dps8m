@@ -4335,6 +4335,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
 
+#if 0
 // XXX It is unclear but reasonable the the 2^1 factor is correct
 // portconfig coded size 0 is 32K, which is 2^15
 // 111 is 4096K; which is 2^22; 
@@ -4357,9 +4358,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                       }
                   }
               }
+#else
+            int cpu_port_num = query_scpage_map (TPR.CA);
+#endif
+
             if (cpu_port_num < 0)
               {
-                sim_debug (DBG_DEBUG, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", work);
+                sim_debug (DBG_DEBUG, & cpu_dev, "CIOC: Unable to determine port for address %08o; defaulting to port A\n", TPR.CA);
                 cpu_port_num = 0;
               }
             uint scu_port_num = CY & 03;
@@ -5760,6 +5765,14 @@ t_stat doXED(word36 *Ypair)
     ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
     ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
     
+#ifdef CHASING_BOOT
+    // If we are in a fault cascade, we never return to the main loop, so
+    // we need to do some housekeeping
+    if (sim_interval <= 0) /* check clock queue */
+        sim_process_event ();
+    sim_interval --;
+#endif
+
     // XXX This is probably way wrong and too simplistic, but it's a start ...
     
     DCDstruct _xec;   // our decoded instruction struct

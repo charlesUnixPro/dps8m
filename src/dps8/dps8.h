@@ -84,6 +84,15 @@ extern uint64 sim_deb_start;
 #define PAMASK          ((1 << PASIZE) - 1)
 #define MEMSIZE         INIMEMSIZE                      /*!< fixed, KISS */
 #define MEM_ADDR_NXM(x) ((x) >= MEMSIZE)
+
+
+// The minimum allocation size of a SCU is 64K (2^16) 
+// (2 banks of 32K). Call it an SCPAGE
+#define SCPAGE (1 << 16)
+// Maximum memory size is MAXMEMSIZE, number of
+// scpages is:
+#define N_SCPAGES ((MAXMEMSIZE) / (SCPAGE))
+
 #define VASIZE          18                              /*!< virtual addr width */
 #define AMASK           ((1 << VASIZE) - 1)             /*!< virtual addr mask */
 #define SEGSIZE         (1 << VASIZE)                   ///< size of segment in words
@@ -2834,6 +2843,7 @@ void ic_history_init(void);
 t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 
 bool sample_interrupts (void);
+int query_scpage_map (word24 addr);
 
 /* dps8_append.c */
 

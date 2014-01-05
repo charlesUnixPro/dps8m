@@ -442,7 +442,14 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
+#ifdef CHASING_BOOT
+            // If we have faulted in a trouble fault, then there is no reason
+            // to return;
+            // RETRY doesn't help; it keeps trying to execute [0]
+            // longjmp(jmpMain, JMP_RETRY);    // retry instruction
+#else
             return;
+#endif
           }
         else
           {
