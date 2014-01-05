@@ -13,6 +13,7 @@ load Play/UtilsA.oct deferred
 load Play/simh_operators.oct deferred
 ;load Play/power_of_two.oct deferred
 load Play/TestIndirectA.oct deferred
+load Play/TestIndirectB.oct deferred
 
 segments lot create
 segments create stack 0
@@ -24,6 +25,6 @@ segments lot snap
 ;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
 ;set cpu debug=trace;addrmod;appending
 
-g 0
+g 
 q
 

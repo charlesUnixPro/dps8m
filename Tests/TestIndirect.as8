@@ -12,6 +12,10 @@
 
     segref  TAM, _main, pi, E, fltTmp, _print
 
+    " our indirection tests ....
+    segref  TIND, _main_2
+    
+
     "segref  indirect_tests
 
     link    I, <UtilsA>|[ioa]
@@ -22,7 +26,7 @@
 
 main:
     tsx2    setupFXE
-    push
+    "push
 
     LDA     I
     tsp2	pr4|I, *        " ioa
@@ -63,8 +67,21 @@ main:
     fmp     pi  " pi * e = 8.5397341
     emcall  6
 
-    call    P(ap|0)
+    call    P(ap|0)     " TAM print (again)
     
+    "
+    " Now lets play with some indirection tests ...
+    "
+    
+    link    TIND_main, <TIND>|[_main_2]
+    call    TIND_main (ap|0)
+
+
+
+
+    tsp2	ioa
+    acc     /T-H-A-T-S all folks (from 0|main) !!! /
+
 	dis
     
 
@@ -74,6 +91,10 @@ g:  bss 1
 f:  bss 1
 
 Date:	bss     2
+
+    segdef  Data_1
+
+Data_1: oct 12345654321
 
     INCLUDE     setupFXE.as8
 

@@ -1,0 +1,101 @@
+"
+" Test B of indirections to be run from TestIndirect .....
+"
+"
+    option  Multics
+
+    name    TIND     " This is the TIND segment
+    
+    entry  _main_2    " and we want to emtry TAM tests via TAM_main
+
+    segref	UtilsA, ioa 
+
+    segref  main, Data_1
+
+"
+" Our data is up front this time ....
+"
+        even
+L1:     bss     1
+L2:     bss     1
+
+        even
+LAQ:
+LA:     bss     1
+LQ:     bss     1
+
+save2:      bss     ,2
+save2p:     bss     ,2
+save3p:     bss     ,2
+
+
+
+        eight
+rsave:  bss ,8
+
+_main_2:
+        tsp2    ioa
+        acc     /\r\n\nHallooooo from TIND$_main...\r\n/
+        
+        
+        
+
+        "
+        " find out what segment we're executing from ...
+        "
+        
+        "
+        " Access something from the main segment ...
+        "
+
+        lda     main$Data_1,*
+        sta     LA
+
+        tsp2    ioa
+        acc     /Data_1: ^n (Should be 12345654321)\r\n/
+        nop     LA
+        
+        lda     =o666
+        sta     main$Data_1,*
+        lda     main$Data_1,*
+        sta     LA
+
+        tsp2    ioa
+        acc     /Data_1: ^n (Should be 666)\r\n/
+        nop     LA
+
+
+        ldq     =49510627
+        stq     main$Data_1,*
+
+        lda     main$Data_1,*
+        sta     LA
+
+        tsp2    ioa
+        acc     /Data_1: ^d (Should be 49510627 [Thanks Lexi!])\r\n/
+        nop     LA
+
+        "
+        " let's play with EPP ...
+        "
+        epp0    main$Data_1,N*
+
+        ldq     =982187
+        stq     pr0|0
+
+        lda     main$Data_1,*
+        sta     LA
+
+        tsp2    ioa
+        acc     /Data_1: ^d (Should be 982187 [Thanks Lydia!])\r\n/
+        nop     LA
+
+
+        " return to caller
+_end:   tsp2    ioa
+        acc     /Now leaving TIND$_main ...\r\n/
+        
+        return
+
+
+
