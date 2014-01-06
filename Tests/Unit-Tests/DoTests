@@ -1,16 +1,17 @@
 #!/bin/sh
 #set -x
 
-Version="1.0.1 (HWR)"
+Version="1.0.1 (HWR was here)"
 verbose=0
-regen=0
+
 while [ $# -ge 1 ]
 do
     case $1 in
-        -h | --help     ) echo help; exit ;;
-        -v | --version  ) echo $Version ; exit ;;
-        -V | --Verbose  ) verbose=1 ; echo Verbose mode;;
-        -R | --Regenerate) regen=1 ;;
+        -h  | --help     ) echo help; exit ;;
+        -v  | --version  ) echo $Version ; exit ;;
+        -V  | --Verbose  ) verbose=1 ; echo Verbose mode;;
+        -RR | --RegenerateAll) regen_all=1 ;;
+        -d  | --DontRemove) dont_remove=1;;
         -r              ) run=$2; shift ;;
         -r*             ) run=${1#-r};;
         -e              ) EPOCH=$2; shift ; echo EPOCH="$EPOCH";;
@@ -48,21 +49,25 @@ AS8=${BASE}/as8+
 SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods"
 
 
+#EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
+EPOCH=$(date +%s)
+
+
 #
-# See if user wants to regenate 1 or all of the regression outputs
+# See if user wants to regenate all of the regression outputs
 #
-if [ "$regen" -eq 1 ]
+if [ "$regen_all" ]
 then
-    read -p "Are you sure you want to regerate regression outputs (y/n)? "
+    read -p "Are you sure you want to regenerate *ALL* regression outputs (y/n)? "
     if [ "$REPLY" == "y" ]
     then
-        echo "Will regenerate regression outputs"
+        echo "Will regenerate *ALL* regression outputs"
         for VARIABLE in $SRC
         do
             TEST="$VARIABLE".out
 
             echo Regenerating "$TEST" ...
-            "$DPS8" "$VARIABLE" > $TEST
+#            "$DPS8" "$VARIABLE" > $TEST
 
         done
         exit
@@ -82,13 +87,28 @@ fi
 
 if [ $run ]
 then
-    echo Will run "$run"
+#   echo Will run "$run"
+
+    echo Epoch is $EPOCH
+
+    VARIABLE="$run"
+
+    echo  Running "$VARIABLE" ...
+
+    TEST="$VARIABLE"."$EPOCH"
+
+#    $AS8 -Isrc src/"$VARIABLE".as8 -o"$VARIABLE".o8
+    "$DPS8" "$VARIABLE" > $TEST
+    diff -w $TEST "$VARIABLE".out
+    [ -z "$dont_remove" ] && rm $TEST
+    if [ "$dont_remove" ]
+    then
+        echo File: "$TEST" not removed.
+    fi
+
+    exit 0
 fi
 
-
-
-#EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
-EPOCH=$(date +%s)
 
 echo Epoch is $EPOCH
 
@@ -101,5 +121,10 @@ do
 #    $AS8 -Isrc src/"$VARIABLE".as8 -o"$VARIABLE".o8
 	"$DPS8" "$VARIABLE" > $TEST
 	diff -w $TEST "$VARIABLE".out
-	rm $TEST
+    [ -z "$dont_remove" ] && rm $TEST
+    if [ "$dont_remove" ]
+    then
+        echo File: "$TEST" not removed.
+    fi
+
 done
