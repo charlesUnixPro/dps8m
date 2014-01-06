@@ -427,6 +427,55 @@ t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
     return SCPE_ARG;
 }
 
+// Map memory to port
+static int scpage_map [N_SCPAGES];
+
+static void init_scpage_map (void)
+  {
+    sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
+
+    // Initalize to unmapped
+    for (int pg = 0; pg < N_SCPAGES; pg ++)
+      scpage_map [pg] = -1; 
+
+    // For each port (which is connected to a SCU
+    for (int port_num = 0; port_num < N_CPU_PORTS; port_num ++)
+      {
+        if (! switches . enable [port_num])
+          continue;
+        // Calculate the amount of memory in the SCU in words
+        uint store_size = switches . store_size [port_num];
+        uint sz = 1 << (store_size + 16);
+
+        // Calculate the base address of the memor in wordsy
+        uint assignment = switches . assignment [port_num];
+        uint base = assignment * sz;
+
+        // Now convert to SCPAGES
+        sz = sz / SCPAGE;
+        base = base / SCPAGE;
+
+        sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
+
+	for (int pg = 0; pg < sz; pg ++)
+          {
+            int scpg = base + pg;
+            if (scpg >= 0 && scpg < N_SCPAGES)
+              scpage_map [scpg] = port_num;
+          }
+      }
+    for (int pg = 0; pg < N_SCPAGES; pg ++)
+      sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: %d:%d\n", pg, scpage_map [pg]);
+  }
+
+int query_scpage_map (word24 addr)
+  {
+    uint scpg = addr / SCPAGE;
+    if (scpg >= 0 && scpg < N_SCPAGES)
+      return scpage_map [scpg];
+    return -1;
+  }
+
 t_stat cpu_reset (DEVICE *dptr)
 {
     if (M)
@@ -2276,6 +2325,8 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
     unitp -> u4 = 0;
     unitp -> u5 = cpu_unit_num;
 
+    init_scpage_map ();
+
     return SCPE_OK;
   }
 
@@ -2300,6 +2351,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
         sim_printf("Port%c init enable:        %01o(8)\n", 'A' + i, switches . init_enable [i]);
         sim_printf("Port%c assignment:         %01o(8)\n", 'A' + i, switches . assignment [i]);
         sim_printf("Port%c interlace:          %01o(8)\n", 'A' + i, switches . assignment [i]);
+        sim_printf("Port%c store size:         %01o(8)\n", 'A' + i, switches . store_size [i]);
       }
     sim_printf("Processor mode:           %s [%o]\n", switches . proc_mode ? "Multics" : "GCOS", switches . proc_mode);
     sim_printf("Processor speed:          %02o(8)\n", switches . proc_speed);
@@ -2378,25 +2430,25 @@ static config_value_list_t cfg_interlace [] =
 
 static config_value_list_t cfg_size_list [] =
   {
-    { "32", 32 },
-    { "64", 64 },
-    { "128", 128 },
-    { "256", 256 },
-    { "512", 512 },
-    { "1024", 1024 },
-    { "2048", 2048 },
-    { "4096", 4096 },
-    { "32K", 32 },
-    { "64K", 64 },
-    { "128K", 128 },
-    { "256K", 256 },
-    { "512K", 512 },
-    { "1024K", 1024 },
-    { "2048K", 2048 },
-    { "4096K", 4096 },
-    { "1M", 1024 },
-    { "2M", 2048 },
-    { "4M", 4096 },
+    { "32", 0 },
+    { "64", 1 },
+    { "128", 2 },
+    { "256", 3 },
+    { "512", 4 },
+    { "1024", 5 },
+    { "2048", 6 },
+    { "4096", 7 },
+    { "32K", 0 },
+    { "64K", 1 },
+    { "128K", 2 },
+    { "256K", 3 },
+    { "512K", 4 },
+    { "1024K", 5 },
+    { "2048K", 6 },
+    { "4096K", 7 },
+    { "1M", 5 },
+    { "2M", 6 },
+    { "4M", 7 },
     { NULL }
   };
 
@@ -2412,7 +2464,7 @@ static config_list_t cpu_config_list [] =
     /*  7 */ { "interlace", 0, 1, cfg_interlace },
     /*  8 */ { "enable", 0, 1, cfg_on_off },
     /*  9 */ { "init_enable", 0, 1, cfg_on_off },
-    /* 10 */ { "store_size", 1, 0, cfg_size_list },
+    /* 10 */ { "store_size", 0, 7, cfg_size_list },
 
     // Hacks
 

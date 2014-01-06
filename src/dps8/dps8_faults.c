@@ -436,8 +436,16 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
-            // Double fault with interrupts pending
             // return;
+#ifdef CHASING_BOOT
+            // If we have faulted in a trouble fault, then there is no reason
+            // to return;
+            // RETRY doesn't help; it keeps trying to execute [0]
+            // longjmp(jmpMain, JMP_RETRY);    // retry instruction
+#else
+            // Double fault with interrupts pending
+            return;
+#endif
           }
         else
           {
@@ -510,7 +518,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     sim_debug (DBG_FAULT, & cpu_dev, "Fault pair resumes\n");
     if (xrv == 0)
         longjmp(jmpMain, JMP_NEXT);     // execute next instruction
-    else if (xrv = CONT_INTR)
+    else if (xrv == CONT_INTR)
         longjmp(jmpMain, JMP_INTR);     // execute next instruction
     else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
         longjmp(jmpMain, JMP_RETRY);    // retry instruction

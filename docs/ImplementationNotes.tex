@@ -1,5 +1,9 @@
 \documentclass[notitlepage]{report}
 \usepackage {listings}
+\renewcommand{\thesection}{\arabic{part}.\arabic{section}}
+\makeatletter
+\@addtoreset{section}{part}
+\makeatother
 
 \begin{document}
 \title{Implementation Notes}
@@ -129,7 +133,7 @@ Disk pack: ?
 
         \item[MSU0500/0501]
 
-Dual spindle, nonremovable 1 milllion 9 bit bytes
+Dual spindle, non-removable 1 million 9 bit bytes
 
         \item[MSU0400/0402/0451]
 
@@ -178,7 +182,7 @@ Dual spindle, nonremovable 1 milllion 9 bit bytes
 
         \item [IOM] 6180 System I/O controller
 
-        \item [IMU] ``Infomation Multiplexer Unit'' DPS8 ? System I/O 
+        \item [IMU] ``Information Multiplexer Unit'' DPS8 ? System I/O 
 controller. Functional replacement for IOM.
 
     \end{description}
@@ -202,7 +206,7 @@ SCU
 
 [BSG] (1) System Control Unit, or Memory Controller. The multiported, 
 arbitrating interface to each bank of memory (usually 128 or 256 KWords), each
-port connecting to a port of an "active device" (CPU, GIOC or IOM, bulk store
+port connecting to a port of an ``active device'' (CPU, GIOC or IOM, bulk store
 or drum controller). On the 645, the clock occupied an SCU as well. The SCUs
 have their own repertoire of opcodes and registers, including those by which
 system interrupts are set by one active unit for another. (See connect.) The
@@ -211,7 +215,7 @@ flexibility of this architecture was significant among the reasons why the GE
 
 SCAS
 
-[BSG] (for "System Controller Addressing Segment") A supervisor segment with
+[BSG] (for ``System Controller Addressing Segment'') A supervisor segment with
 one page in the memory space described by each SCU (or other passive module) in
 the system. The SCAS contains no data, is not demand-paged, and its page table
 is not managed by page control. Instructions directed specifically to an SCU as
@@ -231,9 +235,9 @@ connect
 [BSG] Communication signal sent from one active device to another. When
 received by a processor, as polled for the control unit after each instruction
 pair like an interrupt, a special fault (connect fault), very much like an
-interrupt, is taken. As with interrupts, processors send "connects" to each
+interrupt, is taken. As with interrupts, processors send ``connects'' to each
 other through the SCU, the only possible channel. While an interrupt is set in
-an SCU register and fielded by the first "taker" of all appropriately masked
+an SCU register and fielded by the first ``taker'' of all appropriately masked
 CPUs, a connect fault is routed by the SCU to one, specified processor (or I/O
 controller), and cannot be masked against (although the recipient's inhibit bit
 can postpone it for a short while). Sending a connect to the GIOC or IOM was
@@ -248,7 +252,7 @@ back and forth between software-generated interrupts and connects throughout
 the '70s.
 \end {quote}
 
-According to AL39, a DPS 8M supports only 2 SCUs.
+According to AL39, a DPS 8M supports only two SCUs; the later model SCUs support enough memory such that two SCUs would provide the maximum usable amount of memory. A system could have a third SCU for redundancy, but it would only be configured into the system if needed.
 
 The code base currently abstracts away the SCUs, but they are being implemented.
 
@@ -285,15 +289,15 @@ Existing code base is skeletal.
 
 \section {CPU}
 
-AL39 "Interrupt Sampling"
+AL39 ``Interrupt Sampling''
 
-"The processor always fetches intructions in pairs. At an appropriate point
+``The processor always fetches intructions in pairs. At an appropriate point
 (as early as possible) in the execution of a pair of instructions, the
 next sequential instruction pair is fetched and held is a special 
 instruction buffer register. The exact point depends on instruction
 sequence and other conditions.
 
-"If the interrupt inhibit bit (bit 28) is not set in the current instruction
+``If the interrupt inhibit bit (bit 28) is not set in the current instruction
 word at the point of next sequential instruction pair virtual address 
 formation, te processor samples the group 7 faults [Shutdown, Timer Runout,
 Connect]. If any of the group 7 faults is found an internal flag is set
@@ -303,21 +307,21 @@ with bits corresponding to the states of the lines. If any bit in the
 register is set ON an internal flag is set to reflect te presence of the
 bit(s) in the register.
 
-"If the instruction pair virtual address being formed is the result of a
+``If the instruction pair virtual address being formed is the result of a
 transfer of control condition or if the current instruction is Execute (xec), * Execute Double (xed), Repeat (rpt), Repeat Double (rpd), or Repeat Link
 (rpl), the group 7 faults and interrupt present lines are not sampled.
 
-"At an appropriate point in the execution of the current instruction pair,
+``At an appropriate point in the execution of the current instruction pair,
 the process fetches he next instruction pair. At this point, it first tests
 the internal flags for group 7 faults and interupts. If either flag is set
 it does not fetch the next instruction pair.
 
-"At the completion of the current instruction pair the proessor once again
+``At the completion of the current instruction pair the proessor once again
 checks the internal flags. If neither flag is set execution of the next
 instruction pair proceeds. If the internal flag for group 7 faults is set,
 the processor enters a FAULT cycle for the highest priority group 7
 fault present. If the internal flag for interrupts s set, the processor
-enters an INTERRUPT CYCLE."
+enters an INTERRUPT CYCLE.''
 
 \begin {lstlisting}
  bool prefetch_valid = false
@@ -366,66 +370,29 @@ enters an INTERRUPT CYCLE."
 
 This is not quite right yet; better integration with the out\_of\_seq
 conditions is needed. Perhaps the prefetch test also need an address
-check, ie. is the address that was fetched what the processor was
+check, i.e. is the address that was fetched what the processor was
 expecting (equal to the Ir).
+
+Further reading on the instruction prefetch indicates that it was quite complicated with multiple instruction pairs cached, which leads to issues with cache invalidation for self-modifying code. At this point, I am coding towards a much simpler model.
 
 \section {CLK}
 
+The clock code is currently disabled, pending better integration into the SIMH interval and DPS8 interrupt mechanisms.
+
 \section {OPCON}
+
+The operator console code is untested and not linked into the code. Eventually, the T4D tape will get around to testing it.
+
+\section {Line printer}
+
+Not yet implemented.
 
 \section {System}
 
-The simulator has been provide with commands to 'cable' together the various subsystems. The current test configuration is:
+The simulator has been provide with commands to ``cable'' together the various subsystems. The current test configuration is in the file ``src/base\_system.ini'', shown here:
 
-\begin{verbatim}
-echo 
-echo Configuring test system: CPU, IOM * 2, TAPE * 2 
-echo 
+\lstinputlisting{../src/dps8/base_system.ini}
 
-set iom nunits=2 
-set tape nunits=2 
-set opcon nunits=1 
-
-set iom0 config=iom_base=014
-set iom0 multiplex_base=0120
-set iom0 os=multics
-set iom0 boot=tape
-set iom0 tapechan=012
-set iom0 cardchan=011
-set iom0 scuport=0 
-set iom0 config=port=0;enable=0 
-set iom0 config=port=1;enable=0 
-set iom0 config=port=2;enable=0 
-set iom0 config=port=3;enable=0 
-set iom0 config=port=4;enable=0 
-set iom0 config=port=5;enable=0 
-set iom0 config=port=5;enable=0 
-set iom0 config=port=7;enable=0 
-
-set iom1 config=iom_base=014
-set iom0 multiplex_base=0121
-set iom0 os=multics
-set iom0 boot=tape
-set iom0 tapechan=012
-set iom0 cardchan=011
-set iom0 scuport=0 
-set iom1 config=port=0;addr=0;interlace=0;enable=1;initenable=0;halfsize=0; 
-set iom1 config=port=1;enable=0 
-set iom1 config=port=2;enable=0 
-set iom1 config=port=3;enable=0 
-set iom1 config=port=4;enable=0 
-set iom1 config=port=5;enable=0 
-set iom1 config=port=5;enable=0 
-set iom1 config=port=7;enable=0 
-
-; attach tape unit 0 to iom 0, chan 012, dev_code 0 
-cable tape,0,0,012,0 
-; attach tape unit 1 to iom 1, chan 012, dev_code 0 
-cable tape,1,1,012,0 
-
-; attach opcon unit 0 line 0 to iom A, chan 036 
-cable opcon,0,0,0,036 
-\end{verbatim}
 
 
 \part {Porting issues}
@@ -550,14 +517,370 @@ that is configured in MANUAL (not PROGRAM mode)? According to AL39, a
 to set an unassigned mask register generates a STORE FAULT.
  (dps8\_scu.c/scu\_sscr()).
 
-\section {t4d_b.2.tap issues}
+\section {t4d\_b.2.tap issues}
 
 t4d seems to require the carry bit sense to be inverted after subtract 
-operations; i.e. carry &=&&=& not borrow.
-
-t4d seems to require that the IR register ABSOLUTE mode bit sense be inverted;
-i.e. 0 is ABSOLUTE mode.
+operations; i.e. carry == not borrow.
 
 I would have thought that DIS with interrupt inhibit would be an absolute halt, but t4d issues it after a CIOC.
+
+IR Absolute bit
+
+The T4D code runs in absolute mode (at least so far), and tests the "Absolute bit" in the STI instructions results. The test fails if the bit is on. According to AL39, one would expect the bit to be on when running in Absolute mode. In order for the test to pass, I added an emulator configuration option that inverts the sense of the bit for the STI instruction. The test tape and the documentation disagree. Who is right?
+
+ABSA in absolute mode with bit 29 set
+
+The T4D code does about 1400 executions of the ABSA instruction in absolute mode with bit 29 set (ABSA PR0|0 and the like). According to AL39, executing ABSA in absolute mode is "undefined". Examination of the code surrounding the ABSA instruction seem to indicate that SDW pairs are being set up and tested for BOUND violations, with the instruction returning 0 if no violation, and some not-quite-clear version of the offending address if BOUND violation occured (I think).  Documentation of ABSA behavior for this usage is needed.
+
+DIS with Interrupt Inhibit set
+
+The T4D tape waits for tape block read completion with a DIS instruction with the Interrupt Inhibit bit set. The interrupt pairs TRA to the instruction immediately after the DIS instruction, so the results are approximately the same whether the interrupt is processed, or the DIS instruction just continues on. What is the correct behavior for the DIS with interrupt inhibit set? (I favor the clear the interrupt resume processing without invoking the interrupt cycle as it makes a lot of sense (to me), but I haven't located a discussion of this in the documentation.
+
+
+\part{Running the emulator}
+
+\section{SIMH Emulator DPS8-M specific commands}
+
+\paragraph{}
+This a list of the DPS8-M specific commands that are provided for the SimH emulator framework.
+
+\paragraph{}
+For numeric parameters (<n>), the value is interpreted in `C' style; i.e. leading 0 for octal, leading 0x for hexadecimal.
+
+\paragraph{Base set of debug options} (Almost) all of the SIMH devices (clk, cpu, iom, scu, tape) support a base set of debug options. (The device SYS is an abstraction that does not currently have code paths that are part of the VM.)
+
+\begin{lstlisting}
+	set [clk|cpu|iom|scu|tape] debug=[notify|info|err|debug|all]
+\end{lstlisting}
+
+\paragraph{Number of CPUS} Some day we will support multiple cpus:
+
+\begin{lstlisting}
+	; Not yet implemented: set cpu nunits=<n>
+\end{lstlisting}
+
+
+\paragraph{Set CPU configuration switches}
+The following commands perform the functions of the CPU configuration switches:
+
+\begin{lstlisting}
+	set cpu config=faultbase=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=num=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=data=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=mode=<GCOS|MULTICS>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=speed=<n>
+\end{lstlisting}
+
+TODO: port, assignment, interlace, enable, init\_enable
+
+\paragraph{Set CPU VM runtime configuration} The following commands perform various internal configurations of the VM.
+
+\subparagraph{IR Absoulte Bit}
+The Test \& Diagnostic tape seems to believe that the ABSOLUTE bit has an inverted value then
+described in AL-39, with respect to the STI instruction. When examining the bit in the SCU save data, it does not invert the value. This switches enables code that inverts the value for the STI instruction, allowing the Test \& Diagnostic tape to proceed. (See ``Unresolved Questions''.)
+
+\begin{lstlisting}
+	set cpu config=invertabsolute=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{B29test}
+This switch is no longer in use.
+
+\begin{lstlisting}
+	set cpu config=b29test=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Disenable}
+The Unit Test code uses the DIS command as the end of test exit; The Test \& Diagnostics and the 20184 tapes expect DIS to wait for an interrupt. This switch enables the wait behavior.
+
+\begin{lstlisting}
+	set cpu config=dis_enable=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Auto\_append\_disable}
+This switch is no longer in use.
+\begin{lstlisting}
+	set cpu config=auto_append_disable=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{LPRP\_highonly}
+This switch address two different interpretations of the behavior of the SPRPn instruction. Enable for Test \& Diagnostics or 20184.
+
+\begin{lstlisting}
+	set cpu config=lprp_highonly=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Steady\_clock}
+Both the Test \& Diagnostics and 20184 use wait loops to allow I/O to complete; the loops use the RSW 2 instruction to read the time of day clock; variations in timing cause instruction cycles to jitter, making debugging more difficult. Setting this switch causes RSW 2 to return a deterministic value, so each run of the emulator provides a stable instruction cycle behavior.
+
+\begin{lstlisting}
+	set cpu config=steady_clock=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Degenerate\_mode}
+This switch enables a high experimental code change great potentially reduces the number of lines of code, but may contains some smoke and mirror code.
+
+\begin{lstlisting}
+	set cpu config=degenerate_mode=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Append\_after}
+This switch addresses an unresolved issue with the sequence of events in the instruction execute cycle.
+
+\begin{lstlisting}
+	set cpu config=append_after=[0|1|off|on]
+\end{lstlisting}
+
+\paragraph{Show CPU config}
+This command will show the current configuration settings of the CPU.
+
+\begin{lstlisting}
+	show cpu config
+\end{lstlisting}
+
+\paragraph{Set CPU debugging options}
+This command will enable or disable the display information of a wide variety of runtime events and states.
+
+\subparagraph{Trace}
+On each execute cycle of the VM, display information about the executed instruction.
+
+\subparagraph{Tracex}
+On each execute cycle of the VM, display more detailed information about the executed instruction.
+
+\subparagraph{Messages}
+Display general messages about events and states of the emulator.
+
+\subparagraph{Regdumpaqi}
+Display the contents of the A, Q and IR registers after each execution execution.
+
+\subparagraph{Regdumpidx}
+Display the contents of the index registers after each execution execution.
+
+\subparagraph{Regdumppr}
+Display the contents of the AR register after each execution execution.
+
+\subparagraph{Regdumpadr}
+Display the contents of the AR register after each execution execution.
+
+\subparagraph{Regdumpadr}
+Display the contents of the AR register after each execution execution.
+
+\subparagraph{Regdumpppr}
+Display the contents of the PPR register after each execution execution.
+
+\subparagraph{Regdumppdsbr}
+Display the contents of the DSBR register after each execution execution.
+
+\subparagraph{Regdumppflt}
+Display the contents of the floating point register after each execution execution.
+
+\subparagraph{Regdump}
+All of the above \textit{regdump...} commands.
+
+\subparagraph{Addrmod}
+Display messages about the progress of the Address Modification unit.
+
+\subparagraph{Appending}
+Display messages about the progress of the Append unit.
+
+\subparagraph{Fault}
+Display messages about the progress of fault processing.
+
+\begin{lstlisting}
+	set cpu [no]debug=
+		[trace | traceex | messages |
+		 regdumpaqi | regdumpidx | regdumppr | regdumpadr |
+		 regdumpppr | regdumpdsbr | regdumpflt | regdump |
+		 addrmod | appending | fault]
+\end{lstlisting}
+
+\paragraph{Boot CPU}
+Displays a message suggesting booting an IOM.
+
+\begin{lstlisting}
+	boot cpu
+\end{lstlisting}
+
+\paragraph{CPU registers}
+This is a list of registers the SIMH examine and deposit commands work with.
+
+\begin{lstlisting}
+	     ic ir a q e 
+	     x0 x1 x2 x3 x4 x5 x6 x7
+	     ppr.ic ppr.prr
+	     ppr.psr prr.p
+	     dsbr.addr dsbr.bnd dsbr.u dsbr.stack
+	     bar.base bar.bound
+	     faultbase
+\end{lstlisting}
+
+\paragraph{Number of IOMs}
+These command set or show the number of IOMs in the system.
+
+\begin{lstlisting}
+	set iom nunits=<n>
+	show iom nunits
+\end{lstlisting}
+
+\paragraph{Show IOM mailbox}
+This command shows the contents of an IOM mailbox
+
+\begin{lstlisting}
+	show iom<n> mbx
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=
+	    [os | boot | iom_base | multiplex_base |
+	     tapechan | cardchan | scuport | port | addr |
+	     interlace | enable | initenable | halfsize| bootskip]
+\end{lstlisting}
+
+\begin{lstlisting}
+	show iom<n> config
+\end{lstlisting}
+
+\begin{lstlisting}
+	boot iom<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set scu nunits=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	show scu nunits
+\end{lstlisting}
+
+\begin{lstlisting}
+	show scu<n> state
+\end{lstlisting}
+
+\begin{lstlisting}
+	set scu<n> config=mode=[manual|program]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set scu<n> config=mask[a|b]=[off|<n>]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set scu<n> config=port<n>=[enable|disable|0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set scu<n> config=lwrstoresize=[32|64|128|256|512|1024|2048|4096]
+\end{lstlisting}
+
+\begin{lstlisting}
+	show scu<n> config
+\end{lstlisting}
+
+\begin{lstlisting}
+	set sys config=[]connect_time|activate_time|
+	                mt_read_time|mt_xfer_time|
+	               iom_boot_time=[off|n] 
+\end{lstlisting}
+
+\begin{lstlisting}
+	set tape nunits=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	show tape nunits
+\end{lstlisting}
+
+\begin{lstlisting}
+	set tape<n> rewind
+\end{lstlisting}
+
+\begin{lstlisting}
+	set tape<n> [no]watch
+\end{lstlisting}
+
+\begin{lstlisting}
+	attach [-r] tape<n> <filename.tap>
+\end{lstlisting}
+
+\begin{lstlisting}
+	dpsinit
+\end{lstlisting}
+
+\begin{lstlisting}
+	dpsdump
+\end{lstlisting}
+
+\begin{lstlisting}
+	segment
+\end{lstlisting}
+
+\begin{lstlisting}
+	segments
+\end{lstlisting}
+
+The `cable' command provides the emulation equivalent of stringing physical cables from device to device. This is an important step as the DPS8-M was not a plug-and-play design; which physical ports on a device the cables connect to influence the system configuration. The semantics of the `cable' command is to string cables inward; from peripherals towards the CPU.
+\begin{lstlisting}
+	cable tape=<tape_unit_num>,<IOM_unit_number>,
+		<channel_number>,<device_code>
+\end{lstlisting}
+	String a cable from a tape drive to an IOM. As the MPC devices are not implemented, the `device\_code' represents the assignment of devices that the MPC was use when multiplexing multiple devices into a single channel.
+
+\begin{lstlisting}
+	cable opcon=<IOM_unit_num>,<channel_number>,
+		<unused>,<unused>
+\end{lstlisting}
+
+	String a cable from the Operator's Console to an IOM.
+
+\begin{lstlisting}
+	cable iom=<tIOM_unit_num>,<IOM_port_number>,
+		<SCU_unit_number>,<SCU_port_number>
+\end{lstlisting}
+
+	String a cable from an IOM to an SCU.
+
+\begin{lstlisting}
+	cable scu=<SCU_unit_num>,<SCU_port_number>,
+		<CPU_unit_number>,<CPU_port_number>
+\end{lstlisting}
+
+	String a cable from an SCU to a CPU.
+
+\begin{lstlisting}
+	dbgstart
+\end{lstlisting}
+
+\begin{lstlisting}
+	displaymatrix
+\end{lstlisting}
+
+
+\section{Booting the Test \& Diagnostic tape}
+
+The file `t4d\_b.2.ini' is will set up the base system and boot the 't4d\_b.2.tap' tape image.
+`
+\begin{lstlisting}
+	./dps8 t4d_b.2.ini
+\end{lstlisting}
+
+\section{Booting the 20184 tape}
+
+The file `20184.ini' is will set up the base system and boot the '20184.tap' tape image.
+`
+\begin{lstlisting}
+	./dps8 20184.ini
+\end{lstlisting}
 
 \end{document}

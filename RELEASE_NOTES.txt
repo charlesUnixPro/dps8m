@@ -1,5 +1,5 @@
 The ini files were rename to .ini files 
-    dps8.ini.20184.tap -> dps8.20184.ini
-    dps8.ini.base_system -> dps8.base_system.ini
-    dps8.ini.t4d_b.2.tap -> dps8.t4d_b.2.ini
+    dps8.ini.20184.tap -> 20184.ini
+    dps8.ini.base_system -> base_system.ini
+    dps8.ini.t4d_b.2.tap -> t4d_b.2.ini
 
