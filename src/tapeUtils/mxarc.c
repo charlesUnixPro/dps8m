@@ -73,6 +73,14 @@ int main (int argc, char * argv [])
     static char    archive_header_end[8] =
                     {017, 017, 017, 017, 012, 012, 012, 012};
 
+    static char notice [] = "\r\n\r\n\r\nHistorical Background";
+
+    if (memcmp (comp_header, notice, sizeof (notice)) != 0)
+      {
+        printf ("Notice at file end found\n");
+        exit (1);
+      }
+        
     if (memcmp (comp_header, archive_header_begin, sizeof (archive_header_begin)) != 0)
       {
         printf ("Not a Multics backup format\n");
@@ -86,6 +94,7 @@ int main (int argc, char * argv [])
       {
         //if (! is_file_hdr())
         sz = read (fd, comp_header, sizeof (comp_header));
+printf ("sz %ld\n", sz);
         if (sz == 0)
           break;
         if (sz != sizeof (comp_header))
@@ -95,6 +104,8 @@ int main (int argc, char * argv [])
           }
         if (memcmp (comp_header, archive_header_begin, sizeof (archive_header_begin)) != 0)
           {
+for (int i = 0; i < 100; i ++) printf (" %d", comp_header [i]);
+printf ("\n");
             printf ("Not a Multics backup format (1)\n");
             exit (1);
           }
@@ -117,11 +128,22 @@ printf ("elem_name %s\n", elem_name);
         uint8_t bit_count_str [9];
         memcpy (bit_count_str, comp_header + 84, 8);
         bit_count_str [8] = '\0';
-        long bitcnt = atol ((char *) bit_count_str);
-        long blength = (bitcnt + 9) / 8;
+        long bitcnt = atol ((char *) bit_count_str); // in 9-bit bytes
+printf ("bitcnt %ld\n", bitcnt);
+
+        // Number of bytes in the file we are looking at
+        long blength = (bitcnt + 8) / 9;
 printf ("length in bytes %ld\n", blength);
+
+        // Number of 36-bit words in the original file
         long length = (bitcnt + 35L) / 36L;
+        // Number of bits in the original file
         long maximum_bitcnt = length * 36L;
+        // Number of 9bit bytes in the original file
+        long maximum_byte_cnt = maximum_bitcnt / 9;
+
+        long padding = maximum_byte_cnt - blength;
+printf ("padding %ld\n", padding);
 
         strcpy (path, top_level_dir);
         strcat (path, "/");
@@ -140,8 +162,8 @@ printf ("length in bytes %ld\n", blength);
             printf ("create empty file () %s%s\n", path, filename);
           }
 
-        long cnt = (bitcnt + 8) / 9; /* Num of bytes rounded UP */
-printf ("cnt %ld\n", cnt);
+        //long cnt = (bitcnt + 8) / 9; /* Num of bytes rounded UP */
+//printf ("cnt %ld\n", cnt);
 
         sprintf (mkcmd, "mkdir -p %s", path);
         int rc = system (mkcmd);
@@ -181,12 +203,12 @@ printf ("cnt %ld\n", cnt);
               }
             blength -= chunk;
           }
-
-printf ("maximum_bitcnt %ld bitcnt %ld\n", maximum_bitcnt, bitcnt);
-        long trailing_bits = (maximum_bitcnt - bitcnt) * 8L / 9L;
-        long trailing_bytes = trailing_bits * 7L / 8L;
-printf ("trailing_bytes %ld\n", trailing_bytes);
-        lseek (fd, trailing_bytes, SEEK_CUR);
+        lseek (fd, padding, SEEK_CUR);
+//printf ("maximum_bitcnt %ld bitcnt %ld\n", maximum_bitcnt, bitcnt);
+        //long trailing_bits = (maximum_bitcnt - bitcnt) * 8L / 9L;
+        //long trailing_bytes = trailing_bits * 7L / 8L;
+//printf ("trailing_bytes %ld\n", trailing_bytes);
+        //lseek (fd, trailing_bytes, SEEK_CUR);
         close (fdout);
       }
     printf ("%d files restored\n", restore_cnt);
