@@ -1,0 +1,201 @@
+"
+" Test C of indirections to be run from TestIndirect .....
+"
+"
+    option  Multics
+
+    name    TINDC     " This is the TIND segment
+    
+    entry  _main_C    " and we want to entry TIND tests via TAM_main
+
+    segref	UtilsA, ioa 
+
+"
+" temportary data on stack frame ...
+"
+    temp    t1
+    tempd   d1
+    temp    t2(13)
+    tempd   d2(5)
+
+"
+" Our data is up front this time ....
+"
+        sixteen
+PRSave: bss ,16
+
+        even
+LAQ:
+LA:     bss     1
+LQ:     bss     1
+L1:     bss     1
+L2:     bss     2
+
+        even
+saveR0: bss     2
+
+
+_main_C:
+        push    
+
+        spri    PRSave
+
+        tsp2    ioa
+        acc     /This is TINC$_main_C...\r\n/
+
+        "
+        " Let's play with stack temporaries .....
+        "
+        
+        lda     =2718271828
+        sta     t1
+        
+        ldq     t1
+        stq     LQ
+
+        epp0    t1
+        spri0   saveR0
+
+        "tsx2    _printTemps
+
+        tsp2    ioa
+        acc     /_main_C:1: t1 ^d (addr:Even:^w Odd:^w)\r\n/
+        nop     LQ
+        nop     saveR0+0
+        nop     saveR0+1
+
+        " store a double-precision float in d1 ...
+        dfld    =6.02214129d23  " Avagadro's constant
+        dfst    d1
+        
+        ldaq    d1
+        staq    LAQ
+        
+        epp0    d1
+        spri0   saveR0
+
+        tsp2    ioa
+        acc     /_main_C:2: d1 ^n ^n (addr:Even:^w Odd:^w)\r\n/
+        nop     LA
+        nop     LQ
+        nop     saveR0+0
+        nop     saveR0+1
+
+
+        "
+        " play with temp list t2 ...
+        "
+        epp0    t2
+        spri0   saveR0
+
+        tsp2    ioa
+        acc     /_main_C:3: addr t2 Even:^w Odd:^w)\r\n/
+        nop     saveR0+0
+        nop     saveR0+1
+
+        tsp2    ioa
+        acc     /_main_C:4: filling t2 with 13 values from 30..42 : /
+
+        eax0    13      " size of t2 in words
+        eax1    0       " index into t2
+        lda     =30,dl  " 29 => A
+loop1:  sta     t2,x1
+        ada     =1,dl
+        eax1    1,x1    " increment indexer
+        eax0    -1,x0   " decrement x0
+        tnz     loop1
+
+        eax0    13      " size of t2 in words
+        eax1    0       " index into t2
+loop2:  ldq     t2,x1   " t2(x0) => L1
+        stq     L1      " ...
+
+        staq    LAQ     " preserve AQ
+
+        tsp2    ioa
+        acc     /^d /
+        nop     L1
+
+        ldaq    LAQ     " restore AQ
+
+        eax1    1,x1    " increnent indexer
+        eax0    -1,x0   " decrement loop counter x0
+        tnz     loop2
+
+        tsp2    ioa
+        acc     /\r\n/
+
+
+        "
+        " now play with d2 ...
+        "
+
+        epp0    d2
+        spri0   saveR0
+
+        tsp2    ioa
+        acc     /_main_C:5: addr d2 Even:^w Odd:^w)\r\n/
+        nop     saveR0+0
+        nop     saveR0+1
+
+
+
+        "
+        " print out temps to see if anything has changed ...
+        "
+        tsx2    _printTemps
+
+
+        " return to caller
+_end:   tsp2    ioa
+        acc     /Now leaving TINC$_main_C ...\r\n/
+        
+        lpri    PRSave
+
+        return
+
+_printTemps:
+        sreg    _regs
+
+        ldq     t1
+        stq     LQ
+
+        tsp2    ioa
+        acc     /_printTemps:1: t1 ^d (Should be: 2718271828)\r\n/
+        nop     LQ
+
+        ldaq    d1
+        staq    LAQ
+        tsp2    ioa
+        acc     /_printTemps:2: d1 ^n ^n (Should be: 236776060576 265223074736)\r\n/
+        nop     LA
+        nop     LQ
+
+        " print t2 ...
+        eax0    13      " size of t2 in words
+        eax1    0       " index into t2
+loop3:  ldq     t2,x1   " t2(x0) => L1
+        stq     L1      " ...
+        eaq     0,x1    " C(x0) => L2
+        qrl     18      " ...
+        stq     L2      " ...
+        
+        staq    LAQ     " preserve AQ
+
+        tsp2    ioa
+        acc     /_printTemps:3: t2(^d)=^d\r\n/
+        nop     L2
+        nop     L1
+
+        ldaq    LAQ     " restore AQ
+
+        eax1    1,x1    " increnent indexer
+        eax0    -1,x0   " decrement loop counter x0
+        tnz     loop3
+
+        lreg    _regs
+        tra     0,2
+    
+        eight
+        bss     _regs, 8
+

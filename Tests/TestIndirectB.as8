@@ -6,44 +6,42 @@
 
     name    TIND     " This is the TIND segment
     
-    entry  _main_2    " and we want to emtry TAM tests via TAM_main
+    entry  _main_2    " and we want to entry TIND tests via TAM_main
 
     segref	UtilsA, ioa 
 
-    segref  main, Data_1
+    segref  main, Data_1, magicM
+    
+    segdef  magicB
 
 "
 " Our data is up front this time ....
 "
         even
-L1:     bss     1
-L2:     bss     1
-
-        even
 LAQ:
 LA:     bss     1
 LQ:     bss     1
 
-save2:      bss     ,2
-save2p:     bss     ,2
-save3p:     bss     ,2
-
+        bss     ,1234
+        
+magicB: dec 3141592653
 
 
         eight
 rsave:  bss ,8
+        sixteen
+PRSave: bss ,16
 
 _main_2:
-        tsp2    ioa
-        acc     /\r\n\nHallooooo from TIND$_main...\r\n/
-        
-        
-        
+        push    
 
-        "
-        " find out what segment we're executing from ...
-        "
-        
+        spri    PRSave
+
+        "tra     trymmM
+
+        tsp2    ioa
+        acc     /Hallooooo from TIND$_main...\r\n/
+
         "
         " Access something from the main segment ...
         "
@@ -52,7 +50,7 @@ _main_2:
         sta     LA
 
         tsp2    ioa
-        acc     /Data_1: ^n (Should be 12345654321)\r\n/
+        acc     /main$Data_1 a: ^n (Should be 12345654321)\r\n/
         nop     LA
         
         lda     =o666
@@ -61,7 +59,7 @@ _main_2:
         sta     LA
 
         tsp2    ioa
-        acc     /Data_1: ^n (Should be 666)\r\n/
+        acc     /main$Data_1 b: ^n (Should be 666)\r\n/
         nop     LA
 
 
@@ -72,7 +70,7 @@ _main_2:
         sta     LA
 
         tsp2    ioa
-        acc     /Data_1: ^d (Should be 49510627 [Thanks Lexi!])\r\n/
+        acc     /main$Data_1 c: ^d (Should be 49510627 [Thanks Lexi!])\r\n/
         nop     LA
 
         "
@@ -87,7 +85,34 @@ _main_2:
         sta     LA
 
         tsp2    ioa
-        acc     /Data_1: ^d (Should be 982187 [Thanks Lydia!])\r\n/
+        acc     /main$Data_1 d: ^d (Should be 982187 [Thanks Lydia!])\r\n/
+        nop     LA
+
+trymmM:
+        "
+        " Let's now try to access something from main => A => B (via an ITS pointer chain)
+        "
+
+        epp0    main$magicM,N*  " load into A via indirect pointer addressing
+        lda     PR0|0,N*
+        sta     LA
+
+        ldq     main$magicM,N*  "  ... but this doesn't work the same. Why?
+        stq     LQ
+
+        tsp2    ioa
+        acc     /main$magicM 1: ^d (Should be 3141592653)\r\n/
+        nop     LA
+
+        " modify number addressed bu indirect chain
+        lda     =o-12345654321
+        sta     PR0|0,N*
+
+        lda     PR0|0,N*
+        sta     LA
+
+        tsp2    ioa
+        acc     /main$magicM 2: ^n (Should be 412345654321)\r\n/
         nop     LA
 
 
@@ -95,6 +120,8 @@ _main_2:
 _end:   tsp2    ioa
         acc     /Now leaving TIND$_main ...\r\n/
         
+        lpri    PRSave
+
         return
 
 

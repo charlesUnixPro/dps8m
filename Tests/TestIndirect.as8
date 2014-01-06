@@ -15,6 +15,8 @@
     " our indirection tests ....
     segref  TIND, _main_2
     
+    " our FXE indirection tests ...
+    segref  TINDC, _main_C
 
     "segref  indirect_tests
 
@@ -50,11 +52,14 @@ main:
    " lprp4       f
    " lprpap      g
 
-    call    P(ap|0)
+
+    "call    P(ap|0)
 
     "call    TAM_main(ap|0)
     call T(ap|0)
 
+    "tra     mmm
+    
     "
     " dink with a few fp numbers in TAM$
     "
@@ -69,16 +74,33 @@ main:
 
     call    P(ap|0)     " TAM print (again)
     
+mmm:
+
     "
-    " Now lets play with some indirection tests ...
+    " Now lets Setup with some indirection tests for an indirection chain ...
     "
-    
+TAMmA:
+    epp0    TAM$magicA
+    spri0    magicM
+    ldq     =o20        " o20 => Q (set indirection mod for ITS pointer)
+    stcq    magicM+1, 5
+
+    tsp2    ioa
+    acc     /TestIndirect: magicM: ^w ^w\r\n\r\n/
+    nop     magicM+0
+    nop     magicM+1
+
     link    TIND_main, <TIND>|[_main_2]
     call    TIND_main (ap|0)
 
+    "
+    " for C ...
+    "
+    link    _mainC, <TINDC>|[_main_C]
+    call    _mainC (ap|0)
 
 
-
+allDone:
     tsp2	ioa
     acc     /T-H-A-T-S all folks (from 0|main) !!! /
 
@@ -89,12 +111,21 @@ main:
 
 g:  bss 1
 f:  bss 1
+LA: bss 1
+LQ: bss 1
 
 Date:	bss     2
 
     segdef  Data_1
 
 Data_1: oct 12345654321
+
+    segref  TAM, magicA
+    segdef  magicM
+    even
+magicM: zero    0,0 "arg TAM$magicA,*
+
+
 
     INCLUDE     setupFXE.as8
 
