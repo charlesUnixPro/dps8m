@@ -154,12 +154,19 @@ static void scu2words(t_uint64 *words)
     words[7] = cu.IRODD;
 }
 
+static struct private_safe_store
+  {
+    cycles_t saveCPUCycle;
+  } private_safe_store;
+
+
 void cu_safe_store(void)
 {
     // Save current Control Unit Data in hidden temporary so a later SCU instruction running
     // in FAULT mode can save the state as it existed at the time of the fault rather than
     // as it exists at the time the scu instruction is executed.
     scu2words(scu_data);
+    private_safe_store . saveCPUCycle = cpu . cycle;
 }
 
 void cu_safe_restore (void)
@@ -203,6 +210,9 @@ void cu_safe_restore (void)
     //scu_data[6] = ins;  // I think HWR
     
     cu.IRODD = scu_data [7];
+    cpu . cycle = private_safe_store . saveCPUCycle;
+    // This bit of skullduggery cancels TEMPORARY_ABSOLUTE_mode
+    set_addr_mode (get_addr_mode ());
 }
 
 PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };

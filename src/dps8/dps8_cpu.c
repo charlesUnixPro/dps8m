@@ -503,15 +503,15 @@ enum _processor_operating_mode processorOperatingMode;      ///< what operating 
 
 /* GE-625/635 */
 
-word36	rA;	/*!< accumulator */
-word36	rQ;	/*!< quotient */
-word8	rE;	/*!< exponent [map: rE, 28 0's] */
+word36 rA;      /*!< accumulator */
+word36 rQ;      /*!< quotient */
+word8  rE;      /*!< exponent [map: rE, 28 0's] */
 
-word18	rX[8];	/*!< index */
+word18 rX[8];   /*!< index */
 
 
 
-//word18	rBAR;	/*!< base address [map: BAR, 18 0's] */
+//word18 rBAR;  /*!< base address [map: BAR, 18 0's] */
 /* format: 9b base, 9b bound */
 
 int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o rIC fetch */
@@ -519,57 +519,57 @@ word36 XECD1; /*!< XEC instr / XED instr#1 */
 word36 XECD2; /*!< XED instr#2 */
 
 
-//word18	rIC;	/*!< instruction counter */
+//word18 rIC; /*!< instruction counter */
 // same as PPR.IC
- //word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
+ //word18 rIR; /*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
 //IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
 
 
-word27	rTR;	/*!< timer [map: TR, 9 0's] */
+word27 rTR; /*!< timer [map: TR, 9 0's] */
 
-word18	ry;     /*!< address operand */
-word24	rY;     /*!< address operand */
-word8	rTAG;	/*!< instruction tag */
+word18 ry;     /*!< address operand */
+word24 rY;     /*!< address operand */
+word8 rTAG; /*!< instruction tag */
 
-word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
-word8	tCF;	/*!< character position field [3b] */
+word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
+word8 tCF; /*!< character position field [3b] */
 
 /* GE-645 */
 
 
-//word36	rDBR;	/*!< descriptor base */
-//!<word27	rABR[8];/*!< address base */
+//word36 rDBR; /*!< descriptor base */
+//!<word27 rABR[8];/*!< address base */
 //
 ///* H6180; L68; DPS-8M */
 //
-word8	rRALR;	/*!< ring alarm [3b] [map: 33 0's, RALR] */
-//word36	rPRE[8];/*!< pointer, even word */
-//word36	rPRO[8];/*!< pointer, odd word */
-//word27	rAR[8];	/*!< address [24b] [map: ARn, 12 0's] */
-//word36	rPPRE;	/*!< procedure pointer, even word */
-//word36	rPPRO;	/*!< procedure pointer, odd word */
-//word36	rTPRE;	/*!< temporary pointer, even word */
-//word36	rTPRO;	/*!< temporary pointer, odd word */
-//word36	rDSBRE;	/*!< descriptor segment base, even word */
-//word36	rDSBRO;	/*!< descriptor segment base, odd word */
-//word36	mSE[16];/*!< word-assoc-mem: seg descrip regs, even word */
-//word36	mSO[16];/*!< word-assoc-mem: seg descrip regs, odd word */
-//word36	mSP[16];/*!< word-assoc-mem: seg descrip ptrs */
-//word36	mPR[16];/*!< word-assoc-mem: page tbl regs */
-//word36	mPP[16];/*!< word-assoc-mem: page tbl ptrs */
-//word36	rFRE;	/*!< fault, even word */
-//word36	rFRO;	/*!< fault, odd word */
-//word36	rMR;	/*!< mode */
-//word36	rCMR;	/*!< cache mode */
-//word36	hCE[16];/*!< history: control unit, even word */
-//word36	hCO[16];/*!< history: control unit, odd word */
-//word36	hOE[16];/*!< history: operations unit, even word */
-//word36	hOO[16];/*!< history: operations unit, odd word */
-//word36	hDE[16];/*!< history: decimal unit, even word */
-//word36	hDO[16];/*!< history: decimal unit, odd word */
-//word36	hAE[16];/*!< history: appending unit, even word */
-//word36	hAO[16];/*!< history: appending unit, odd word */
-//word36	rSW[5];	/*!< switches */
+word8 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
+//word36 rPRE[8];/*!< pointer, even word */
+//word36 rPRO[8];/*!< pointer, odd word */
+//word27 rAR[8]; /*!< address [24b] [map: ARn, 12 0's] */
+//word36 rPPRE; /*!< procedure pointer, even word */
+//word36 rPPRO; /*!< procedure pointer, odd word */
+//word36 rTPRE; /*!< temporary pointer, even word */
+//word36 rTPRO; /*!< temporary pointer, odd word */
+//word36 rDSBRE; /*!< descriptor segment base, even word */
+//word36 rDSBRO; /*!< descriptor segment base, odd word */
+//word36 mSE[16];/*!< word-assoc-mem: seg descrip regs, even word */
+//word36 mSO[16];/*!< word-assoc-mem: seg descrip regs, odd word */
+//word36 mSP[16];/*!< word-assoc-mem: seg descrip ptrs */
+//word36 mPR[16];/*!< word-assoc-mem: page tbl regs */
+//word36 mPP[16];/*!< word-assoc-mem: page tbl ptrs */
+//word36 rFRE; /*!< fault, even word */
+//word36 rFRO; /*!< fault, odd word */
+//word36 rMR; /*!< mode */
+//word36 rCMR; /*!< cache mode */
+//word36 hCE[16];/*!< history: control unit, even word */
+//word36 hCO[16];/*!< history: control unit, odd word */
+//word36 hOE[16];/*!< history: operations unit, even word */
+//word36 hOO[16];/*!< history: operations unit, odd word */
+//word36 hDE[16];/*!< history: decimal unit, even word */
+//word36 hDO[16];/*!< history: decimal unit, odd word */
+//word36 hAE[16];/*!< history: appending unit, even word */
+//word36 hAO[16];/*!< history: appending unit, odd word */
+//word36 rSW[5]; /*!< switches */
 
 //word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
 
@@ -604,19 +604,19 @@ static BITFIELD dps8_IR_bits[] = {
     BITNCF(3),
     BITFNAM(HEX,   1, z1),    /*!< base-16 exponent */ ///< 0000010
     BITFNAM(ABS,   1, z1),    /*!< absolute mode */ ///< 0000020
-    BITFNAM(MIIF,  1, z1),	  /*!< mid-instruction interrupt fault */ ///< 0000040
+    BITFNAM(MIIF,  1, z1),   /*!< mid-instruction interrupt fault */ ///< 0000040
     BITFNAM(TRUNC, 1, z1),    /*!< truncation */ ///< 0000100
-    BITFNAM(NBAR,  1, z1),	  /*!< not BAR mode */ ///< 0000200
-    BITFNAM(PMASK, 1, z1),	  /*!< parity mask */ ///< 0000400
+    BITFNAM(NBAR,  1, z1),   /*!< not BAR mode */ ///< 0000200
+    BITFNAM(PMASK, 1, z1),   /*!< parity mask */ ///< 0000400
     BITFNAM(PAR,   1, z1),    /*!< parity error */ ///< 0001000
-    BITFNAM(TALLY, 1, z1),	  /*!< tally runout */ ///< 0002000
+    BITFNAM(TALLY, 1, z1),   /*!< tally runout */ ///< 0002000
     BITFNAM(OMASK, 1, z1),    /*!< overflow mask */ ///< 0004000
-    BITFNAM(EUFL,  1, z1),	  /*!< exponent underflow */ ///< 0010000
-    BITFNAM(EOFL,  1, z1),	  /*!< exponent overflow */ ///< 0020000
-    BITFNAM(OFLOW, 1, z1),	  /*!< overflow */ ///< 0040000
-    BITFNAM(CARRY, 1, z1),	  /*!< carry */ ///< 0100000
+    BITFNAM(EUFL,  1, z1),   /*!< exponent underflow */ ///< 0010000
+    BITFNAM(EOFL,  1, z1),   /*!< exponent overflow */ ///< 0020000
+    BITFNAM(OFLOW, 1, z1),   /*!< overflow */ ///< 0040000
+    BITFNAM(CARRY, 1, z1),   /*!< carry */ ///< 0100000
     BITFNAM(NEG,   1, z1),    /*!< negative */ ///< 0200000
-    BITFNAM(ZERO,  1, z1),	  /*!< zero */ ///< 0400000
+    BITFNAM(ZERO,  1, z1),   /*!< zero */ ///< 0400000
     ENDBITS
 };
 
@@ -976,7 +976,7 @@ t_stat sim_instr (void)
           {
             case DIS_cycle:
                 // spining wheels waiting for interrupt
-                // if interruot, set INTERRUPT_cycle
+                // if interrupt, set INTERRUPT_cycle
 
                 // Are g7 faults addressed in dis? XXX
                 // e.g. time run out?
@@ -987,6 +987,25 @@ t_stat sim_instr (void)
                 break;
 
             case INTERRUPT_cycle:
+                // In the INTERRUPT CYCLE, the processor safe-stores
+                // the Control Unit Data (see Section 3) into 
+                // program-invisible holding registers in preparation 
+                // for a Store Control Unit (scu) instruction, enters 
+                // temporary absolute mode, and forces the current 
+                // ring of execution C(PPR.PRR) to
+                // 0. It then issues an XEC system controller command 
+                // to the system controller on the highest priority 
+                // port for which there is a bit set in the interrupt 
+                // present register.  
+
+                cu_safe_store ();
+
+                // Temporary absolute mode
+                set_addr_mode (TEMPORARY_ABSOLUTE_mode);
+
+                // Set to ring 0
+                PPR . PRR = 0;
+
                 // clear interrupt, load interrupt pair into instruction buffer
                 // set INTERRUPT_EXEC_cycle
                 if (cpu . interrupt_flag)
@@ -999,29 +1018,6 @@ t_stat sim_instr (void)
                     if (intr_pair_addr != 1) // no interrupts 
                       {
 
-                        // In the INTERRUPT CYCLE, the processor safe-stores
-                        // the Control Unit Data (see Section 3) into 
-                        // program-invisible holding registers in preparation 
-                        // for a Store Control Unit (scu) instruction, enters 
-                        // temporary absolute mode, and forces the current 
-                        // ring of execution C(PPR.PRR) to
-                        // 0. It then issues an XEC system controller command 
-                        // to the system controller on the highest priority 
-                        // port for which there is a bit set in the interrupt 
-                        // present register.  
-
-                        cu_safe_store ();
-
-                        // save address mode
-                        // shouldn't this be in safe_store?
-                        //addr_modes_t am = get_addr_mode();
-
-                        // Temporary absolute mode
-                        set_addr_mode (TEMPORARY_ABSOLUTE_mode);
-
-                        // Set to ring 0
-                        PPR . PRR = 0;
-
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
                         instr_buf_state = IB_PAIR;
@@ -1031,11 +1027,11 @@ t_stat sim_instr (void)
                         break;
                       } // int_pair != 1
                   } // interrupt_flag
+
                 // If we get here, there was no interrupt
-                // The only place we enter INTERRUPT_cycle is in EXEC_cycle,
-                // so go back there XXX true? cu_safe_restore() really
-                // seems the way to go.
-                cpu . cycle = EXEC_cycle;
+
+                // Restores addressing mode and cpu.cycle
+                cu_safe_restore ();
                 break;
 
             case INTERRUPT_EXEC_cycle:
@@ -1080,7 +1076,7 @@ t_stat sim_instr (void)
                 ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
         
                 // XXX The conditions are more rigorous: see AL39, pg 327
-                if (rIC % 1 == 0 && // Even address
+                if (rIC % 2 == 0 && // Even address
                     ci -> i == 0) // Not inhibited
                   {
                     cpu . interrupt_flag = sample_interrupts ();
@@ -1123,13 +1119,40 @@ t_stat sim_instr (void)
 
             case FAULT_cycle:
               {
+                // In the FAULT CYCLE, the processor safe-stores the Control
+                // Unit Data (see Section 3) into program-invisible holding
+                // registers in preparation for a Store Control Unit ( scu)
+                // instruction, then enters temporary absolute mode, forces the
+                // current ring of execution C(PPR.PRR) to 0, and generates a
+                // computed address for the fault trap pair by concatenating
+                // the setting of the FAULT BASE switches on the processor
+                // configuration panel with twice the fault number (see Table
+                // 7-1).  This computed address and the operation code for the
+                // Execute Double (xed) instruction are forced into the
+                // instruction register and executed as an instruction. Note
+                // that the execution of the instruction is not done in a
+                // normal EXECUTE CYCLE but in the FAULT CYCLE with the
+                // processor in temporary absolute mode.
+
                 sim_printf ("fault cycle\n");
     
+// XXX There is problem with interrupts inside faults; scu_words will get
+// overwritten...
+#if 0
                 if (cpu . interrupt_flag)
                   {
                     cpu . cycle = INTERRUPT_cycle;
                     break;
                   }
+#endif
+
+                cu_safe_store ();
+
+                // Temporary absolute mode
+                set_addr_mode (TEMPORARY_ABSOLUTE_mode);
+
+                // Set to ring 0
+                PPR . PRR = 0;
 
                 int fltAddress = (rFAULTBASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
                 word24 addr = fltAddress + _faults [cpu . faultNumber] . fault_address;    // absolute address of fault YPair
@@ -1137,26 +1160,6 @@ t_stat sim_instr (void)
                 // XXX using core_read2 means decode instruction isn't used
                 core_read2(addr, instr_buf, instr_buf + 1);
 
-
-
-		// In the FAULT CYCLE, the processor safe-stores the Control
-		// Unit Data (see Section 3) into program-invisible holding
-		// registers in preparation for a Store Control Unit (scu)
-		// instruction, then enters temporary absolute mode, forces the
-		// current ring of execution C(PPR.PRR) to 0, and generates a
-		// computed address for the fault trap pair by concatenating
-		// the setting of the FAULT BASE switches on the processor
-		// configuration panel with twice the fault number (see Table
-		// 7-1). This computed address and the operation code for the
-		// Execute Double (xed) instruction are forced into the
-		// instruction register and executed as an instruction. Note
-		// that the execution of the instruction is not done in a
-		// normal EXECUTE CYCLE but in the FAULT CYCLE with the
-		// processor in temporary absolute mode.
-    
-                PPR.PRR = 0;
-                set_addr_mode (TEMPORARY_ABSOLUTE_mode);
-    
                 cpu . cycle = FAULT_EXEC_cycle;
 #if 0
     t_stat xrv = doXED(faultPair);
@@ -1213,16 +1216,13 @@ t_stat sim_instr (void)
                      cpu . cycle = FETCH_cycle;
                      break;
                   }
-		if (cpu . cycle == FAULT_EXEC_cycle)
+                if (cpu . cycle == FAULT_EXEC_cycle)
                   {
                     cpu . cycle = FAULT_EXEC2_cycle;
                     break;
                   }
-                // XXX  if (! transfer) set INTERUPT_EXEC2_cycle and go
-                // XXX restore IC from safe store
-                // XXX need cu_safe_restore
+                // Restores cpu.cycle and addressing mode
                 cu_safe_restore ();
-                cpu . cycle = FETCH_cycle;
                 break;
               }
 
@@ -1317,7 +1317,7 @@ t_stat sim_instr (void)
 //---         ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
 //---         
 //--- // XXX The conditions are more rigorous: see AL39, pg 327
-//---         if (rIC % 1 == 0 && // Even address
+//---         if (rIC % 2 == 0 && // Even address
 //---             ci -> i == 0) // Not inhibited
 //---           cpu . interrupt_flag = sample_interrupts ();
 //---         else
@@ -1346,26 +1346,26 @@ t_stat sim_instr (void)
 //---                 if (intr_pair_addr != 1) // no interrupts 
 //---                   {
 //--- 
-//--- 		    // In the INTERRUPT CYCLE, the processor safe-stores the
-//--- 		    // Control Unit Data (see Section 3) into program-invisible
-//--- 		    // holding registers in preparation for a Store Control
-//--- 		    // Unit (scu) instruction, enters temporary absolute mode,
-//--- 		    // and forces the current ring of execution C(PPR.PRR) to
-//--- 		    // 0. It then issues an XEC system controller command to
-//--- 		    // the system controller on the highest priority port for
-//--- 		    // which there is a bit set in the interrupt present
-//--- 		    // register.  
+//---               // In the INTERRUPT CYCLE, the processor safe-stores the
+//---               // Control Unit Data (see Section 3) into program-invisible
+//---               // holding registers in preparation for a Store Control
+//---               // Unit (scu) instruction, enters temporary absolute mode,
+//---               // and forces the current ring of execution C(PPR.PRR) to
+//---               // 0. It then issues an XEC system controller command to
+//---               // the system controller on the highest priority port for
+//---               // which there is a bit set in the interrupt present
+//---               // register.  
 //--- 
 //---                     // XXX safe store
 //---                     cu_safe_store ();
 //--- 
 //---                     addr_modes_t am = get_addr_mode();  // save address mode
 //--- 
-//--- 		    // Temporary absolute mode
-//--- 		    set_addr_mode (ABSOLUTE_mode);
+//---               // Temporary absolute mode
+//---               set_addr_mode (ABSOLUTE_mode);
 //--- 
-//--- 		    // Set to ring 0
-//--- 		    PPR . PRR = 0;
+//---               // Set to ring 0
+//---               PPR . PRR = 0;
 //--- 
 //---                     // get intr_pair_addr
 //--- 

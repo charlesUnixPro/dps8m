@@ -1106,7 +1106,7 @@ static void init_memory_iom (uint unit_num)
 
 t_stat iom_boot (int32 unit_num, DEVICE * dptr)
   {
-    // XXX the docs say press sysinit, then boot; simh doesn't have an
+    // The docs say press sysinit, then boot; simh doesn't have an
     // explicit "sysinit", so we ill treat  "reset iom" as sysinit.
     // The docs don't say what the behavior is is you dont press sysinit
     // first so we wont worry about it.
@@ -1261,7 +1261,6 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
 
     sim_debug (DBG_DEBUG, &iom_dev, "iom_boot finished\n");
 
-// XXX
 //  Hack to make t4d testing easier. Advence the tape after booting to
 //  allow skipping over working test blocks
 
