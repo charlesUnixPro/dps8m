@@ -14,9 +14,9 @@
 " temportary data on stack frame ...
 "
     temp    t1
-    tempd   d1
     temp    t2(13)
-    tempd   d2(5)
+    tempd   d1
+    tempd   d2(16)
 
 "
 " Our data is up front this time ....
@@ -139,6 +139,33 @@ loop2:  ldq     t2,x1   " t2(x0) => L1
         nop     saveR0+1
 
 
+        eax0    16      " size of d2 in Ypairs
+        eax1    0       " index into d2
+        dfld    =2.718281828d0  " e => EAQ
+loop3:  dfmp    =3.141592653d0  " * pi
+        dfst    d2, x1  " C(EAQ) => d2(x1)
+        eax1    2,x1    " increment indexer by 2
+        eax0    -1,x0   " decrement x0
+        tnz     loop3
+
+
+
+        eax0    16      " size of d2 in words
+        eax1    0       " index into t2
+loop4:  dfld    d2,x1   " t2(x0) => L1
+
+        emcall  6       " C(EAQ) => console
+        emcall  8       " <cr><lf>
+
+        eax1    2,x1    " increnent indexer
+        eax0    -1,x0   " decrement loop counter x0
+        tnz     loop4
+
+        tsp2    ioa
+        acc     /\r\n/
+
+
+
 
         "
         " print out temps to see if anything has changed ...
@@ -174,7 +201,7 @@ _printTemps:
         " print t2 ...
         eax0    13      " size of t2 in words
         eax1    0       " index into t2
-loop3:  ldq     t2,x1   " t2(x0) => L1
+loopT1: ldq     t2,x1   " t2(x0) => L1
         stq     L1      " ...
         eaq     0,x1    " C(x0) => L2
         qrl     18      " ...
@@ -191,7 +218,7 @@ loop3:  ldq     t2,x1   " t2(x0) => L1
 
         eax1    1,x1    " increnent indexer
         eax0    -1,x0   " decrement loop counter x0
-        tnz     loop3
+        tnz     loopT1
 
         lreg    _regs
         tra     0,2

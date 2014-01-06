@@ -30,6 +30,12 @@ main:
     tsx2    setupFXE
     "push
 
+"
+" put a test for abs mode ind addr here ...
+"
+
+
+
     LDA     I
     tsp2	pr4|I, *        " ioa
     acc     /Howdy world this is 'TestIndirect'! - It's /
