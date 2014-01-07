@@ -470,7 +470,7 @@ static void init_scpage_map (void)
 int query_scpage_map (word24 addr)
   {
     uint scpg = addr / SCPAGE;
-    if (scpg >= 0 && scpg < N_SCPAGES)
+    if (scpg < N_SCPAGES)
       return scpage_map [scpg];
     return -1;
   }
@@ -1042,7 +1042,7 @@ jmpIntr:;
                     if (xrv == CONT_TRA)
                     {
                         set_addr_mode(ABSOLUTE_mode);
-                        sim_debug (DBG_INTR, & cpu_dev, "Fault pair transfers\n");
+                        sim_debug (DBG_INTR, & cpu_dev, "Interrupt pair transfers\n");
                         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
                     }
     

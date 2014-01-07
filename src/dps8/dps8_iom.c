@@ -8,6 +8,8 @@
  *    This is a 600B IOM emulator. 
  */
 
+// XXX Use this when we assume there is only a single unit
+#define ASSUME0 0
 /*
  * iom.c -- emulation of an I/O Multiplexer
  * 
@@ -3328,8 +3330,29 @@ static int send_general_interrupt(int iom_unit_num, int chan, int pic)
     (void) store_abs_word(imw_addr, imw);
     
 // XXX this should call scu_svc
-    uint bl_scu = unit_data [iom_unit_num] . config_sw_bootload_port;
-    return scu_set_interrupt (bl_scu, interrupt_num);
+// XXX Why on earth is this calling config_sw_bootload_port; we need to
+// interrupy the SCU that generated the iom_interrupt.
+// "The IOM accomplishes [interrupting]  by setting a predetermined program
+// interrupt cell in the system controller that contains the IOM base address. 
+// "The system controller then causes a program interrupt in a processor so
+// that appropriate action can be taken by the software.
+// I am taking this to mean that the interrupt is sent to the SCU containing
+// the base address
+
+    //uint bl_scu = unit_data [iom_unit_num] . config_sw_bootload_port;
+    uint base = unit_data [iom_unit_num] . config_sw_iom_base_address;
+    uint base_addr = base << 6; // 01400
+    // XXX this is wrong; I believe that the SCU unit number should be
+    // calculated from the Port Configuration Address Assignment switches
+    // For now, however, the same information is in the CPU config. switches, so
+    // this should result in the same values.
+    int cpu_port_num = query_scpage_map (base_addr);
+    int scu_unit_num;
+    if (cpu_port_num >= 0)
+      scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+    else
+      scu_unit_num = 0;
+    return scu_set_interrupt (scu_unit_num, interrupt_num);
 }
 
 // ============================================================================
