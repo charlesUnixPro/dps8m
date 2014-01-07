@@ -429,9 +429,9 @@ t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
 // Map memory to port
 static int scpage_map [N_SCPAGES];
 
-static void init_scpage_map (void)
+static void setup_scpage_map (void)
   {
-    sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
 
     // Initalize to unmapped
     for (int pg = 0; pg < N_SCPAGES; pg ++)
@@ -454,7 +454,7 @@ static void init_scpage_map (void)
         sz = sz / SCPAGE;
         base = base / SCPAGE;
 
-        sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
+        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
 
 	for (int pg = 0; pg < sz; pg ++)
           {
@@ -464,7 +464,7 @@ static void init_scpage_map (void)
           }
       }
     for (int pg = 0; pg < N_SCPAGES; pg ++)
-      sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: %d:%d\n", pg, scpage_map [pg]);
+      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: %d:%d\n", pg, scpage_map [pg]);
   }
 
 int query_scpage_map (word24 addr)
@@ -510,6 +510,8 @@ t_stat cpu_reset (DEVICE *dptr)
     cpu_reset_mm(dptr);
 
     cpu_reset_array ();
+
+    setup_scpage_map ();
 
     initializeTheMatrix();
 
@@ -2051,7 +2053,7 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
     unitp -> u4 = 0;
     unitp -> u5 = cpu_unit_num;
 
-    init_scpage_map ();
+    setup_scpage_map ();
 
     return SCPE_OK;
   }
