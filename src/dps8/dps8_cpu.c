@@ -70,6 +70,7 @@ static DEBTAB cpu_dt[] = {
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
     { "FAULT",      DBG_FAULT       },
+    { "INTR",       DBG_INTR       },
 
     { NULL,         0               }
 };
@@ -988,6 +989,7 @@ jmpRetry:;
          {
            if (cpu . interrupt_flag)
               {
+                sim_debug (DBG_INTR, & cpu_dev, "Handling interrupt_flag\n");
                 // We should do this later, but doing it now allows us to
                 // avoid clean up for no interrupt pending.
 
@@ -997,6 +999,7 @@ jmpIntr:;
                 intr_pair_addr = get_highest_intr ();
                 if (intr_pair_addr != 1) // no interrupts 
                   {
+                    sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", intr_pair_addr);
 
 		    // In the INTERRUPT CYCLE, the processor safe-stores the
 		    // Control Unit Data (see Section 3) into program-invisible
@@ -1039,7 +1042,7 @@ jmpIntr:;
                     if (xrv == CONT_TRA)
                     {
                         set_addr_mode(ABSOLUTE_mode);
-                        sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
+                        sim_debug (DBG_INTR, & cpu_dev, "Fault pair transfers\n");
                         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
                     }
     
@@ -1994,6 +1997,11 @@ static struct
   } cpu_array [N_CPU_UNITS_MAX];
 
 // XXX when multiple cpus are supported, merge this into cpu_reset
+
+int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
+  {
+    return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+  }
 
 void cpu_reset_array (void)
   {

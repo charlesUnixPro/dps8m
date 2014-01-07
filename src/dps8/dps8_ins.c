@@ -9,6 +9,9 @@
 
 #include "dps8.h"
 
+// XXX This is used wherever a single unit only is assumed
+#define ASSUME0 0
+
 word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
 word36 Yblock16[16];    ///< 16-words
@@ -3651,6 +3654,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0633:  ///< rccl
             /// 00...0 → C(AQ)0,19
             /// C(calendar clock) → C(AQ)20,71
+            // XXX This code belongs in scu.c; ASSUME0
             
             c_0633:;    // for rscr clock/cal call.
             
@@ -4427,7 +4431,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0057:  ///< sscr
             {
-              t_stat rc = scu_sscr (CPU_UNIT_NUM, TPR.CA, reg_A, reg_Q);
+              // Which port is the sought SCU connected to?
+              int cpu_port_num = query_scpage_map (TPR.CA);
+              // What is the IDNUM of the SCU connected to that port?
+              int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+              t_stat rc = scu_sscr (scu_unit_num, ASSUME0, TPR.CA, reg_A, reg_Q);
               if (rc == CONT_FAULT)
                 doFault(i, store_fault, 0, "(sscr)");
               if (rc)

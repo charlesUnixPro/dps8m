@@ -320,6 +320,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_ERR         (1 << 16)   
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
 #define DBG_FAULT       (1 << 17)  ///< follow fault handling
+#define DBG_INTR        (1 << 18)  // follow interrupt handling
 
 /* Global data */
 
@@ -2885,6 +2886,7 @@ t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
 bool sample_interrupts (void);
 int query_scpage_map (word24 addr);
 void clear_TEMPORARY_ABSOLUTE_mode (void);
+int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 
 /* dps8_append.c */
 
@@ -2947,7 +2949,7 @@ int scu_set_interrupt(uint scu_unit_num, uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);
-t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
+t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
 int scu_cioc (uint scu_unit_num, uint scu_port_num);
 
 /* dps8_sys.c */

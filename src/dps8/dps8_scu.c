@@ -1061,15 +1061,10 @@ static int scu_get_config_switches(t_uint64 addr)
 // x = any octal digit
 //
 
-t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
+t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
   {
     // Only valid for a 4MW SCU
     const char * moi = "SCU::scu_sscr";
-
-    // Level 68 uses 3 bits for 8 SCU's
-    // DPS8M uses 2 bits for 4 SCU's
-    // we will use 3, and check it againist numunits
-    uint scu_unit_num = (addr >> 15) & 03;
 
     if (scu_unit_num >= scu_dev . numunits)
       {
@@ -1112,7 +1107,7 @@ t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
             uint rcv_port;
             // Determine which SCU port the indicated CPU is attached to
             for (rcv_port = 0; rcv_port < N_SCU_PORTS; rcv_port ++)
-              if (cables_from_cpus [cpu_unit_num] [rcv_port] . cpu_unit_num)
+              if (cables_from_cpus [cpu_unit_num] [rcv_port] . cpu_unit_num == cpu_unit_num)
                 break;
             if (rcv_port >= N_SCU_PORTS)
               {
@@ -1167,6 +1162,7 @@ t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
 
         case 00006: // Set unit mode register
         case 00007: 
+          // XXX See notes in AL39 sscr re: store unit selection
           return STOP_UNIMP;
 
         default:
