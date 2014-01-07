@@ -1179,7 +1179,6 @@ t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType accty
     else
 #endif
          {
-        //*dat = M[addr];
         rY = addr;
         TPR.CA = addr;  //XXX for APU
 
@@ -1347,6 +1346,8 @@ t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum e
         }
         Read(i, addr + 0, datEven, acctyp, Tag);
         Read(i, addr + 1, datOdd, acctyp, Tag);
+        
+        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
         //printf("read2: addr=%06o\n", addr);
     }
     return SCPE_OK;
@@ -1370,6 +1371,8 @@ t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eM
         Write(i, addr + 0, datEven, acctyp, Tag);
         Write(i, addr + 1, datOdd,  acctyp, Tag);
         
+        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
+
         //printf("write2: addr=%06o\n", addr);
 
     }
@@ -1432,6 +1435,8 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
     for (int j = 0 ; j < n ; j ++)
         Read(i, addr + j, Yblock + j, acctyp, Tag);
     
+    TPR.CA = addr;  // restore address
+    
     return SCPE_OK;
 }
 
@@ -1472,6 +1477,90 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
         Write(i, addr + j, Yblock[j], acctyp, Tag);
     
     return SCPE_OK;
+}
+
+int OPSIZE(DCDstruct *i)
+{
+    if (i->iwb->flags & (READ_OPERAND | STORE_OPERAND))
+        return 1;
+    else if (i->iwb->flags & (READ_YPAIR | STORE_YPAIR))
+        return 2;
+    else if (i->iwb->flags & (READ_YBLOCK8 | STORE_YBLOCK8))
+        return 8;
+    else if (i->iwb->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
+        return 16;
+    return 0;
+}
+
+t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+{
+#if 0
+        if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
+            return STOP_BKPT;
+        else
+#endif
+        
+    switch (OPSIZE(i))
+    {
+        case 1:
+            Read(i, addr, &CY, acctyp, Tag);
+            return SCPE_OK;
+        case 2:
+            addr &= 0777776;   // make even
+            Read(i, addr + 0, Ypair + 0, acctyp, Tag);
+            Read(i, addr + 1, Ypair + 1, acctyp, Tag);
+            break;
+        case 8:
+            addr &= 0777770;   // make on 8-word boundary
+            for (int j = 0 ; j < 8 ; j += 1)
+                Read(i, addr + j, Yblock8 + j, acctyp, Tag);
+            break;
+        case 16:
+            addr &= 0777760;   // make on 16-word boundary
+            for (int j = 0 ; j < 16 ; j += 1)
+                Read(i, addr + j, Yblock16 + j, acctyp, Tag);
+            
+            break;
+    }
+    TPR.CA = addr;  // restore address
+    
+    return SCPE_OK;
+
+}
+
+t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+{
+#if 0
+    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
+        return STOP_BKPT;
+    else
+#endif
+        
+    switch (OPSIZE(i))
+    {
+        case 1:
+            Write(i, addr, CY, acctyp, Tag);
+            return SCPE_OK;
+        case 2:
+            addr &= 0777776;   // make even
+            Write(i, addr + 0, Ypair[0], acctyp, Tag);
+            Write(i, addr + 1, Ypair[1], acctyp, Tag);
+            break;
+        case 8:
+            addr &= 0777770;   // make on 8-word boundary
+            for (int j = 0 ; j < 8 ; j += 1)
+                Write(i, addr + j, Yblock8[j], acctyp, Tag);
+            break;
+        case 16:
+            addr &= 0777760;   // make on 16-word boundary
+            for (int j = 0 ; j < 16 ; j += 1)
+                Write(i, addr + j, Yblock16[j], acctyp, Tag);
+            break;
+    }
+    TPR.CA = addr;  // restore address
+    
+    return SCPE_OK;
+    
 }
 
 /*!
