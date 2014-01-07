@@ -1,0 +1,86 @@
+  option  Multics
+
+    name    Bug_B_Gone_1    "
+    
+    entry  _main_BBG_1      " 1st bug regression module ...
+
+    segref	UtilsA, ioa 
+
+        even
+L1:     bss     1
+L2:     bss     1
+
+
+
+        even
+LAQ:
+LA:     bss     1
+LQ:     bss     1
+
+        temp    _ortest ":    oct     0
+
+
+_main_BBG_1:
+    push
+    
+    tsp2    ioa
+    acc     /BBG-1 ...\r\n/
+
+    "
+    " ORSQ may have problems with the new address calculations
+    "
+
+    ldq     =0
+    orsq    _ortest
+    
+    lda     _ortest
+    sta     LA
+    
+    tsp2    ioa
+    acc     /ORSQ test 0 ... ^n (Should be 0)\r\n/
+    nop     LA
+
+    ldq     =o1234567
+    orsq    _ortest
+    
+    lda     _ortest
+    sta     LA
+    
+    tsp2    ioa
+    acc     /ORSQ test 1 ... ^n (Should be 1234567)\r\n/
+    nop     LA
+
+    ldq     =0
+    orsq    _ortest
+
+    lda     _ortest
+    sta     LA
+    
+    tsp2    ioa
+    acc     /ORSQ test 2 ... ^n (Should be 1234567)\r\n/
+    nop     LA
+
+    ldq     =o3000
+    orsq    _ortest
+
+    lda     _ortest
+    sta     LA
+    
+    tsp2    ioa
+    acc     /ORSQ test 3 ... ^n (Should be 1237567)\r\n/
+    nop     LA
+
+    ldq     =o6543210
+    orsq    _ortest
+
+    lda     _ortest
+    sta     LA
+    
+    tsp2    ioa
+    acc     /ORSQ test 4 ... ^n (Should be 7777777)\r\n/
+    nop     LA
+
+    tsp2    ioa
+    acc     /ORSQ bug >squished<\r\n/
+
+    return

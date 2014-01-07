@@ -1,3 +1,8 @@
+Mon Jan  6 21:27:51 PST 2014
+Rewrote/reimplemented address preparation code to handle R/M/W cycles and
+operand sizes > 1 much better. Fixed undetected bug in ORSQ instruction.
+
+
 Fri Dec 27 17:17:52 PST 2013
 All sorts of updates & corrections both to as8 & dps8. Consult Wiki for latest ruminations
 
