@@ -16,7 +16,7 @@
     segref  TIND, _main_2
     
     " our FXE indirection tests ...
-    segref  TINDC, _main_C
+    segref  TINDC, _main_C, magicC
 
     "segref  indirect_tests
 
@@ -26,6 +26,9 @@
     link    T, <TAM>|[_main]
     link    P, <TAM>|[_print]
 
+    even
+cc: bss     1
+
 main:
     tsx2    setupFXE
     "push
@@ -33,8 +36,12 @@ main:
 "
 " put a test for abs mode ind addr here ...
 "
-
-
+    "epp0    TINDC$magicC
+    "lda     pr0|0
+    lda     TINDC$magicC
+    sta     cc
+    ldq     =31415926536
+    stq     TINDC$magicC
 
     LDA     I
     tsp2	pr4|I, *        " ioa
@@ -57,6 +64,11 @@ main:
    " short_call  TAM_main
    " lprp4       f
    " lprpap      g
+
+
+    tsp2    ioa
+    acc     /TINDC$magicC was = ^d (Should be 2718281828)\r\n/
+    nop     cc
 
 
     "call    P(ap|0)

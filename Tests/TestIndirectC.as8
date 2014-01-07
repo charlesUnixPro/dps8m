@@ -9,6 +9,8 @@
     entry  _main_C    " and we want to entry TIND tests via TAM_main
 
     segref	UtilsA, ioa 
+    
+    segdef  magicC
 
 "
 " temportary data on stack frame ...
@@ -31,6 +33,8 @@ LQ:     bss     1
 L1:     bss     1
 L2:     bss     2
 
+magicC: dec     2718281828
+
         even
 saveR0: bss     2
 
@@ -43,6 +47,11 @@ _main_C:
         tsp2    ioa
         acc     /This is TINC$_main_C...\r\n/
 
+
+        tsp2    ioa
+        acc     ?_main_C:1: magicC = ^d (Should be 31415926536)\r\n?
+        nop     magicC
+        
         "
         " Let's play with stack temporaries .....
         "
