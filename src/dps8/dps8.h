@@ -881,12 +881,13 @@ enum eCAFoper {
     unknown = 0,
     readCY,
     writeCY,
-    readCYpair,
-    writeCYpair,
-    readCYblock8,
-    writeCYblock8,
-    readCYblock16,
-    writeCYblock16,
+    rmwCY,      // Read-Modify-Write 
+//    readCYpair,
+//    writeCYpair,
+//    readCYblock8,
+//    writeCYblock8,
+//    readCYblock16,
+//    writeCYblock16,
 
     prepareCA,
 };
@@ -894,6 +895,8 @@ typedef enum eCAFoper eCAFoper;
 
 #define READOP(i)  ((bool) (i->iwb->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 |  READ_YBLOCK16)) )
 #define WRITEOP(i) ((bool) (i->iwb->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16)) )
+#define RMWOP(i)   ((bool) READOP(i) && WRITEOP(i)) // if it's both read and write it's a RMW
+
 #define TRANSOP(i) ((bool) (i->iwb->flags & (TRANSFER_INS) ))
 
 word24 doFinalAddressCalculation(DCDstruct *i, MemoryAccessType accessType, word15 segno, word18 offset, word36 *ACVfaults);
@@ -2807,7 +2810,7 @@ typedef struct modificationContinuation modificationContinuation;
 
 #define USE_CONTINUATIONS
 void doPreliminaryComputedAddressFormation(DCDstruct *i);  //, eCAFoper operType);
-void doComputedAddressContinuation(DCDstruct *i, eCAFoper operType);
+void doComputedAddressContinuation(DCDstruct *i);    //, eCAFoper operType);
 
 
 /* dps8_append.c */

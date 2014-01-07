@@ -34,7 +34,7 @@ writeOperand(DCDstruct *i)
     
 #ifdef USE_CONTINUATIONS
     if (modCont->bActive)
-        doComputedAddressContinuation(i, writeCY);
+        doComputedAddressContinuation(i);
     else
         Write(i, TPR.CA, CY, OperandWrite, i->tag);
 #else
@@ -95,7 +95,7 @@ writeOperands(DCDstruct *i)
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
     
     if (modCont->bActive)
-        doComputedAddressContinuation(i, writeCY);
+        doComputedAddressContinuation(i);    //, writeCY);
     else
         WriteOP(i, TPR.CA, OperandWrite, i->tag);
 }
@@ -586,7 +586,7 @@ t_stat executeInstruction(DCDstruct *ci)
     }
 
 #ifdef USE_CONTINUATIONS
-    if (WRITEOP(ci))
+    if (WRITEOP(ci) || RMWOP(ci))
         writeOperands(ci);
 #endif
     
@@ -2179,7 +2179,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0256:  ///< orsq
             /// C(Q)i | C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             
-            CY = rQ & CY;
+            CY = rQ | CY;
             
             if (CY == 0)
                 SETF(rIR, I_ZERO);

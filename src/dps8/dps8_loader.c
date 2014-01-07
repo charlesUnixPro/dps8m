@@ -812,7 +812,7 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             rIC = addr & AMASK;
             
             if (rIC)
-                fprintf(stderr, "!GO address: %06lo\n", addr);
+                sim_printf("!GO address: %06lo\n", addr);
         }
         
         else

@@ -1372,7 +1372,9 @@ char *modContSTR(modificationContinuation *i)
 void doPreliminaryComputedAddressFormation(DCDstruct *i)    //, eCAFoper operType)
 {
     eCAFoper operType = prepareCA;  // just for now
-    if (READOP(i))
+    if (RMWOP(i))
+        operType = rmwCY;           // r/m/w cycle
+    else if (READOP(i))
         operType = readCY;          // read cycle
     else if (WRITEOP(i))
         operType = writeCY;         // write cycle
@@ -1445,7 +1447,7 @@ R_MOD:;
     }
     
 R_MOD1:;
-    if (operType == readCY) //READOP(i))
+    if (operType == readCY || operType == rmwCY) //READOP(i))
     {
         ReadOP(i, TPR.CA, DataRead, TM_R);  // read appropriate operand(s)
         
@@ -1454,7 +1456,8 @@ R_MOD1:;
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: %s: C(%06o)=%012llo\n", opDescSTR(i), TPR.CA, CY);
             // XXX need to fix this with new read op stuff
         }
-    } else if (operType == writeCY) //WRITEOP(i))
+    }
+    if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
     {
        modCont->bActive = true;    // will continue the write operation after instruction implementation
        modCont->address = TPR.CA;
@@ -1601,7 +1604,7 @@ IR_MOD_2:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): TPR.CA=%06o\n", TPR.CA);
             }
 
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 //Read(i, TPR.CA, &CY, DataRead, TM_R);
                 ReadOP(i, TPR.CA, DataRead, TM_R);
@@ -1614,7 +1617,7 @@ IR_MOD_2:;
             } else
             
             // writes are handled by doAddressContinuation()
-            if (operType == writeCY)    //WRITEOP(i))
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = TPR.CA;
@@ -1741,7 +1744,7 @@ IT_MOD:;
                 doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
         
         
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 //Read(i, TPR.CA, &CY, DataRead, TM_IT);
                 ReadOP(i, TPR.CA, DataRead, TM_IT);
@@ -1754,7 +1757,8 @@ IT_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
                 }
-            } else if (operType == writeCY) //WRITEOP(i))
+            }
+            if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = TPR.CA;
@@ -1837,7 +1841,7 @@ IT_MOD:;
             TPR.CA = Yi;
         
             // read data where chars/bytes live
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 Read(i, TPR.CA, &data, DataRead, TM_IT);
             
@@ -1860,9 +1864,9 @@ IT_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
                 }
-            } else
+            }
         
-            if (operType == writeCY)    //WRITEOP(i))
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = Yi;
@@ -1906,7 +1910,7 @@ IT_MOD:;
                 }
 #endif
             }
-            else if (operType == prepareCA)
+            if (operType == prepareCA)
             {
                 // prepareCA shouln't muck about with the tallys, But I don;t think it's ever hit this
                 return;
@@ -2015,7 +2019,7 @@ IT_MOD:;
             }
         
             TPR.CA = Yi;
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 // read data where chars/bytes now live
             
@@ -2040,9 +2044,9 @@ IT_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
                 }
-            } else
+            }
             
-            if (operType == writeCY)    //WRITEOP(i))
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = Yi;
@@ -2105,7 +2109,7 @@ IT_MOD:;
         
             TPR.CA = GET_ADDR(indword);
             
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 //Read(i, TPR.CA, &CY, DataRead, TM_IT);
                 ReadOP(i, TPR.CA, DataRead, TM_IT);
@@ -2114,9 +2118,9 @@ IT_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
-            } else
+            }
             
-            if (operType == writeCY)    //WRITEOP(i))
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = TPR.CA;
@@ -2161,7 +2165,7 @@ IT_MOD:;
         
             TPR.CA = Yi;
             // read data
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 //Read(i, TPR.CA, &CY, DataRead, TM_IT);
                 ReadOP(i, TPR.CA, DataRead, TM_R);
@@ -2170,8 +2174,8 @@ IT_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
-            } else
-            if (operType == writeCY)    //WRITEOP(i))
+            }
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = TPR.CA;
@@ -2257,7 +2261,7 @@ IT_MOD:;
             }
         
             // read data
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 //Read(i, Yi, &CY, DataRead, TM_IT);
                 ReadOP(i, Yi, DataRead, TM_IT);
@@ -2266,9 +2270,9 @@ IT_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
-            } else
+            }
             
-            if (operType == writeCY)    //WRITEOP(i))
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = Yi;
@@ -2290,7 +2294,8 @@ IT_MOD:;
                 }
 #endif
                 
-            } else if (operType == prepareCA)
+            }
+            if (operType == prepareCA)
                 TPR.CA = Yi;
             
             return;
@@ -2341,7 +2346,7 @@ IT_MOD:;
             }
         
             // read data
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 if (adrTrace)
                 {
@@ -2357,7 +2362,7 @@ IT_MOD:;
                 }
             
             }
-            if (operType == writeCY)    //WRITEOP(i))
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = Yi;
@@ -2378,7 +2383,8 @@ IT_MOD:;
                 //Write(i, TPR.CA, CY, DataWrite, TM_IT);
                 Write(i, Yi, CY, DataWrite, TM_IT);
 #endif
-            } else if (operType == prepareCA)
+            }
+            if (operType == prepareCA)
                 TPR.CA = Yi;
     
             return;
@@ -2410,7 +2416,7 @@ IT_MOD:;
         
             TPR.CA = Yi;
             // read data
-            if (operType == readCY) //READOP(i))
+            if (operType == readCY || operType == rmwCY) //READOP(i))
             {
                 if (adrTrace)
                 {
@@ -2426,8 +2432,8 @@ IT_MOD:;
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
                 }
             
-            } else
-            if (operType == writeCY)    //WRITEOP(i))
+            }
+            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
             {
                 modCont->bActive = true;    // will continue the write operation after instruction implementation
                 modCont->address = TPR.CA;
@@ -2638,16 +2644,16 @@ IT_MOD:;
 
 }
 
-void doComputedAddressContinuation(DCDstruct *i, eCAFoper operType)
+void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
 {
     if (modCont->bActive == false)
         return; // no continuation available
     
-    if (operType != writeCY)
-    {
-        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR(i));
-        return;
-    }
+//    if (operType == writeCY)
+//    {
+//        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR(i));
+//        return;
+//    }
     
     directOperandFlag = false;
     
