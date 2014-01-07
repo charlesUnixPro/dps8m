@@ -27,8 +27,8 @@ segment created for 'UtilsA'
 segdef created for segment UtilsA, symbol 'A0', addr:000005
 segdef created for segment UtilsA, symbol 'A1', addr:000050
 segdef created for segment UtilsA, symbol 'rd_clockA', addr:000207
-segdef created for segment UtilsA, symbol 'ioa', addr:000270
-855 (001527) words loaded into segment UtilsA
+segdef created for segment UtilsA, symbol 'ioa', addr:000271
+857 (001531) words loaded into segment UtilsA
 segment created for 'simh_operators_'
 segdef created for segment simh_operators_, symbol 'alm_call', addr:001175
 segdef created for segment simh_operators_, symbol 'alm_entry', addr:001215
@@ -49,7 +49,7 @@ stack_0 segment created as segment# 8 (10) [DSBR.STACK=0001]
 Examining segments ... segment numbering begins at: 9
     Processing segment main...
         Resolving segref UtilsA$ioa...found ioa (000304)
-            ITS Pair: [even:000011000043, odd:000270000000]
+            ITS Pair: [even:000011000043, odd:000271000000]
         Resolving segref UtilsA$rd_clockA...found rd_clockA (000306)
             ITS Pair: [even:000011000043, odd:000207000000]
         Resolving segref lot_$lot_...found lot_ (000310)
@@ -80,7 +80,7 @@ Examining segments ... segment numbering begins at: 9
         Resolving segref UtilsA$rd_clockA...found rd_clockA (000244)
             ITS Pair: [even:000011000043, odd:000207000000]
         Resolving segref UtilsA$ioa...found ioa (000246)
-            ITS Pair: [even:000011000043, odd:000270000000]
+            ITS Pair: [even:000011000043, odd:000271000000]
     Processing segment UtilsA...
     Processing segment simh_operators_...
     Processing segment power_of_two...
@@ -92,7 +92,7 @@ Writing SDW to address 00001032 (DSBR.ADDR+2*13 offset)
       168 (000250) words loaded into segment 13 (15) at address 201000
     loading UtilsA as segment# 9
 Writing SDW to address 00001022 (DSBR.ADDR+2*9 offset) 
-      1062 (002046) words loaded into segment 9 (11) at address 201260
+      1064 (002050) words loaded into segment 9 (11) at address 201260
     loading simh_operators_ as segment# 12
 Writing SDW to address 00001030 (DSBR.ADDR+2*12 offset) 
       671 (001237) words loaded into segment 12 (14) at address 203340
@@ -109,14 +109,14 @@ Writing SDW to address 00001020 (DSBR.ADDR+2*8 offset)
 snapping lot_ links..
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-Howdy world! - It's ' 1/04 11:03 '
+Howdy world! - It's ' 1/06 20:34 '
 We did it!!! 2**9=512
 We did it again!!! 2**11=2048
 Q=1050402 (Should be Q=1050402)
 Q=60606 (Should be Q=60606)
 Q=10703020107 (Should be Q=010703020107)
 
-cpuCycles = 4312
+cpuCycles = 4316
 TestFXE-27> g 0
 
 DIS instruction, IC: main|162 (00000162) (000000616000)

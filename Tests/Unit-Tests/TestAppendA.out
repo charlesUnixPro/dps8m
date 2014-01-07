@@ -12,14 +12,14 @@ segment created for 'UtilsA'
 segdef created for segment UtilsA, symbol 'A0', addr:000005
 segdef created for segment UtilsA, symbol 'A1', addr:000050
 segdef created for segment UtilsA, symbol 'rd_clockA', addr:000207
-segdef created for segment UtilsA, symbol 'ioa', addr:000270
+segdef created for segment UtilsA, symbol 'ioa', addr:000271
 Writing SDW to address 00020002 (DSBR.ADDR+2*1 offset) 
-855 (001527) words loaded into segment 1(1) at address 010000
+857 (001531) words loaded into segment 1(1) at address 010000
 *** Descriptor Segment Base Register (DSBR) ***
 DSBR: ADDR=020000 BND=00000 U=1 STACK=0000
 *** Descriptor Segment Table ***
 Seg 0 - ADDR=000000 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=13 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=250
-Seg 1 - ADDR=010000 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=103 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=2046
+Seg 1 - ADDR=010000 R1=0 R2=0 R3=0 F=1 FC=2 BOUND=103 R=1 E=1 W=1 P=1 U=1 G=1 C=1 EB=2050
 Seg 2 - *** Uninitialized ***
 Seg 3 - *** Uninitialized ***
 Seg 4 - *** Uninitialized ***
@@ -28,10 +28,10 @@ Seg 6 - *** Uninitialized ***
 Seg 7 - *** Uninitialized ***
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-Date : ' 1/04 11:03 '
+Date : ' 1/06 20:35 '
 froms0=123
-Sat , 4 Jan  2014 11:3:15 Pst 
-Date 0: ' 1/04 11:03 '
+Mon , 6 Jan  2014 20:35:20 Pst 
+Date 0: ' 1/06 20:35 '
 This is A1... 3457623 -42 ASDF 000116 000045 | 000000 000043 000017 000000
 desc1:1: 000116 000045, PR2: saved: 000000 000017, modified:000000 000116
 1: If this works, I'll be surprised...
@@ -45,7 +45,7 @@ This is the new ioa! -1234567890 123456 654321 7654321 12 345670 QwEr ABC123
 '0123456789+-'
 Well, I'll be ....
 
-cpuCycles = 8693
+cpuCycles = 8697
 TestAppendA-15> g 0
 
 DIS instruction, IC: Play|114 (00000114) (000000616000)
