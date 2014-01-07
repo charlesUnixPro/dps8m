@@ -1347,7 +1347,7 @@ opDescSTR(DCDstruct *i)
     if (TRANSOP(i))
         return "prepareCA (TRA)";
     
-    return "opDescSTR(???)";
+    return "opDescSTR(\?\?\?)";
 }
 
 modificationContinuation _modCont, *modCont = &_modCont;
