@@ -1,0 +1,153 @@
+
+    option  Multics     " Multics style calling conventions
+
+    entrypoint main
+    
+	name	main
+	segdef	main
+
+	segref	UtilsA, ioa,rd_clockA
+	segref	lot_,lot_
+    segref  stack_0, stack_0
+
+    segref  TAM, _main, pi, E, fltTmp, _print
+
+    " our indirection tests ....
+    segref  TIND, _main_2
+    
+    " our FXE indirection tests ...
+    segref  TINDC, _main_C, magicC
+
+    "segref  indirect_tests
+
+    link    I, <UtilsA>|[ioa]
+    link    D, <UtilsA>|[rd_clockA]
+
+    link    T, <TAM>|[_main]
+    link    P, <TAM>|[_print]
+
+    even
+cc: bss     1
+
+main:
+    tsx2    setupFXE
+    "push
+
+"
+" put a test for abs mode ind addr here ...
+"
+    "epp0    TINDC$magicC
+    "lda     pr0|0
+    lda     TINDC$magicC
+    sta     cc
+    ldq     =31415926536
+    stq     TINDC$magicC
+
+    LDA     I
+    tsp2	pr4|I, *        " ioa
+    acc     /Howdy world this is 'TestIndirect'! - It's /
+
+    tsp2    rd_clockA
+    "tsp2    <UtilsA>|[rd_clockA]
+    "tsp2    lp|D,*
+    "tsp2    UtilsA$rd_clockA
+
+    staq	Date        " MM/DD HH:MM
+        
+    tsp2	ioa
+    acc     /'^g^g'\r\n/
+    nop     Date
+    nop     Date+1
+
+   " sprpap      g
+   " sprp4       f
+   " short_call  TAM_main
+   " lprp4       f
+   " lprpap      g
+
+
+    tsp2    ioa
+    acc     /TINDC$magicC was = ^d (Should be 2718281828)\r\n/
+    nop     cc
+
+
+    "call    P(ap|0)
+
+    "call    TAM_main(ap|0)
+    call T(ap|0)
+
+    "tra     mmm
+    
+    "
+    " dink with a few fp numbers in TAM$
+    "
+    fld     pi
+    emcall  6
+
+    fld     E
+    emcall  6
+
+    fmp     pi  " pi * e = 8.5397341
+    emcall  6
+
+    call    P(ap|0)     " TAM print (again)
+    
+mmm:
+
+    "
+    " Now lets Setup with some indirection tests for an indirection chain ...
+    "
+TAMmA:
+    epp0    TAM$magicA
+    spri0    magicM
+    ldq     =o20        " o20 => Q (set indirection mod for ITS pointer)
+    stcq    magicM+1, 5
+
+    tsp2    ioa
+    acc     /TestIndirect: magicM: ^w ^w\r\n\r\n/
+    nop     magicM+0
+    nop     magicM+1
+
+    link    TIND_main, <TIND>|[_main_2]
+    call    TIND_main (ap|0)
+
+    "
+    " for C ...
+    "
+    link    _mainC, <TINDC>|[_main_C]
+    call    _mainC (ap|0)
+
+
+allDone:
+    tsp2	ioa
+    acc     /T-H-A-T-S all folks (from 0|main) !!! /
+
+	dis
+    
+
+	even
+
+g:  bss 1
+f:  bss 1
+LA: bss 1
+LQ: bss 1
+
+Date:	bss     2
+
+    segdef  Data_1
+
+Data_1: oct 12345654321
+
+    segref  TAM, magicA
+    segdef  magicM
+    even
+magicM: zero    0,0 "arg TAM$magicA,*
+
+
+
+    INCLUDE     setupFXE.as8
+
+	end
+
+
+
