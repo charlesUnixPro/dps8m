@@ -1010,7 +1010,7 @@ jmpIntr:;
 
                     cu_safe_store ();
 
-                    addr_modes_t am = get_addr_mode();  // save address mode
+                    // addr_modes_t am = get_addr_mode();  // save address mode
 
 		    // Temporary absolute mode
 		    set_addr_mode (TEMPORARY_ABSOLUTE_mode);
@@ -1045,7 +1045,8 @@ jmpIntr:;
     
                     // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
 
-                    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
+                    clear_TEMPORARY_ABSOLUTE_mode ();
+                    // set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
 
                     cu_safe_restore ();
 
@@ -1756,7 +1757,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     }
 
 
-static addr_modes_t secret_addressing_mode;
+static bool secret_addressing_mode;
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -1767,9 +1768,14 @@ static addr_modes_t secret_addressing_mode;
  *
  */
 
+void clear_TEMPORARY_ABSOLUTE_mode (void)
+{
+    secret_addressing_mode = false;
+}
+
 addr_modes_t get_addr_mode(void)
 {
-    if (secret_addressing_mode == TEMPORARY_ABSOLUTE_mode)
+    if (secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
     //if (IR.abs_mode)
@@ -1794,6 +1800,7 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+    secret_addressing_mode = true;
     if (mode == ABSOLUTE_mode) {
         SETF(rIR, I_ABS);
         SETF(rIR, I_NBAR);
@@ -1821,6 +1828,7 @@ void set_addr_mode(addr_modes_t mode)
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
     } else if (mode == TEMPORARY_ABSOLUTE_mode) {
         PPR.P = 1;
+        secret_addressing_mode = true;
         
 #if 0
         if (switches . degenerate_mode)
@@ -1833,7 +1841,6 @@ void set_addr_mode(addr_modes_t mode)
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         cancel_run(STOP_BUG);
     }
-    secret_addressing_mode = mode;
     //processorAddressingMode = mode;
 }
 
