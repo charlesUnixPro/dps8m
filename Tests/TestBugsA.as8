@@ -6,6 +6,12 @@
 
     segref	UtilsA, ioa 
 
+    "
+    " we'll store stuff on our stack frame ...
+    "
+    temp    saveX2      " for saving x2 for subroutine call(s)
+
+
         even
 L1:     bss     1
 L2:     bss     1
@@ -17,7 +23,6 @@ LAQ:
 LA:     bss     1
 LQ:     bss     1
 
-        temp    _ortest ":    oct     0
 
 
 _main_BBG_1:
@@ -26,9 +31,18 @@ _main_BBG_1:
     tsp2    ioa
     acc     /BBG-1 ...\r\n/
 
+    tsx2    ORSQTest    " ORSQ + R/M/W Test ...
+
+    return
+
     "
     " ORSQ may have problems with the new address calculations
     "
+
+    temp    _ortest     " operand storage for ORSQ test
+
+ORSQTest:
+    stx2    saveX2      " save return address
 
     ldq     =0
     orsq    _ortest
@@ -83,4 +97,6 @@ _main_BBG_1:
     tsp2    ioa
     acc     /ORSQ bug >squished<\r\n/
 
-    return
+    ldx2    saveX2      " restore x2
+    tra     0,2         " ... and return
+
