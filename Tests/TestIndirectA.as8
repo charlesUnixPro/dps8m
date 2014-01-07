@@ -13,6 +13,10 @@
 
     segdef  pi, E, fltTmp
 
+    segref  TIND, magicB
+    segdef  magicA
+
+
         even
 L1:     bss     1
 L2:     bss     1
@@ -22,14 +26,27 @@ LAQ:
 LA:     bss     1
 LQ:     bss     1
 
-save2:      bss     ,2
-save2p:     bss     ,2
-save3p:     bss     ,2
+"save2:      bss     ,2
+"save2p:     bss     ,2
+"save3p:     bss     ,2
 
-        eight
-rsave:  bss ,8
+
+"        eight
+"rsave:  bss ,8
+
+        even
+magicA: zero    0,0 "arg TIND$macigB,*
 
 _main:
+    push
+
+    epp0    TIND$magicB " make magicA point to magicB
+    spri0   magicA
+
+    tsp2    ioa
+    acc     /TestIndirectA: magicA: ^o ^o\r\n\r\n/
+    nop     magicA+0
+    nop     magicA+1
 
     eax0    _a
     eax1    u
@@ -52,8 +69,7 @@ IBS:    aci     /If this works, that means were in TAM$.../
 
 
 R_mods:
-push
-return
+
     tsp2	ioa
     acc     /R mods ...\r\n/
 
@@ -654,6 +670,8 @@ aa4:    oct     670
 
 IT_12:
 
+allDone:
+
         " return to caller
         tsp2    ioa
         acc     /That's all folks!!! (TAM$_main)\r\n/
@@ -748,7 +766,10 @@ fltTmp: dec     -123.4567
 
 
 _print: push
-return
+
+
+        tsp2    ioa
+        acc     /\r\nThis is from TAM$_print ...\r\n/
 
         fld     pi
         emcall  6
@@ -758,5 +779,8 @@ return
 
         fld     fltTmp
         emcall  6
+        
+        tsp2    ioa
+        acc     /\r\n/
         
         return

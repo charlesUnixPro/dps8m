@@ -1,6 +1,6 @@
+430 (000656) words loaded
 
-dps-8/m simulator V4.0-0 Beta        git commit id: f386776a
-428 (000654) words loaded
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 This is TestCSR...
 Hello from ioa ...
 ^o      Zero sup octal... 12345654321
@@ -10,9 +10,9 @@ Hello from ioa ...
 ^a      Ascii... 'ABCD'
 ^g      GE code... 'GE BCD'
 This is a test of CALL/SAVE/RETURN w/ multiple saves ...
-Error return 2
+Error return 2
 cpuCycles = 2057
 TestCSR-10> g 0
 
-DIS instruction, IC: 000217 (000000616000)
+DIS instruction, IC: 000215 (000000616000)
 Goodbye

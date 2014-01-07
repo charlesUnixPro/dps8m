@@ -8,11 +8,12 @@ dpsinit segment table
 dpsinit SDWAM
 
 load Play/TestIndirect.oct segment 0 address 0
-;load Play/PlayA.oct deferred
+load Play/TestIndirectA.oct deferred
+load Play/TestIndirectB.oct deferred
+load Play/TestIndirectC.oct deferred
+
 load Play/UtilsA.oct deferred
 load Play/simh_operators.oct deferred
-;load Play/power_of_two.oct deferred
-load Play/TestIndirectA.oct deferred
 
 segments lot create
 segments create stack 0
@@ -20,10 +21,10 @@ segments resolve
 segments load deferred
 segments lot snap
 
-set debug stderr
+;set debug stderr
 ;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
-set cpu debug=trace;addrmod;appending
+;set cpu debug=trace;addrmod;appending;REGDUMPPR
 
-g 0
+g 
 q
 
