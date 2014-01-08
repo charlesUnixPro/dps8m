@@ -6,9 +6,9 @@ de ppr.psr 0
 de ppr.p 1
 dpsinit segment table
 dpsinit SDWAM
-load PlayA.oct segment 0 address  0
-load UtilsA.oct segment 1 address  010000
-set debug stderr
+load ./PlayA.oct segment 0 address  0
+load ./UtilsA.oct segment 1 address  010000
+;set debug stderr
 ;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
 ;set cpu debug=trace
 dpsdump segment table

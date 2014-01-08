@@ -1,23 +1,21 @@
-!SEGMENT 1
-!GO 000000
-000000 xxxx 000022235000 	lda	one
-000001 xxxx 000023236000 	ldq	two
-000002 xxxx 000024721000 	lxl1	three
-000003 xxxx 000012235052 hello:  lda msg0,   sc
+!SIZE 000063
+000000 xxxx 000060235000 	lda	one
+000001 xxxx 000061236000 	ldq	two
+000002 xxxx 000062721000 	lxl1	three
+000003 xxxx 000011235052 hello:  lda msg0,   sc
 000004 xxxx 000001420400         emcall      1
 000005 xxxx 000003607000         ttf         hello
 000006 xxxx 000007710000         tra         L0
 000007 xxxx 200000710100      tra    2|0
-000010 xxxx 000000616000      dis
-000011 xxxx 000013000140 msg0b:   tallyb     msg0d, 1, 0   "address, count, byte offset 
-000012 xxxx 000013003240 msg0:   tallyb      msg0d, 26, 0   "address, count, byte offset 
-000013 xxxx 124150151163 msg0d:  aci         /This is from Segment 1 .../ 
-000014 xxxx 040151163040  
-000015 xxxx 146162157155  
-000016 xxxx 040123145147  
-000017 xxxx 155145156164  
-000020 xxxx 040061040056  
-000021 xxxx 056056000000  
-000022 xxxx 000000000001 one:	dec	1
-000023 xxxx 000000000002 two:	dec	2
-000024 xxxx 000000000003 three:	dec	3
+000010 xxxx 000012000140 msg0b:   tallyb     msg0d, 1, 0   "address, count, byte offset
+000011 xxxx 000012003440 msg0:   tallyb      msg0d, 28, 0   "address, count, byte offset
+000012 xxxx 124150151163 msg0d:  aci         /This is from Segment 1 ...\r\n/
+000013 xxxx 040151163040 
+000014 xxxx 146162157155 
+000015 xxxx 040123145147 
+000016 xxxx 155145156164 
+000017 xxxx 040061040056 
+000020 xxxx 056056015012 
+000060 xxxx 000000000001 one:	dec	1
+000061 xxxx 000000000002 two:	dec	2
+000062 xxxx 000000000003 three:	dec	3

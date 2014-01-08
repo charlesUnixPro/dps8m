@@ -9,12 +9,17 @@
 
 #include "dps8.h"
 
+// XXX This is used wherever a single unit only is assumed
+#define ASSUME0 0
+
 word36 Ypair[2];        ///< 2-words
-static word36 Yblock8[8];      ///< 8-words
-static word36 Yblock16[16];    ///< 16-words
+word36 Yblock8[8];      ///< 8-words
+word36 Yblock16[16];    ///< 16-words
 static int doABSA (DCDstruct * i, word36 * result);
 
 static t_stat doInstruction(DCDstruct *i);
+
+extern modificationContinuation _modCont, *modCont;
 
 /**
  * writeOperand() - write (a potentially modified) CY to memory at TPR.CA using whatever modifications are necessary ...
@@ -26,15 +31,23 @@ writeOperand(DCDstruct *i)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperand(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
     }
+    
     // TPR.CA may be different from instruction spec because of various addr mod operations.
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
     
+#ifdef USE_CONTINUATIONS
+    if (modCont->bActive)
+        doComputedAddressContinuation(i);
+    else
+        Write(i, TPR.CA, CY, OperandWrite, i->tag);
+#else
     if (i->iwb->flags == RMW)  /// Is this always the right thing todo???? or only for R/M/W instructions
     {
         TPR.CA = i->address;   // address from opcode
         rY = i->address;
     }
     doComputedAddressFormation(i, writeCY);
+#endif
 }
 
 /**
@@ -71,6 +84,23 @@ writeOperand2(DCDstruct *i)//, word36 *YPair)
     //CY = YPair[1];
     //TPR.CA += 1;
     //doComputedAddressFormation(i, writeCY);
+}
+
+static void
+writeOperands(DCDstruct *i)
+{
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
+    }
+    
+    // TPR.CA may be different from instruction spec because of various addr mod operations.
+    // This is especially true in a R/M/W cycle such as stxn. So, restore it.
+    
+    if (modCont->bActive)
+        doComputedAddressContinuation(i);    //, writeCY);
+    else
+        WriteOP(i, TPR.CA, OperandWrite, i->tag);
 }
 
 /**
@@ -500,7 +530,8 @@ t_stat executeInstruction(DCDstruct *ci)
     {
         if (a && !(iwb->flags & IGN_B29))   // a should now always be correct so B29 tst may not be necesary....
         {
-            doAddrModPtrReg(ci);
+            //doAddrModPtrReg(ci);
+            doPtrReg(ci);
             
             // invoking bit-29 puts us into append mode ... usually
             //processorAddressingMode = APPEND_MODE;
@@ -529,21 +560,35 @@ t_stat executeInstruction(DCDstruct *ci)
          
          */
         
+#ifdef USE_CONTINUATIONS
+//            eCAFoper op = prepareCA;
+//            if (iwb->flags & READ_OPERAND)
+//                op = readCY;
+//            else if (iwb->flags & STORE_OPERAND)
+//                op = writeCY;
+//            else if (iwb->flags & READ_YPAIR)
+//                op = readCYpair;
+//            else if (iwb->flags & STORE_YPAIR)
+//                op = writeCYpair;
+
+        doPreliminaryComputedAddressFormation(ci);  //, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
+#else
         if (iwb->flags & (READ_OPERAND | PREPARE_CA))
             doComputedAddressFormation(ci, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
-        
-        // XXX this may be too simplistic ....
 
         // ToDo: Read72 is also used to read in 72-bits, but not into Ypair! Fix this
         if (iwb->flags & READ_YPAIR)
             Read2(ci, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
-        
         //finalAddress = (word24)CY; // why was this here???
-        finalAddress = TPR.CA;  // ???
+        finalAddress = TPR.CA;  // ??? iff ABS mode
+#endif
+        
     }
-    
+    // XXX this may be too simplistic ....
+  
     //t_stat ret = opcodeX ? DoEISInstruction(ci) : DoBasicInstruction(ci);
     t_stat ret = doInstruction(ci);
+    
     
     if (switches . append_after)
     {
@@ -553,6 +598,11 @@ t_stat executeInstruction(DCDstruct *ci)
         }
     }
 
+#ifdef USE_CONTINUATIONS
+    if (WRITEOP(ci) || RMWOP(ci))
+        writeOperands(ci);
+#endif
+    
     cpuCycles += 1; // bump cycle counter
     
     if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
@@ -892,7 +942,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 
         case 0073:   ///< lreg
-            ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
+            //ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
             
             rX[0] = GETHI(Yblock8[0]);
             rX[1] = GETLO(Yblock8[0]);
@@ -2142,7 +2192,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0256:  ///< orsq
             /// C(Q)i | C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             
-            CY = rQ & CY;
+            CY = rQ | CY;
             
             if (CY == 0)
                 SETF(rIR, I_ZERO);
@@ -3278,11 +3328,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(Y-pair)36,53 → C(PRn.WORDNO)
             ///  C(Y-pair)57,62 → C(PRn.BITNO)
             
-            ReadN(i, 16, TPR.CA, Yblock16, OperandRead, rTAG);  // read 16-words from memory
+            //ReadN(i, 16, TPR.CA, Yblock16, OperandRead, rTAG);  // read 16-words from memory
 
             for(n = 0 ; n < 8 ; n ++)
             {
-                word36 Ypair[2];
+                //word36 Ypair[2];
                 Ypair[0] = Yblock16[n * 2 + 0]; // Even word of ITS pointer pair
                 Ypair[1] = Yblock16[n * 2 + 1]; // Odd word of ITS pointer pair
                 
@@ -3292,6 +3342,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 PR[n].WORDNO = GETHI(Ypair[1]);
                 PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
             }
+            
             break;
             
         case 0760:  ///< lprp0
@@ -3613,6 +3664,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0633:  ///< rccl
             /// 00...0 → C(AQ)0,19
             /// C(calendar clock) → C(AQ)20,71
+            // XXX This code belongs in scu.c; ASSUME0
             
             c_0633:;    // for rscr clock/cal call.
             
@@ -4389,7 +4441,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0057:  ///< sscr
             {
-              t_stat rc = scu_sscr (CPU_UNIT_NUM, TPR.CA, reg_A, reg_Q);
+              // Which port is the sought SCU connected to?
+              int cpu_port_num = query_scpage_map (TPR.CA);
+              // What is the IDNUM of the SCU connected to that port?
+              int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+              t_stat rc = scu_sscr (scu_unit_num, ASSUME0, TPR.CA, reg_A, reg_Q);
               if (rc == CONT_FAULT)
                 doFault(i, store_fault, 0, "(sscr)");
               if (rc)
@@ -4500,11 +4556,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
     }
     
+#ifndef USE_CONTINUATIONS
+    if (i->iwb->flags & STORE_YPAIR)
+        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
+    else
     if (i->iwb->flags & STORE_OPERAND)
         writeOperand(i);  // write C(Y) to TPR.CA for any instructions that needs it .....
-    else if (i->iwb->flags & STORE_YPAIR)
-        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
-  
+#endif
+    
     return 0;
 }
 
@@ -4957,7 +5016,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
         case 0463:  ///< lareg - Load Address Registers
             
             // XXX This will eventually be done automagically
-            ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
+            //ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
             
             for(n = 0 ; n < 8 ; n += 1)
             {
@@ -5751,11 +5810,13 @@ static t_stat DoEISInstruction(DCDstruct *i)
             //return STOP_UNIMP;
     }
 
+#ifndef USE_CONTINUATIONS
     if (i->iwb->flags & STORE_OPERAND)
         writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
     else if (i->iwb->flags & STORE_YPAIR)
         writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
-
+#endif
+    
     return 0;
 
 }
@@ -5888,13 +5949,40 @@ emCall(DCDstruct *i)
             break;
         }
         case 7:   ///< dump index registers
-        {
             //sim_printf("Index registers * * *\n");
             for(int i = 0 ; i < 8 ; i += 4)
                 sim_printf("r[%d]=%06o r[%d]=%06o r[%d]=%06o r[%d]=%06o\n", i+0, rX[i+0], i+1, rX[i+1], i+2, rX[i+2], i+3, rX[i+3]);
+            break;
             
+        case 17: ///< dump pointer registers
+            for(int n = 0 ; n < 8 ; n++)
+            {
+                sim_printf("PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
+                          n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            }
+            break;
+            
+        case 8: ///< crlf to console
+            sim_printf("\n");
+            break;
+            
+        case 13:     ///< putoct - put octal contents of Q to stdout (split)
+        {
+            sim_printf("%06o %06o", GETHI(rQ), GETLO(rQ));
+            break;
         }
-            
+        case 14:     ///< putoctZ - put octal contents of Q to stdout (zero-suppressed)
+        {
+            sim_printf("%llo", rQ);
+            break;
+        }
+        case 15:     ///< putdec - put decimal contents of Q to stdout
+        {
+            word36 tmp = SIGNEXT36(rQ);
+            sim_printf("%lld", tmp);
+            break;
+        }
+
             
     }
 }

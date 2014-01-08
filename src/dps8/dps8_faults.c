@@ -489,7 +489,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     core_read2(addr, faultPair, faultPair+1);
     // In the FAULT CYCLE, the processor safe-stores the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction, then enters temporary absolute mode, forces the current ring of execution C(PPR.PRR) to 0, and generates a computed address for the fault trap pair by concatenating the setting of the FAULT BASE switches on the processor configuration panel with twice the fault number (see Table 7-1). This computed address and the operation code for the Execute Double (xed) instruction are forced into the instruction register and executed as an instruction. Note that the execution of the instruction is not done in a normal EXECUTE CYCLE but in the FAULT CYCLE with the processor in temporary absolute mode.
     
-    addr_modes_t am = get_addr_mode();  // save address mode
+    // addr_modes_t am = get_addr_mode();  // save address mode
     
     PPR.PRR = 0;
     
@@ -519,7 +519,8 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     }
     
     // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
-    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
+    clear_TEMPORARY_ABSOLUTE_mode ();
+    //set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
     cu_safe_restore ();
     
     sim_debug (DBG_FAULT, & cpu_dev, "Fault pair resumes\n");

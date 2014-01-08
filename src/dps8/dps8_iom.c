@@ -8,6 +8,8 @@
  *    This is a 600B IOM emulator. 
  */
 
+// XXX Use this when we assume there is only a single unit
+#define ASSUME0 0
 /*
  * iom.c -- emulation of an I/O Multiplexer
  * 
@@ -555,6 +557,9 @@ struct unit_data
 
     // Port half-size: 1 toggle/port // XXX what is this
     uint config_sw_port_halfsize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    // Port store size: 1 8 pos. rotary/port // XXX what is this
+    uint config_sw_port_storesize [N_IOM_PORTS]; // = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Hacks
     uint boot_skip;
@@ -1299,6 +1304,62 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;
   }
+
+// Map memory to port
+static int iom_scpage_map [N_IOM_UNITS_MAX] [N_SCPAGES];
+
+static void setup_iom_scpage_map (void)
+  {
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_iom_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
+
+    for (int iom_unit_num = 0; iom_unit_num < iom_dev . numunits; iom_unit_num ++)
+      {
+        // Initalize to unmapped
+        for (int pg = 0; pg < N_SCPAGES; pg ++)
+          iom_scpage_map [iom_unit_num] [pg] = -1;
+    
+        struct unit_data * p = unit_data + iom_unit_num;
+        // For each port (which is connected to a SCU
+        for (int port_num = 0; port_num < N_IOM_PORTS; port_num ++)
+          {
+            if (! p -> config_sw_port_enable [port_num])
+              continue;
+            // Calculate the amount of memory in the SCU in words
+            uint store_size = p -> config_sw_port_storesize [port_num];
+            uint sz = 1 << (store_size + 16);
+    
+            // Calculate the base address of the memor in wordsy
+            uint assignment = switches . assignment [port_num];
+            uint base = assignment * sz;
+    
+            // Now convert to SCPAGES
+            sz = sz / SCPAGE;
+            base = base / SCPAGE;
+    
+            sim_debug (DBG_DEBUG, & cpu_dev, "setup_iom_scpage_map: unit:%d port:%d ss:%u as:%u sz:%u ba:%u\n", iom_unit_num, port_num, store_size, assignment, sz, base);
+    
+            for (int pg = 0; pg < sz; pg ++)
+              {
+                int scpg = base + pg;
+                if (scpg >= 0 && scpg < N_SCPAGES)
+                  iom_scpage_map [iom_unit_num] [scpg] = port_num;
+              }
+          }
+      }
+    for (int iom_unit_num = 0; iom_unit_num < iom_dev . numunits; iom_unit_num ++)
+        for (int pg = 0; pg < N_SCPAGES; pg ++)
+          sim_debug (DBG_DEBUG, & cpu_dev, "setup_iom_scpage_map: %d:%d\n", pg, iom_scpage_map [iom_unit_num] [pg]);
+   }
+   
+int query_iom_scpage_map (int iom_unit_num, word24 addr)
+  {
+    uint scpg = addr / SCPAGE;
+    if (scpg < N_SCPAGES)
+      return iom_scpage_map [iom_unit_num] [scpg];
+    return -1;
+  }
+
+
 // ============================================================================
 
 /*
@@ -1449,6 +1510,7 @@ t_stat iom_reset(DEVICE *dptr)
       }
     
 
+    setup_iom_scpage_map ();
 
     return SCPE_OK;
   }
@@ -3327,8 +3389,29 @@ static int send_general_interrupt(int iom_unit_num, int chan, int pic)
     (void) store_abs_word(imw_addr, imw);
     
 // XXX this should call scu_svc
-    uint bl_scu = unit_data [iom_unit_num] . config_sw_bootload_port;
-    return scu_set_interrupt (bl_scu, interrupt_num);
+// XXX Why on earth is this calling config_sw_bootload_port; we need to
+// interrupy the SCU that generated the iom_interrupt.
+// "The IOM accomplishes [interrupting]  by setting a predetermined program
+// interrupt cell in the system controller that contains the IOM base address. 
+// "The system controller then causes a program interrupt in a processor so
+// that appropriate action can be taken by the software.
+// I am taking this to mean that the interrupt is sent to the SCU containing
+// the base address
+
+    //uint bl_scu = unit_data [iom_unit_num] . config_sw_bootload_port;
+    uint base = unit_data [iom_unit_num] . config_sw_iom_base_address;
+    uint base_addr = base << 6; // 01400
+    // XXX this is wrong; I believe that the SCU unit number should be
+    // calculated from the Port Configuration Address Assignment switches
+    // For now, however, the same information is in the CPU config. switches, so
+    // this should result in the same values.
+    int cpu_port_num = query_iom_scpage_map (iom_unit_num, base_addr);
+    int scu_unit_num;
+    if (cpu_port_num >= 0)
+      scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+    else
+      scu_unit_num = 0;
+    return scu_set_interrupt (scu_unit_num, interrupt_num);
 }
 
 // ============================================================================
@@ -3484,6 +3567,10 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     for (i = 0; i < N_IOM_PORTS; i ++)
       sim_printf (" %3o", p -> config_sw_port_halfsize [i]);
     sim_printf ("\n");
+    sim_printf("Port Storesize:           ");
+    for (i = 0; i < N_IOM_PORTS; i ++)
+      sim_printf (" %3o", p -> config_sw_port_storesize [i]);
+    sim_printf ("\n");
     sim_printf("Boot skip:                %02o(8)\n", p -> boot_skip);
     
     return SCPE_OK;
@@ -3505,11 +3592,8 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //             enable=n
 //             initenable=n
 //             halfsize=n
+//             storesize=n
 //          bootskip=n // Hack: forward skip n records after reading boot record
-//          connect_time=n
-//          activate_time=n
-//          mt_read_time=n
-//          mt_xfer_time=n
 
 static config_value_list_t cfg_os_list [] =
   {
@@ -3532,6 +3616,30 @@ static config_value_list_t cfg_base_list [] =
     { NULL }
   };
 
+static config_value_list_t cfg_size_list [] =
+  {
+    { "32", 0 },
+    { "64", 1 },
+    { "128", 2 },
+    { "256", 3 },
+    { "512", 4 },
+    { "1024", 5 },
+    { "2048", 6 },
+    { "4096", 7 },
+    { "32K", 0 },
+    { "64K", 1 },
+    { "128K", 2 },
+    { "256K", 3 },
+    { "512K", 4 },
+    { "1024K", 5 },
+    { "2048K", 6 },
+    { "4096K", 7 },
+    { "1M", 5 },
+    { "2M", 6 },
+    { "4M", 7 },
+    { NULL }
+  };
+
 static config_list_t iom_config_list [] =
   {
     /*  0 */ { "os", 1, 0, cfg_os_list },
@@ -3547,10 +3655,11 @@ static config_list_t iom_config_list [] =
     /* 10 */ { "enable", 0, 1, NULL },
     /* 11 */ { "initenable", 0, 1, NULL },
     /* 12 */ { "halfsize", 0, 1, NULL },
+    /* 13 */ { "store_size", 0, 7, cfg_size_list },
 
 // Hacks
 
-    /* 13 */ { "bootskip", 0, 100000, NULL }, // t4d testing hack (doesn't help)
+    /* 14 */ { "bootskip", 0, 100000, NULL }, // t4d testing hack (doesn't help)
     { NULL }
   };
 
@@ -3644,7 +3753,11 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
               p -> config_sw_port_halfsize [port_num] = v;
               break;
 
-            case 13: // BOOTSKIP
+            case 13: // HALFSIZE
+              p -> config_sw_port_storesize [port_num] = v;
+              break;
+
+            case 14: // BOOTSKIP
               p -> boot_skip = v;
               break;
 

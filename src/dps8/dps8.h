@@ -320,6 +320,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_ERR         (1 << 16)   
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
 #define DBG_FAULT       (1 << 17)  ///< follow fault handling
+#define DBG_INTR        (1 << 18)  // follow interrupt handling
 
 /* Global data */
 
@@ -761,20 +762,20 @@ void freeDCDstruct(DCDstruct *p);
 #define READ_OPERAND    (1 << 0)   ///< fetches/reads operand (CA) from memory
 #define STORE_OPERAND   (1 << 1)   ///< stores/writes operand to memory (its a STR-OP)
 #define RMW             (READ_OPERAND | STORE_OPERAND) ///< a Read-Modify-Write instruction
-#define READ_YPAIR      (1 << 2)   ///< fetches/reads Y-pair operand (CA) from memory
-#define STORE_YPAIR     (1 << 3)   ///< stores/writes Y-pair operand to memory
-#define READ_YBLOCK8    (1 << 4)   ///< fetches/reads Y-block8 operand (CA) from memory
+#define READ_YPAIR      ((1 << 2))   ///< fetches/reads Y-pair operand (CA) from memory
+#define STORE_YPAIR     ((1 << 3))   ///< stores/writes Y-pair operand to memory
+#define READ_YBLOCK8    ((1 << 4))   ///< fetches/reads Y-block8 operand (CA) from memory
 #define NO_RPT          (1 << 5)   ///< Repeat instructions not allowed
 //#define NO_RPD          (1 << 6)
 #define NO_RPL          (1 << 7)
 //#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
-#define READ_YBLOCK16   (1 << 8)   ///< fetches/reads Y-block16 operands from memory
-#define STORE_YBLOCK16  (1 << 9)   ///< fetches/reads Y-block16 operands from memory
+#define READ_YBLOCK16   ((1 << 8))   ///< fetches/reads Y-block16 operands from memory
+#define STORE_YBLOCK16  ((1 << 9))   ///< fetches/reads Y-block16 operands from memory
 #define TRANSFER_INS    (1 << 10)  ///< a transfer instruction
 #define TSPN_INS        (1 << 11)  ///< a TSPn instruction
 #define CALL6_INS       (1 << 12)  ///< a call6 instruction
 #define PREPARE_CA      (1 << 13)  ///< prepare TPR.CA for instruction
-#define STORE_YBLOCK8   (1 << 14)  ///< stores/writes Y-block8 operand to memory
+#define STORE_YBLOCK8   ((1 << 14))  ///< stores/writes Y-block8 operand to memory
 #define IGN_B29         (1 << 15)  ///< Bit-29 has an instruction specific meaning. Ignore.
 #define NO_TAG          (1 << 16)  ///< tag is interpreted differently and for addressing purposes is effectively 0
 #define PRIV_INS        (1 << 17)  ///< priveleged instruction
@@ -822,7 +823,9 @@ extern word6 Td, Tm;
 
 // XXX these ought to moved to DCDstruct 
 extern word36 CY;
-extern word36 YPair[2];
+extern word36 Ypair[2];
+extern word36 Yblock8[8];
+extern word36 Yblock16[16];
 
 /* what about faults? */
 //void addrmodreg();
@@ -879,14 +882,29 @@ enum eCAFoper {
     unknown = 0,
     readCY,
     writeCY,
-    readCYpair,
-    writeCYpair,
-    prepareCA
+    rmwCY,      // Read-Modify-Write 
+//    readCYpair,
+//    writeCYpair,
+//    readCYblock8,
+//    writeCYblock8,
+//    readCYblock16,
+//    writeCYblock16,
+
+    prepareCA,
 };
 typedef enum eCAFoper eCAFoper;
 
+#define READOP(i)  ((bool) (i->iwb->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 |  READ_YBLOCK16)) )
+#define WRITEOP(i) ((bool) (i->iwb->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16)) )
+#define RMWOP(i)   ((bool) READOP(i) && WRITEOP(i)) // if it's both read and write it's a RMW
+
+#define TRANSOP(i) ((bool) (i->iwb->flags & (TRANSFER_INS) ))
+
 word24 doFinalAddressCalculation(DCDstruct *i, MemoryAccessType accessType, word15 segno, word18 offset, word36 *ACVfaults);
+
 extern bool didITSITP; ///< true after an ITS/ITP processing
+
+
 
 //
 // EIS stuff ...
@@ -2780,6 +2798,29 @@ typedef enum {
 word18 getCr(word4 Tdes);
 void doComputedAddressFormation(DCDstruct *, eCAFoper action);
 
+// EXPERIMENTAL STUFF
+
+struct modificationContinuation
+{
+    bool bActive;   // if true then continuation is active and needs to be considered
+    int address;    // address of whatever we'll need to write
+    int tally;      // value of tally from dCAF()
+    int delta;      // value of delta from sCAF()
+    int mod;        // which address modification are we continuing
+    int tb;         // character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes.
+    int cf;         // 3-bit character/byte position value,
+    word36 indword; // indirect word
+    int tmp18;      // temporary address used by some instructions
+    DCDstruct *i;   // instruction that elicited continuation
+};
+
+typedef struct modificationContinuation modificationContinuation;
+
+#define USE_CONTINUATIONS
+void doPreliminaryComputedAddressFormation(DCDstruct *i);  //, eCAFoper operType);
+void doComputedAddressContinuation(DCDstruct *i);    //, eCAFoper operType);
+
+
 /* dps8_append.c */
 
 void doAddrModPtrReg(DCDstruct *);
@@ -2833,6 +2874,9 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
 t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag); // needs testing
 t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag);
 
+t_stat ReadOP (DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, int32 Tag);
+t_stat WriteOP(DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, int32 Tag);
+
 // RAW, core stuff ...
 int core_read(word24 addr, word36 *data);
 int core_write(word24 addr, word36 data);
@@ -2851,6 +2895,8 @@ t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
 
 bool sample_interrupts (void);
 int query_scpage_map (word24 addr);
+void clear_TEMPORARY_ABSOLUTE_mode (void);
+int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 
 /* dps8_append.c */
 
@@ -2927,7 +2973,7 @@ int scu_set_interrupt(uint scu_unit_num, uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);
-t_stat scu_sscr (uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
+t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
 int scu_cioc (uint scu_unit_num, uint scu_port_num);
 
 /* dps8_sys.c */

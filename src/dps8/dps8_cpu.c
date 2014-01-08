@@ -70,6 +70,7 @@ static DEBTAB cpu_dt[] = {
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
     { "FAULT",      DBG_FAULT       },
+    { "INTR",       DBG_INTR       },
 
     { NULL,         0               }
 };
@@ -430,9 +431,9 @@ t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
 // Map memory to port
 static int scpage_map [N_SCPAGES];
 
-static void init_scpage_map (void)
+static void setup_scpage_map (void)
   {
-    sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
+    sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
 
     // Initalize to unmapped
     for (int pg = 0; pg < N_SCPAGES; pg ++)
@@ -455,7 +456,7 @@ static void init_scpage_map (void)
         sz = sz / SCPAGE;
         base = base / SCPAGE;
 
-        sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
+        sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
 
 	for (int pg = 0; pg < sz; pg ++)
           {
@@ -465,13 +466,13 @@ static void init_scpage_map (void)
           }
       }
     for (int pg = 0; pg < N_SCPAGES; pg ++)
-      sim_debug (DBG_DEBUG, & cpu_dev, "init_scpage_map: %d:%d\n", pg, scpage_map [pg]);
+      sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: %d:%d\n", pg, scpage_map [pg]);
   }
 
 int query_scpage_map (word24 addr)
   {
     uint scpg = addr / SCPAGE;
-    if (scpg >= 0 && scpg < N_SCPAGES)
+    if (scpg < N_SCPAGES)
       return scpage_map [scpg];
     return -1;
   }
@@ -511,6 +512,8 @@ t_stat cpu_reset (DEVICE *dptr)
     cpu_reset_mm(dptr);
 
     cpu_reset_array ();
+
+    setup_scpage_map ();
 
     initializeTheMatrix();
 
@@ -975,8 +978,8 @@ t_stat sim_instr (void)
 #endif
 
     // Heh. This needs to be static; longjmp resets the value to NULL
-    static DCDstruct _ci;
-    static DCDstruct * ci = & _ci;
+    //static DCDstruct _ci;
+    static DCDstruct * ci = NULL;
     
     adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
     apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
@@ -984,6 +987,7 @@ t_stat sim_instr (void)
     cpu . interrupt_flag = false;
     cpu . g7_flag = false;
 
+    currentInstruction->e = &E;
     instr_buf_state = IB_EMPTY;
     // cpuCycles = 0; // XXX this should be done by reset(), messes up count on breakpoint
 
@@ -1066,7 +1070,7 @@ t_stat sim_instr (void)
                     intr_pair_addr = get_highest_intr ();
                     if (intr_pair_addr != 1) // no interrupts 
                       {
-
+                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", intr_pair_addr);
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
                         instr_buf_state = IB_PAIR;
@@ -1079,6 +1083,7 @@ t_stat sim_instr (void)
 
                 // If we get here, there was no interrupt
 
+                clear_TEMPORARY_ABSOLUTE_mode ();
                 // Restores addressing mode and cpu.cycle
                 cu_safe_restore ();
                 break;
@@ -1100,6 +1105,8 @@ t_stat sim_instr (void)
                   {
                      instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
+                     clear_TEMPORARY_ABSOLUTE_mode ();
+                     set_addr_mode (ABSOLUTE_mode);
                      break;
                   }
 
@@ -1108,6 +1115,7 @@ t_stat sim_instr (void)
                     cpu . cycle = INTERRUPT_EXEC2_cycle;
                     break;
                   }
+                clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
                 break;
 
@@ -1270,6 +1278,8 @@ t_stat sim_instr (void)
                      instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
                      clearFaultCycle ();
+                     clear_TEMPORARY_ABSOLUTE_mode ();
+                     set_addr_mode (ABSOLUTE_mode);
                      break;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
@@ -1279,6 +1289,7 @@ t_stat sim_instr (void)
                   }
                 // Done with FAULT_EXEC2_cycle
                 // Restores cpu.cycle and addressing mode
+                clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
                 cpu . cycle = FETCH_cycle;
                 clearFaultCycle ();
@@ -1574,7 +1585,6 @@ t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType accty
     else
 #endif
          {
-        //*dat = M[addr];
         rY = addr;
         TPR.CA = addr;  //XXX for APU
 
@@ -1742,6 +1752,8 @@ t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum e
         }
         Read(i, addr + 0, datEven, acctyp, Tag);
         Read(i, addr + 1, datOdd, acctyp, Tag);
+        
+        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
         //printf("read2: addr=%06o\n", addr);
     }
     return SCPE_OK;
@@ -1765,6 +1777,8 @@ t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eM
         Write(i, addr + 0, datEven, acctyp, Tag);
         Write(i, addr + 1, datOdd,  acctyp, Tag);
         
+        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
+
         //printf("write2: addr=%06o\n", addr);
 
     }
@@ -1827,6 +1841,8 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
     for (int j = 0 ; j < n ; j ++)
         Read(i, addr + j, Yblock + j, acctyp, Tag);
     
+    TPR.CA = addr;  // restore address
+    
     return SCPE_OK;
 }
 
@@ -1867,6 +1883,90 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
         Write(i, addr + j, Yblock[j], acctyp, Tag);
     
     return SCPE_OK;
+}
+
+int OPSIZE(DCDstruct *i)
+{
+    if (i->iwb->flags & (READ_OPERAND | STORE_OPERAND))
+        return 1;
+    else if (i->iwb->flags & (READ_YPAIR | STORE_YPAIR))
+        return 2;
+    else if (i->iwb->flags & (READ_YBLOCK8 | STORE_YBLOCK8))
+        return 8;
+    else if (i->iwb->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
+        return 16;
+    return 0;
+}
+
+t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+{
+#if 0
+        if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
+            return STOP_BKPT;
+        else
+#endif
+        
+    switch (OPSIZE(i))
+    {
+        case 1:
+            Read(i, addr, &CY, acctyp, Tag);
+            return SCPE_OK;
+        case 2:
+            addr &= 0777776;   // make even
+            Read(i, addr + 0, Ypair + 0, acctyp, Tag);
+            Read(i, addr + 1, Ypair + 1, acctyp, Tag);
+            break;
+        case 8:
+            addr &= 0777770;   // make on 8-word boundary
+            for (int j = 0 ; j < 8 ; j += 1)
+                Read(i, addr + j, Yblock8 + j, acctyp, Tag);
+            break;
+        case 16:
+            addr &= 0777760;   // make on 16-word boundary
+            for (int j = 0 ; j < 16 ; j += 1)
+                Read(i, addr + j, Yblock16 + j, acctyp, Tag);
+            
+            break;
+    }
+    TPR.CA = addr;  // restore address
+    
+    return SCPE_OK;
+
+}
+
+t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+{
+#if 0
+    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
+        return STOP_BKPT;
+    else
+#endif
+        
+    switch (OPSIZE(i))
+    {
+        case 1:
+            Write(i, addr, CY, acctyp, Tag);
+            return SCPE_OK;
+        case 2:
+            addr &= 0777776;   // make even
+            Write(i, addr + 0, Ypair[0], acctyp, Tag);
+            Write(i, addr + 1, Ypair[1], acctyp, Tag);
+            break;
+        case 8:
+            addr &= 0777770;   // make on 8-word boundary
+            for (int j = 0 ; j < 8 ; j += 1)
+                Write(i, addr + j, Yblock8[j], acctyp, Tag);
+            break;
+        case 16:
+            addr &= 0777760;   // make on 16-word boundary
+            for (int j = 0 ; j < 16 ; j += 1)
+                Write(i, addr + j, Yblock16[j], acctyp, Tag);
+            break;
+    }
+    TPR.CA = addr;  // restore address
+    
+    return SCPE_OK;
+    
 }
 
 /*!
@@ -2151,7 +2251,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     }
 
 
-static addr_modes_t secret_addressing_mode;
+static bool secret_addressing_mode;
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -2162,9 +2262,14 @@ static addr_modes_t secret_addressing_mode;
  *
  */
 
+void clear_TEMPORARY_ABSOLUTE_mode (void)
+{
+    secret_addressing_mode = false;
+}
+
 addr_modes_t get_addr_mode(void)
 {
-    if (secret_addressing_mode == TEMPORARY_ABSOLUTE_mode)
+    if (secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
     //if (IR.abs_mode)
@@ -2189,6 +2294,7 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+    secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
         SETF(rIR, I_ABS);
         SETF(rIR, I_NBAR);
@@ -2216,6 +2322,7 @@ void set_addr_mode(addr_modes_t mode)
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
     } else if (mode == TEMPORARY_ABSOLUTE_mode) {
         PPR.P = 1;
+        secret_addressing_mode = true;
         
 #if 0
         if (switches . degenerate_mode)
@@ -2228,7 +2335,6 @@ void set_addr_mode(addr_modes_t mode)
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         cancel_run(STOP_BUG);
     }
-    secret_addressing_mode = mode;
     //processorAddressingMode = mode;
 }
 
@@ -2294,6 +2400,11 @@ static struct
 
 // XXX when multiple cpus are supported, merge this into cpu_reset
 
+int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
+  {
+    return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+  }
+
 void cpu_reset_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
@@ -2342,7 +2453,7 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
     unitp -> u4 = 0;
     unitp -> u5 = cpu_unit_num;
 
-    init_scpage_map ();
+    setup_scpage_map ();
 
     return SCPE_OK;
   }
