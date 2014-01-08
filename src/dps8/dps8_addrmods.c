@@ -1315,40 +1315,65 @@ PRIVATE
 char *
 opDescSTR(DCDstruct *i)
 {
+    static char temp[256];
+    
+    strcpy(temp, "");
+    
     if (READOP(i))
     {
         switch (OPSIZE(i))
         {
             case 1:
-                return "readCY";
+                strcat (temp, "readCY");
+                break;
             case 2:
-                return "readCYpair2)";
+                strcat (temp, "readCYpair2)");
+                break;
             case 8:
-                return "readCYblock8";
+                strcat (temp, "readCYblock8");
+                break;
             case 16:
-                return "readCYblock16";
+                strcat (temp, "readCYblock16");
+                break;
         }
-        return "opDescSTR(): unhandled OPSIZE(R)";
     }
     if (WRITEOP(i))
     {
+        if (strlen(temp))
+            strcat(temp, "/");
+        
         switch (OPSIZE(i))
         {
             case 1:
-                return "writeCY";
+                strcat(temp, "writeCY");
+                break;
             case 2:
-                return "writeCYpair2)";
+                strcat(temp, "writeCYpair2)");
+                break;
             case 8:
-                return "writeCYblock8";
+                strcat(temp, "writeCYblock8");
+                break;
             case 16:
-                return "writeCYblock16";
+                strcat(temp, "writeCYblock16");
+                break;
         }
-        return "opDescSTR(): unhandled OPSIZE(W)";
     }
     if (TRANSOP(i))
-        return "prepareCA (TRA)";
+    {
+        if (strlen(temp))
+            strcat(temp, "/");
+
+        strcat(temp, "prepareCA (TRA)");
+    }
     
-    return "opDescSTR(\?\?\?)";
+    if (!READOP(i) && !WRITEOP(i) && !TRANSOP(i) && i->iwb->flags & PREPARE_CA)
+    {
+        if (strlen(temp))
+            strcat(temp, "/");
+        
+        strcat(temp, "prepareCA");
+    }
+    return temp;    //"opDescSTR(???)";
 }
 
 modificationContinuation _modCont, *modCont = &_modCont;
