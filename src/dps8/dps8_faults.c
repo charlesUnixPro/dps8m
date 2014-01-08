@@ -360,6 +360,11 @@ static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 static int g7Faults = 0;
 
+void clearFaultCycle (void)
+  {
+    bFaultCycle = false;
+  }
+
 /*
 
  Faults in groups 1 and 2 cause the processor to abort all functions immediately by entering a FAULT CYCLE.
@@ -444,7 +449,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
             // longjmp(jmpMain, JMP_RETRY);    // retry instruction
 #else
             // Double fault with interrupts pending
-            return;
+            //return;
 #endif
           }
         else
@@ -454,10 +459,12 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
           }
       }
     else
-    {
+      {
+        bFaultCycle = true;
+        bTroubleFaultCycle = false;
         // safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
-      cu_safe_store ();
-    }
+        cu_safe_store ();
+      }
     
     cpu . cycle = FAULT_cycle;
     longjmp (jmpMain, JMP_ENTRY);

@@ -1293,8 +1293,8 @@ t_stat iom_boot (int32 unit_num, DEVICE * dptr)
     boot_channel_unit . u5 = unit_num;
     sim_activate (& boot_channel_unit, sys_opts . iom_times . boot_time );
 
-    sim_printf ("Faking DIS\n");
-    cpu . cycle = DIS_cycle;
+    //sim_printf ("Faking DIS\n");
+    //cpu . cycle = DIS_cycle;
 
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;

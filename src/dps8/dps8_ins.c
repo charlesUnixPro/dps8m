@@ -4487,6 +4487,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
                 sim_printf ("entered DIS_cycle\n");
                 cpu.cycle = DIS_cycle;
+                longjmp (jmpMain, JMP_ENTRY);
                 break;
               }
             else

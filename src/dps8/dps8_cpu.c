@@ -1103,6 +1103,11 @@ t_stat sim_instr (void)
                      break;
                   }
 
+                if (cpu . cycle == INTERRUPT_EXEC_cycle)
+                  {
+                    cpu . cycle = INTERRUPT_EXEC2_cycle;
+                    break;
+                  }
                 cu_safe_restore ();
                 break;
 
@@ -1185,17 +1190,18 @@ t_stat sim_instr (void)
 
                 sim_printf ("fault cycle\n");
     
-// XXX There is problem with interrupts inside faults; scu_words will get
-// overwritten...
-#if 0
+// There is problem with interrupts inside faults; scu_words will get
+// overwritten... No; the interrupt handler will safe_restore
+
+                cu_safe_store ();
+
+#if 1
                 if (cpu . interrupt_flag)
                   {
                     cpu . cycle = INTERRUPT_cycle;
                     break;
                   }
 #endif
-
-                cu_safe_store ();
 
                 // Temporary absolute mode
                 set_addr_mode (TEMPORARY_ABSOLUTE_mode);
@@ -1263,6 +1269,7 @@ t_stat sim_instr (void)
                   {
                      instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
+                     clearFaultCycle ();
                      break;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
@@ -1270,8 +1277,18 @@ t_stat sim_instr (void)
                     cpu . cycle = FAULT_EXEC2_cycle;
                     break;
                   }
+                // Done with FAULT_EXEC2_cycle
                 // Restores cpu.cycle and addressing mode
                 cu_safe_restore ();
+                cpu . cycle = FETCH_cycle;
+                clearFaultCycle ();
+                // XXX This is not right. The case we are handling
+                // when an instruction faults during execution, the IC
+                // desn't get bumped. It may be that doFault needs to 
+                // return, rather then longjmp. This is a temporary hack
+                // since there all fault conditions where this should not
+                // happen... Also, it doesn't fix the proglem.
+                PPR.IC ++;
                 break;
               }
 

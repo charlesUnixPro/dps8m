@@ -2881,6 +2881,7 @@ struct dps8faults
 typedef struct dps8faults dps8faults;
 extern dps8faults _faults[];
 void check_events (void);
+void clearFaultCycle (void);
 
 /* dps8_ins.c */
 
