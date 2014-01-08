@@ -1894,7 +1894,7 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
-    secret_addressing_mode = true;
+    secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
         SETF(rIR, I_ABS);
         SETF(rIR, I_NBAR);
