@@ -1507,7 +1507,8 @@ RI_MOD:;
         }
     }
     
-    Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
+    Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
+    //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
     
     TPR.CA = GETHI(indword);
     rTAG = GET_TAG(indword);
@@ -1522,11 +1523,11 @@ RI_MOD2:;
         sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n", indword, TPR.CA, rTAG);
     }
     
-    if (operType == prepareCA)
-    {
-        CY = directOperand;
-        return;
-    }
+    //if (operType == prepareCA)
+    //{
+        //CY = directOperand;
+        //return;
+    //}
     goto startCA;
     
     //! Figure 6-5. Indirect Then Register Modification Flowchart
