@@ -1,0 +1,60 @@
+  option  Multics
+
+    name    Bug_B_Gone_2    "
+    
+    segdef  TRAvec2
+
+    segref	UtilsA, ioa 
+    segref  Bug_B_Gone_1, TRA1
+
+    "
+    " we'll store stuff on our stack frame ...
+    "
+    temp    saveX2      " for saving x2 for subroutine call(s)
+
+
+        even
+save2:      bss     ,2
+save2p:     bss     ,2
+
+L1:     bss     1
+L2:     bss     1
+
+
+
+        even
+LAQ:
+LA:     bss     1
+LQ:     bss     1
+
+
+        
+exit:   lprp2   save2p
+        rtcd    save2
+
+TRAvec2:
+    tra     TRATest_fail
+    tra     TRATest_pass
+
+TRATest_fail:
+    ldq     =987654321
+    stq     LQ
+
+    "tsp2    ioa
+    "acc     /TRA test 1 ... Q=^d... (fail)\r\n/
+    "nop     LQ
+
+    epp0    Bug_B_Gone_1$TRA1
+    tra     pr0|0   " Bug_B_Gone_1$TRA1
+
+TRATest_pass:
+    ldq     =-3823867239
+    stq     LQ
+
+    "tsp2    ioa
+    "acc     /TRA test 1 ... Q=^d... (pass)\r\n/
+    "nop     LQ
+
+    epp0    Bug_B_Gone_1$TRA1
+    tra     pr0|0   "Bug_B_Gone_1$TRARet2,n*
+
