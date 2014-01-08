@@ -6,10 +6,10 @@ de ppr.psr 0
 de ppr.p 1
 dpsinit segment table
 dpsinit SDWAM
-load ./Testappend0.oct segment 0 address  0
-load ./Testappend1.oct segment 1 address  1000
-load ./Testappend2.oct segment 2 address  2000
-load ./Testappend3.oct segment 3 address  3000
+load ./TestAppend0.oct segment 0 address  0
+load ./TestAppend1.oct segment 1 address  1000
+load ./TestAppend2.oct segment 2 address  2000
+load ./TestAppend3.oct segment 3 address  3000
 ;set debug stderr
 ;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
 ;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
