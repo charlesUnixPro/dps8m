@@ -1507,6 +1507,12 @@ RI_MOD:;
         }
     }
     
+    if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
+    {
+        Read(i, TPR.CA, &indword, DataRead, rTAG);
+        TPR.CA = GETHI(indword);
+        return;
+    }
     Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
     //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
     
