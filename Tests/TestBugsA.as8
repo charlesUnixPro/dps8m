@@ -5,6 +5,9 @@
     entry  _main_BBG_1      " 1st bug regression module ...
 
     segref	UtilsA, ioa 
+    
+    segref  Bug_B_Gone_2, TRAvec2
+    segdef  TRA1
 
     "
     " we'll store stuff on our stack frame ...
@@ -28,10 +31,12 @@ LQ:     bss     1
 _main_BBG_1:
     push
     
-    tsp2    ioa
-    acc     /BBG-1 ...\r\n/
+    "tsp2    ioa
+    "acc     /BBG-1 ...\r\n/
 
-    tsx2    ORSQTest    " ORSQ + R/M/W Test ...
+    "tsx2    ORSQTest    " ORSQ + R/M/W Test ...
+    
+    tsx2    TRAtest     " tra seg|0,x0 doesn't work in 20184
 
     return
 
@@ -97,6 +102,61 @@ ORSQTest:
     tsp2    ioa
     acc     /ORSQ bug >squished<\r\n/
 
+    ldx2    saveX2      " restore x2
+    tra     0,2         " ... and return
+
+"
+" to see if certain TRA work ...
+"
+
+TRAtest:
+    stx2    saveX2      " save return address
+
+    "tsp2    ioa
+    "acc     /TRA test ... trying 'tra seg|0,x0'...\r\n/
+
+    epp0    TRAvec      " &TRAvec => PR0
+    eax0    1
+
+    tra     pr0|0, x0
+
+TRAvec:
+    tra     TRATest_fail
+    tra     TRATest_pass
+
+TRATest_fail:
+    ldq     =1029384756
+    stq     LQ
+
+    "tsp2    ioa
+    "acc     /TRA test 0 ... Q=^d... (fail)\r\n/
+    "nop     LQ
+
+    tra     TRA0
+
+TRATest_pass:
+    ldq     =1726354
+    stq     LQ
+
+    "tsp2    ioa
+    "acc     /TRA test 0 ... Q=^d... (pass)\r\n/
+    "nop     LQ
+
+    tra     TRA0
+
+TRA0:
+
+    "
+    " If we get here TRA test 0 worked ...
+    "
+    
+    epp0    Bug_B_Gone_2$TRAvec2
+    eax0    1
+    tra     pr0|0, x0
+    
+    "dis
+
+TRA1:
     ldx2    saveX2      " restore x2
     tra     0,2         " ... and return
 

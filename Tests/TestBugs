@@ -9,6 +9,7 @@ dpsinit SDWAM
 
 load Play/TestBugs.oct segment 0 address 0
 load Play/TestBugsA.oct deferred
+load Play/TestBugsB.oct deferred
 
 load Play/UtilsA.oct deferred
 load Play/simh_operators.oct deferred
@@ -19,9 +20,10 @@ segments resolve
 segments load deferred
 segments lot snap
 
-;set debug stderr
+set debug stderr
 ;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
-;set cpu debug=trace;addrmod;appending;REGDUMPPR
+ set cpu debug=trace;addrmod;appending;REGDUMPPR
+;set cpu debug=trace
 
 g 
 q
