@@ -2869,11 +2869,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             
         /// TRANSFER INSTRUCTIONS
-        case 0713:  ///< call6
-            /// XXX not fully implemented
-            
-           // if (TPR.TRR > PPR.PRR)
-           //     return STOP_FAULT; // access violation fault (outward call)
+        case 0713:  ///< call6            
+            if (TPR.TRR > PPR.PRR)
+            {
+                acvFault(i, OCALL);
+                return CONT_FAULT; // access violation fault (outward call)
+            }
             if (TPR.TRR < PPR.PRR)
                 PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & 077777; // keep to 15-bits
             if (TPR.TRR == PPR.PRR)

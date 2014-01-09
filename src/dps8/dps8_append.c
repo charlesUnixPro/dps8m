@@ -681,7 +681,7 @@ static char *strACV(_fault_subtype acv)
 
 static word36 acvFaults = 0;   ///< pending ACV faults
 
-static void acvFault(DCDstruct *i, _fault_subtype acvfault)
+void acvFault(DCDstruct *i, _fault_subtype acvfault)
 {
     
     char temp[256];
@@ -1501,7 +1501,11 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     processorCycle = INDIRECT_WORD_FETCH;
     itxPair[0] = indword;
     
+    int safe = TPR.CA;
+    
     Read(i, TPR.CA + 1, &itxPair[1], DataRead, Tag);
+    
+    //TPR.CA = safe;
     
     if (apndTrace)
     {
