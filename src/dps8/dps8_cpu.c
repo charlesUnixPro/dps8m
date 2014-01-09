@@ -577,7 +577,7 @@ word36 XECD2; /*!< XED instr#2 */
 
 word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
-word18	ry;     /*!< address operand */
+//word18	ry;     /*!< address operand */
 word24	rY;     /*!< address operand */
 word8	rTAG;	/*!< instruction tag */
 
