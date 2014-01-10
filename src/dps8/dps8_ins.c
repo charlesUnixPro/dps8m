@@ -988,7 +988,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Yblock8[6] = SETHI(Yblock8[7], (word18)rE << 10);           // needs checking
             Yblock8[7] = ((rTR & 0777777777LL) << 9) | (rRALR & 07);    // needs checking
                     
-            WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
+            //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
             break;
 
@@ -2869,7 +2869,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             
         /// TRANSFER INSTRUCTIONS
-        case 0713:  ///< call6            
+        case 0713:  ///< call6
+            
             if (TPR.TRR > PPR.PRR)
             {
                 acvFault(i, OCALL);
@@ -3477,7 +3478,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 Yblock16[2 * n + 1] |= (word36) PR[n].BITNO << 9;
             }
             
-            WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
+            //WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
             break;
             
         case 0250:  ///< spri0
@@ -5193,7 +5194,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 Yblock8[n] = arx;
             }
             // XXX this will eventually be done automagically.....
-            WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
+            //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
             break;
             

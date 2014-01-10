@@ -192,7 +192,7 @@ struct opCode NonEISopcodes[01000] = {
     {"spbp1", PREPARE_CA | STORE_YPAIR | PRIV_INS | NO_RPT, NO_DDCSS,  0},
     {"spri2", PREPARE_CA | STORE_YPAIR | PRIV_INS | NO_RPT, NO_DDCSS,  0},
     {"spbp3", PREPARE_CA | STORE_YPAIR | PRIV_INS | NO_RPT, NO_DDCSS,  0},
-    {"spri", PREPARE_CA | STORE_YPAIR | PRIV_INS | NO_RPT, NO_DDCSS,  0},
+    {"spri", PREPARE_CA | STORE_YBLOCK16 | PRIV_INS | NO_RPT, NO_DDCSS,  0},
     {"orsa", READ_OPERAND | STORE_OPERAND | NO_RPL, NO_DDCSS, 0},
     {"orsq", READ_OPERAND | STORE_OPERAND | NO_RPL, NO_DDCSS, 0},
     {}, //{"lsdp", PREPARE_CA | READ_YBLOCK16, 0},    // not available on a dps8m
