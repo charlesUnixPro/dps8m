@@ -1810,21 +1810,33 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
      * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
      * and the execution ring is equal to zero.
      *
+     * PPR.P A flag controlling execution of privileged instructions.
+     *
+     * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
      */
     
     int is_priv_mode(void)
     {
         // TODO: fix this when time permits
         
+        // something has already set .P
+        if (PPR.P)
+            return 1;
+        
         switch (get_addr_mode())
         {
             case ABSOLUTE_mode:
+                PPR.P = 1;
                 return 1;
+            
             case APPEND_mode:
                 // XXX This is probably too simplistic, but it's a start
                 
                 if (SDW0.P && PPR.PRR == 0)
+                {
+                    PPR.P = 1;
                     return 1;
+                }
                 break;
             default:
                 break;
