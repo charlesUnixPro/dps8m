@@ -359,7 +359,7 @@ extern word36 XECD2; /*!< XED instr#2 */
 #define rIR (cu.IR)
 extern word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
-extern word18	ry;     /*!< address operand */
+//extern word18	ry;     /*!< address operand */
 extern word24	rY;     /*!< address operand */
 extern word8	rTAG;	/*!< instruction tag */
 

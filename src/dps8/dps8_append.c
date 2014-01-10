@@ -323,7 +323,7 @@ static _sdw0* fetchPSDW(word15 segno)
     
     word36 SDWeven, SDWodd;
     
-    core_read2(p->ADDR + y1, &SDWeven, &SDWodd);
+    core_read2((p->ADDR << 6) + y1, &SDWeven, &SDWodd);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -547,10 +547,11 @@ static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
     
     PTW0.ADDR = GETHI(PTWx2);
     PTW0.U = TSTBIT(PTWx2, 9);
-    PTW0.M = TSTBIT(PTW2, 6);
-    PTW0.F = TSTBIT(PTW2,2);
+    PTW0.M = TSTBIT(PTWx2, 6);
+    PTW0.F = TSTBIT(PTWx2, 2);
     PTW0.FC = PTWx2 & 3;
     
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
     return &PTW0;
 }
 
@@ -865,7 +866,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
             // initiate a directed fault
             doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
             // XXX what if they ignore the fault? Can it be ignored?
@@ -1117,7 +1118,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTWF0.F");
         
@@ -1331,7 +1332,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F != 0");
         // XXX what if they ignore the fault? Can it be ignored?
@@ -1674,7 +1675,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
         
@@ -1907,7 +1908,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
         

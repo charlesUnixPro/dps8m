@@ -462,7 +462,7 @@ t_stat executeInstruction(DCDstruct *ci)
     addToTheMatrix (opcode, opcodeX, a, tag);
 
     TPR.CA = ci->address;                 // address from opcode
-    ry = ci->address;                     ///< 18-bit address field from instruction
+    //ry = ci->address;                     ///< 18-bit address field from instruction
     rY = ci->address;
     
     ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
