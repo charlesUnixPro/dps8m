@@ -1423,6 +1423,7 @@ t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessTy
  -- Olin
 
  */
+#if NO_LONGER_NEEDED
 t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
@@ -1445,6 +1446,7 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
     
     return SCPE_OK;
 }
+#endif
 
 //
 // read N words in a non-aligned fashion for EIS
@@ -1463,6 +1465,7 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     return SCPE_OK;
 }
 
+#ifdef NO_LONGER_NEEDED
 t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
@@ -1484,6 +1487,7 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
     
     return SCPE_OK;
 }
+#endif
 
 int OPSIZE(DCDstruct *i)
 {
