@@ -487,7 +487,7 @@ t_stat executeInstruction(DCDstruct *ci)
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((iwb->flags & PRIV_INS) && !is_priv_mode())
-        doFault(ci, illproc_fault, 0, "Attempted execution of priveledged instruction.");
+        doFault(ci, illproc_fault, 0, "Attempted execution of privileged instruction.");
     
     // check for illegal addressing mode(s) ...
     
