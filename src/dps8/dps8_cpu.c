@@ -1823,6 +1823,9 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
             case APPEND_mode:
                 // XXX This is probably too simplistic, but it's a start
                 
+                if (switches . super_user)
+                    return 1;
+
                 if (SDW0.P && PPR.PRR == 0)
                     return 1;
                 break;
@@ -2095,6 +2098,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Steady clock:             %01o(8)\n", switches . steady_clock);
     sim_printf("Degenerate mode:          %01o(8)\n", switches . degenerate_mode);
     sim_printf("Append after:             %01o(8)\n", switches . append_after);
+    sim_printf("Super user:               %01o(8)\n", switches . super_user);
 
     return SCPE_OK;
 }
@@ -2120,6 +2124,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           steadyclock = on|off
 //           degenerate_mode = n // deprecated
 //           append_after = n
+//           super_user = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2208,6 +2213,7 @@ static config_list_t cpu_config_list [] =
     /* 16 */ { "steady_clock", 0, 1, cfg_on_off },
     /* 17 */ { "degenerate_mode", 0, 1, cfg_on_off },
     /* 18 */ { "append_after", 0, 1, cfg_on_off },
+    /* 19 */ { "super_user", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2314,6 +2320,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 18: // APPEND_AFTER
               switches . append_after = v;
+              break;
+
+            case 19: // SUPER_USER
+              switches . super_user = v;
               break;
 
             default:
