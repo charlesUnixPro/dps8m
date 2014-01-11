@@ -2161,6 +2161,7 @@ typedef struct {
     uint steady_clock; // If non-zero the clock is tied to the cycle counter
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after; // 
+    uint super_user; // 
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU

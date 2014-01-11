@@ -913,7 +913,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1164,7 +1165,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1385,7 +1387,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_write(finalAddress, writeData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1721,7 +1724,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1954,7 +1958,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_write(finalAddress, writeData);  // I think now is the time to do it ...
     if (apndTrace)
