@@ -21,7 +21,7 @@ static bool directOperandFlag = false;
 static word36 directOperand = 0;
 
 
-bool adrTrace = false;   ///< when true do address modifications traceing
+bool adrTrace = false;   ///< when true do address modifications tracing
 
 static char *strCAFoper(eCAFoper o)
 {
@@ -1532,12 +1532,23 @@ RI_MOD:;
         }
     }
     
+    if (switches . epp_hack)
     if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
     {
-        Read(i, TPR.CA, &indword, DataRead, rTAG);
-        TPR.CA = GETHI(indword);
+        // Load registers according to what EPP expects
+        word36 itxPair[2];
+        // Gah. Read() has the side effect of setting TPR.CA
+        word18 saveCA = TPR.CA;
+        Read(i, saveCA, &itxPair[0], DataRead, rTAG);
+        Read(i, saveCA+1, &itxPair[1], DataRead, rTAG);
+        TPR.CA = saveCA;
+        TPR.TRR = GET_ITS_RN(itxPair);
+        TPR.TSR = GET_ITS_SEGNO(itxPair);
+        TPR.CA = GET_ITS_WORDNO(itxPair);
+        TPR.TBR = GET_ITS_BITNO(itxPair);
         return;
     }
+
     Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
     //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
     
