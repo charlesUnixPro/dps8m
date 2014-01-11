@@ -98,6 +98,9 @@ void doComputedAddressFormation(DCDstruct *i, eCAFoper operType) // What about w
     word18 tmp18;
     
     directOperandFlag = false;
+    // XXX These may need to be saved across restarts
+    int prevTm = -1;
+    word18 indwordAddr;
     //TPR.CA = address;   // address from opcode
     //rY = address;
     
@@ -218,10 +221,19 @@ RI_MOD:;
     word36 indword;
     
     processorCycle = INDIRECT_WORD_FETCH;
-    Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
-    
-    TPR.CA = GETHI(indword);
-    rTAG = GET_TAG(indword);
+    if (switches . epp_hack)
+    {
+        Read(i, TPR.CA, &indword, DataRead, rTAG); //TM_RI);
+        indwordAddr = TPR.CA;
+        TPR.CA = GETHI(indword);
+        prevTm = Tm;
+        rTAG = GET_TAG(indword);
+    } else {
+        Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
+
+        TPR.CA = GETHI(indword);
+        rTAG = GET_TAG(indword);
+    }
     
     rY = TPR.CA;
 #ifndef QUIET_UNUSED
@@ -416,17 +428,92 @@ IT_MOD:;
         //     43          its      Indirect to segment
         //
 
-        case SPEC_ITP:
         case SPEC_ITS:
-            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+            if (switches . epp_hack)
+            {
+                sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITS\n");
+                if ((prevTm == RI_MOD || prevTm == IR_MOD) &&
+                    ((indwordAddr & 1) == 0)) // addr must have been even
+                {
+                    word36 itxPair [2];
+                    itxPair[0] = indword;
+                    int safe = TPR.CA;
+                    // XXX Unsure about Tag value; I think it's ignored for DataRead
+                    Read(i, indwordAddr + 1, &itxPair[1], DataRead, 0);
+                    TPR.CA = safe;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITS %012llo %012llo\n", itxPair [0], itxPair [1]);
+                    TPR.TSR = GET_ITS_SEGNO(itxPair);
+                    TPR.TRR = max3(GET_ITS_RN(itxPair), SDW->R1, TPR.TRR);
+                    TPR.TBR = GET_ITS_BITNO(itxPair);
+                    word6 itsMod = GET_ITS_MOD(itxPair);
+                    if (prevTm == TM_IR)
+                        TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(cu.CT_HOLD));
+                    else if (prevTm == TM_RI && 
+                             (itsMod == TM_IR || itsMod == TM_IR))
+                        TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(itsMod));
+                    else
+                        // XXX AL39: if (A) foo else if (B) bar else doesn't say...
+                        TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(itsMod));
+                    rY = TPR.CA;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITS TPR.CA %06o\n", TPR.CA);
+                    // rTAG = GET_ITS_MOD(itxPair);
+                    return;
+                }
+            } else {
+                //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
 
-            if (doITSITP(i, indword, rTAG))
-                goto startCA;
-            
+                if (doITSITP(i, indword, rTAG))
+                  goto startCA;
+            }
+
             /// XXX need to put some tests in here...
             ///< XXX illegal procedure, illegal modifier, fault
             doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+            break;
+        
+        case SPEC_ITP:
+            if (switches . epp_hack)
+            {
+                sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITP\n");
+                if ((prevTm == TM_RI || prevTm == TM_IR) &&
+                    ((indwordAddr & 1) == 0)) // addr must have been even
+                {
+                    word36 itxPair [2];
+                    itxPair[0] = indword;
+                    int safe = TPR.CA;
+                    // XXX Unsure about Tag value; I think it's ignored for DataRead
+                    Read(i, indwordAddr + 1, &itxPair[1], DataRead, 0);
+                    TPR.CA = safe;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITP %012llo %012llo\n", itxPair [0], itxPair [1]);
+                    word3 n = GET_ITP_PRNUM(itxPair);
+                    TPR.TSR = PR[n].SNR;
+                    TPR.TRR = max3(PR[n].RNR, SDW->R1, TPR.TRR);
+                    TPR.TBR = GET_ITP_BITNO(itxPair);
+                    word6 itpMod = GET_ITP_MOD(itxPair);
+                    if (prevTm == TM_IR)
+                        TPR.CA = GET_ITP_WORDNO(itxPair) + getCr(GET_TD(cu.CT_HOLD));
+                    else if (prevTm == TM_RI && 
+                             (itpMod == TM_IR || itpMod == TM_IR))
+                        TPR.CA = GET_ITP_WORDNO(itxPair) + getCr(GET_TD(itpMod));
+                    else
+                        // XXX AL39: if (A) foo else if (B) bar else doesn't say...
+                        TPR.CA = GET_ITP_WORDNO(itxPair);
+                    rY = TPR.CA;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITP TPR.CA %06o\n", TPR.CA);
+        
+                    //rTAG = GET_ITP_MOD(itxPair);
+                    return;
+                }
+            } else {
+                //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
 
+                if (doITSITP(i, indword, rTAG))
+                  goto startCA;
+            }
+        
+            /// XXX need to put some tests in here...
+            ///< XXX illegal procedure, illegal modifier, fault
+            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
             break;
             
 //        case 1:
@@ -1409,7 +1496,10 @@ void doPreliminaryComputedAddressFormation(DCDstruct *i)    //, eCAFoper operTyp
     word36 indword;
 
     directOperandFlag = false;
-    
+    // XXX These may need to be saved across restarts
+    int prevTm = -1;
+    word18 indwordAddr;
+
     modCont->bActive = false;   // assume no continuation necessary
     
     if (i->iwb->flags & NO_TAG) // for instructions line STCA/STCQ
@@ -1532,6 +1622,7 @@ RI_MOD:;
         }
     }
     
+#if 0
     if (switches . epp_hack)
     if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
     {
@@ -1548,12 +1639,23 @@ RI_MOD:;
         TPR.TBR = GET_ITS_BITNO(itxPair);
         return;
     }
+#endif
 
-    Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
-    //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
-    
-    TPR.CA = GETHI(indword);
-    rTAG = GET_TAG(indword);
+    if (switches . epp_hack)
+    {
+        // XXX CAC I am really unsure if this should be DataRead or OperandRead
+        Read(i, TPR.CA, &indword, DataRead, rTAG); //TM_RI);
+        indwordAddr = TPR.CA;
+        TPR.CA = GETHI(indword);
+        prevTm = Tm;
+        rTAG = GET_TAG(indword);
+    } else {
+        Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
+        //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
+
+        TPR.CA = GETHI(indword);
+        rTAG = GET_TAG(indword);
+    }
     
     rY = TPR.CA;
     
@@ -1588,9 +1690,19 @@ IR_MOD_1:
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: fetching indirect word from %06o\n", TPR.CA);
     }
     
-    Read(i, TPR.CA, &indword, IndirectRead, TM_IR);
+    if (switches . epp_hack)
+    {
+        Read(i, TPR.CA, &indword, DataRead, rTAG); //TM_RI);
+        indwordAddr = TPR.CA;
+        TPR.CA = GETHI(indword);
+        prevTm = Tm;
+        rTAG = GET_TAG(indword);
+    } else {
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IR);
+
+        TPR.CA = GETHI(indword);
+    }
     
-    TPR.CA = GETHI(indword);
     rY = TPR.CA;
     
     Td = GET_TAG(GET_TD(indword));
@@ -1723,17 +1835,94 @@ IT_MOD:;
     switch (Td)
     {
         // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
-        case SPEC_ITP:
         case SPEC_ITS:
-            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+            if (switches . epp_hack)
+            {
+                sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITS\n");
+                //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+                if ((prevTm == TM_RI || prevTm == TM_IR) &&
+                    ((indwordAddr & 1) == 0)) // addr must have been even
+                {
+                    word36 itxPair [2];
+                    itxPair[0] = indword;
+                    int safe = TPR.CA;
+                    // XXX Unsure about Tag value; I think it's ignored for DataRead
+                    Read(i, indwordAddr + 1, &itxPair[1], DataRead, 0);
+                    TPR.CA = safe;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITS %012llo %012llo\n", itxPair [0], itxPair [1]);
+                    TPR.TSR = GET_ITS_SEGNO(itxPair);
+                    TPR.TRR = max3(GET_ITS_RN(itxPair), SDW->R1, TPR.TRR);
+                    TPR.TBR = GET_ITS_BITNO(itxPair);
+                    word6 itsMod = GET_ITS_MOD(itxPair);
+                    if (prevTm == TM_IR)
+                        TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(cu.CT_HOLD));
+                    else if (prevTm == TM_RI && 
+                             (itsMod == TM_IR || itsMod == TM_IR))
+                        TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(itsMod));
+                    else
+                        // XXX AL39: if (A) foo else if (B) bar else doesn't say...
+                        TPR.CA = GET_ITS_WORDNO(itxPair);
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITS TPR.CA %06o\n", TPR.CA);
+                    rY = TPR.CA;
+                    // rTAG = GET_ITS_MOD(itxPair);
+                    return;
+                }
+            } else {
+                //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+
+                if (doITSITP(i, indword, rTAG))
+                  goto startCA;
+            }
         
-            if (doITSITP(i, indword, rTAG))
-                goto startCA;
+            ///< XXX illegal procedure, illegal modifier, fault
+            /// XXX need to put some tests in here...
+            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+            break;
+        
+        case SPEC_ITP:
+            if (switches . epp_hack)
+            {
+                sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITP\n");
+                if ((prevTm == TM_RI || prevTm == TM_IR) &&
+                    ((indwordAddr & 1) == 0)) // addr must have been even
+                {
+                    word36 itxPair [2];
+                    itxPair[0] = indword;
+                    int safe = TPR.CA;
+                    // XXX Unsure about Tag value; I think it's ignored for DataRead
+                    Read(i, indwordAddr + 1, &itxPair[1], DataRead, 0);
+                    TPR.CA = safe;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITP %012llo %012llo\n", itxPair [0], itxPair [1]);
+                    word3 n = GET_ITP_PRNUM(itxPair);
+                    TPR.TSR = PR[n].SNR;
+                    TPR.TRR = max3(PR[n].RNR, SDW->R1, TPR.TRR);
+                    TPR.TBR = GET_ITP_BITNO(itxPair);
+                    word6 itpMod = GET_ITP_MOD(itxPair);
+                    if (prevTm == TM_IR)
+                        TPR.CA = GET_ITP_WORDNO(itxPair) + getCr(GET_TD(cu.CT_HOLD));
+                    else if (prevTm == TM_RI && 
+                             (itpMod == TM_IR || itpMod == TM_IR))
+                        TPR.CA = GET_ITP_WORDNO(itxPair) + getCr(GET_TD(itpMod));
+                    else
+                        // XXX AL39: if (A) foo else if (B) bar else doesn't say...
+                        TPR.CA = GET_ITP_WORDNO(itxPair);
+                    rY = TPR.CA;
+                    sim_debug (DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation: SPEC_ITP TPR.CA %06o\n", TPR.CA);
+        
+                    //rTAG = GET_ITP_MOD(itxPair);
+                    return;
+                }
+            } else {
+                //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+
+                if (doITSITP(i, indword, rTAG))
+                  goto startCA;
+            }
         
             ///< XXX illegal procedure, illegal modifier, fault
             doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
             break;
-        
+
 //      case 1:
         case 2:
 //       case 3:
