@@ -1216,8 +1216,8 @@ APPEND_MODE:;
                     doAppendCycle(i, acctyp, Tag, -1, dat);
                 else
                     core_read(addr, dat);
-                if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                    goto APPEND_MODE;
+                //if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
+                //    goto APPEND_MODE;
                 
 //#endif
                 //doAppendCycle(i, acctyp, Tag, -1, dat);

@@ -1506,7 +1506,7 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     processorCycle = INDIRECT_WORD_FETCH;
     itxPair[0] = indword;
     
-    int safe = TPR.CA;
+    //int safe = TPR.CA;
     
     Read(i, TPR.CA + 1, &itxPair[1], DataRead, Tag);
     

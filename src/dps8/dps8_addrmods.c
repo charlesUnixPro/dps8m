@@ -416,22 +416,22 @@ IT_MOD:;
         //     43          its      Indirect to segment
         //
 
-        case SPEC_ITP:
-        case SPEC_ITS:
-            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
-
-            if (doITSITP(i, indword, rTAG))
-                goto startCA;
-            
-            /// XXX need to put some tests in here...
-            ///< XXX illegal procedure, illegal modifier, fault
-            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+//        case SPEC_ITP:
+//        case SPEC_ITS:
+//            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+//
+//            if (doITSITP(i, indword, rTAG))
+//                goto startCA;
+//            
+//            /// XXX need to put some tests in here...
+//            ///< XXX illegal procedure, illegal modifier, fault
+//            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
 
             break;
             
-//        case 1:
+        case 1:
         case 2:
-//        case 3:
+        case 3:
             ///< XXX illegal procedure, illegal modifier, fault
             
             if (adrTrace)
@@ -1532,12 +1532,31 @@ RI_MOD:;
         }
     }
     
-    if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
-    {
-        Read(i, TPR.CA, &indword, DataRead, rTAG);
-        TPR.CA = GETHI(indword);
-        return;
-    }
+//    if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
+//    {
+//        Read(i, TPR.CA, &indword, DataRead, rTAG);
+//        TPR.CA = GETHI(indword);
+//        
+//        int iTAG = GET_TAG(indword);
+//        if (iTAG == 043 || iTAG == 041)
+//            doAppendCycle(i, IndirectRead, iTAG, 0, Ypair);
+///*
+//        // Load registers according to what EPP expects
+//        word36 itxPair[2];
+//        Read(i, TPR.CA, &itxPair[0], DataRead, rTAG);
+//        Read(i, TPR.CA+1, &itxPair[1], DataRead, rTAG);
+//        
+//        TPR.CA -= 1;
+//        
+//        TPR.TRR = GET_ITS_RN(itxPair);
+//        TPR.TSR = GET_ITS_SEGNO(itxPair);
+//        TPR.CA = GET_ITS_WORDNO(itxPair);
+//        TPR.TBR = GET_ITS_BITNO(itxPair);
+//*/
+//        return;
+//    }
+    
+    
     Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
     //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
     
@@ -1723,9 +1742,9 @@ IT_MOD:;
             doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
             break;
         
-//      case 1:
+        //case 1:
         case 2:
-//       case 3:
+        //case 3:
             ///< XXX illegal procedure, illegal modifier, fault
         
             if (adrTrace)
