@@ -2162,6 +2162,7 @@ typedef struct {
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after; // 
     uint super_user; // 
+    uint epp_hack; // 
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU

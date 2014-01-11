@@ -2111,6 +2111,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Degenerate mode:          %01o(8)\n", switches . degenerate_mode);
     sim_printf("Append after:             %01o(8)\n", switches . append_after);
     sim_printf("Super user:               %01o(8)\n", switches . super_user);
+    sim_printf("EPP hack:                 %01o(8)\n", switches . epp_hack);
 
     return SCPE_OK;
 }
@@ -2137,6 +2138,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           degenerate_mode = n // deprecated
 //           append_after = n
 //           super_user = n
+//           epp_hack = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2226,6 +2228,7 @@ static config_list_t cpu_config_list [] =
     /* 17 */ { "degenerate_mode", 0, 1, cfg_on_off },
     /* 18 */ { "append_after", 0, 1, cfg_on_off },
     /* 19 */ { "super_user", 0, 1, cfg_on_off },
+    /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2336,6 +2339,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 19: // SUPER_USER
               switches . super_user = v;
+              break;
+
+            case 20: // EPP_HACK
+              switches . epp_hack = v;
               break;
 
             default:

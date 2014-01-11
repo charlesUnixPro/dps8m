@@ -21,7 +21,7 @@ static bool directOperandFlag = false;
 static word36 directOperand = 0;
 
 
-bool adrTrace = false;   ///< when true do address modifications traceing
+bool adrTrace = false;   ///< when true do address modifications tracing
 
 static char *strCAFoper(eCAFoper o)
 {
