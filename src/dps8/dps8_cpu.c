@@ -889,6 +889,8 @@ bool sample_interrupts (void)
     return events . int_pending;
   }
 
+t_stat doIEFPLoop();
+
 // This is part of the simh interface
 t_stat sim_instr (void)
 {
@@ -928,6 +930,8 @@ t_stat sim_instr (void)
             return stop_reason;
 
     }
+    
+    
 //    if (val)
 //    {
 //        // if we're here, we're returning from a fault etc and we want to retry an instruction
@@ -950,6 +954,8 @@ jmpRetry:;
             reason = STOP_BKPT;                        /* stop simulation */
             break;
         }
+
+        //reason = doIEFPLoop();
         
         if (cpu . cycle == DIS_cycle)
           {
@@ -1172,7 +1178,7 @@ t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType a
     return SCPE_OK;
 }
 
-
+#if NO_LONGER_USED
 /*!
  * the Read, Write functions access main memory, but optionally calls the appending unit to
  * determine the actual memory address
@@ -1447,6 +1453,7 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
     return SCPE_OK;
 }
 #endif
+#endif  // not used
 
 //
 // read N words in a non-aligned fashion for EIS
@@ -1502,7 +1509,7 @@ int OPSIZE(DCDstruct *i)
     return 0;
 }
 
-t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
 {
 #if 0
         if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1513,32 +1520,32 @@ t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
     switch (OPSIZE(i))
     {
         case 1:
-            Read(i, addr, &CY, acctyp, Tag);
+            Read(i, addr, &CY, acctyp, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Read(i, addr + 0, Ypair + 0, acctyp, Tag);
-            Read(i, addr + 1, Ypair + 1, acctyp, Tag);
+            Read(i, addr + 0, Ypair + 0, acctyp, b29);
+            Read(i, addr + 1, Ypair + 1, acctyp, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Read(i, addr + j, Yblock8 + j, acctyp, Tag);
+                Read(i, addr + j, Yblock8 + j, acctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Read(i, addr + j, Yblock16 + j, acctyp, Tag);
+                Read(i, addr + j, Yblock16 + j, acctyp, b29);
             
             break;
     }
-    TPR.CA = addr;  // restore address
+    //TPR.CA = addr;  // restore address
     
     return SCPE_OK;
 
 }
 
-t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1549,25 +1556,25 @@ t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
     switch (OPSIZE(i))
     {
         case 1:
-            Write(i, addr, CY, acctyp, Tag);
+            Write(i, addr, CY, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Write(i, addr + 0, Ypair[0], acctyp, Tag);
-            Write(i, addr + 1, Ypair[1], acctyp, Tag);
+            Write(i, addr + 0, Ypair[0], b29);
+            Write(i, addr + 1, Ypair[1], b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Write(i, addr + j, Yblock8[j], acctyp, Tag);
+                Write(i, addr + j, Yblock8[j], b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Write(i, addr + j, Yblock16[j], acctyp, Tag);
+                Write(i, addr + j, Yblock16[j], b29);
             break;
     }
-    TPR.CA = addr;  // restore address
+    //TPR.CA = addr;  // restore address
     
     return SCPE_OK;
     
@@ -1729,6 +1736,7 @@ void freeDCDstruct(DCDstruct *p)
  * instruction fetcher ...
  * fetch + decode instruction at 18-bit address 'addr'
  */
+#ifdef OLD_WAY
 DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at address
 {
     DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
@@ -1756,6 +1764,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
     
     return decodeInstruction(p->IWB, p);
 }
+#endif
 
 /*
  * instruction decoder .....
@@ -1791,9 +1800,6 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
         {
             memset(p->e, 0, sizeof(EISstruct)); // clear out e
             p->e->op0 = p->IWB;
-            // XXX: for XEC/XED/faults, this should trap?? I think -MCW
-            for(int n = 0 ; n < p->iwb->ndes; n += 1)
-                Read(p, rIC + 1 + n, &p->e->op[n], OperandRead, 0); // I think.
         }
     }
     return p;

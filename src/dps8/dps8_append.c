@@ -74,10 +74,7 @@ void doPtrReg(DCDstruct *i)
     //address = TPR.CA;
     //rY = TPR.CA;     //address;    // is this right?
     
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }
 
 /**
@@ -711,6 +708,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault)
  *
  */
 
+#if OLD_WAY
 /**
  * sequential instruction fetch .....
  */
@@ -2045,3 +2043,576 @@ word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tag, word3
     didITSITP = false;
     return fa;
 }
+#endif
+
+
+word24 doAppendDataRead(DCDstruct *i, word18 address)
+{
+    int acvFaults = 0;
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    
+    if (i->a || didITSITP)    // indirect or ITS/ITP just setup
+    {
+        if (apndTrace && didITSITP)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        if (apndTrace && GET_A(i->IWB))
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        if (apndTrace)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry): Data Read detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        goto A;
+    }
+    
+    TPR.TRR = PPR.PRR;
+    TPR.TSR = PPR.PSR;
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    
+A:;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A)\n");
+    
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
+    {
+        // No
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+        
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A):DSBR.U=%o\n", DSBR.U);
+        
+        if (DSBR.U == 0)
+        {
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+                // XXX initiate a directed fault
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+            
+            if (!PTW0.U)
+            modifyDSPTW(TPR.TSR);
+            
+            fetchPSDW(TPR.TSR);
+        }
+        else
+        fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        
+        if (SDW0.F == 0)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(A):SDW0.F == 0! Initiating directed fault\n");
+            // initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+            return SCPE_UNK;
+        }
+        else
+            // load SDWAM .....
+            loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+#ifndef QUIET_UNUSED
+B:;
+#endif
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(B)\n");
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+        // Set fault ACV0 = IRO
+        acvFault(i, ACV0);
+    
+    // No
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+        //Set fault ACV3 = ORB
+        acvFault(i, ACV3);
+    
+    if (SDW->R)
+        goto G;
+    
+    //C(PPR.PSR) = C(TPR.TSR)?
+    if (PPR.PSR != TPR.TSR)
+        //Set fault ACV4 = R-OFF
+        acvFault(i, ACV4);
+    
+    goto G;
+    
+    
+G:;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(G)\n");
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((address >> 4) & 037777) > SDW->BOUND)
+        acvFault(i, ACV15);
+    
+    if (acvFaults)
+        // Initiate an access violation fault
+        doFault(i, acc_viol_fault, 0, "acvFault");
+        // XXX what if they ignore the fault? Can it be ignored?
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+        goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, address))
+    {
+        fetchPTW(SDW, address);
+        
+        if (!PTW0.F)
+            // initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTWF0.F");
+        
+        loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(H): SDW->ADDR=%08o address=%06o \n", SDW->ADDR, address);
+    
+    finalAddress = SDW->ADDR + address;
+    
+    //        core_read(finalAddress, readData);  // I think now is the time to do it ...
+    //
+    //        if (apndTrace)
+    //        {
+    //            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    //        }
+    return finalAddress;
+    
+I:;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I)\n");
+    
+    // final address paged
+    
+    word24 y2 = address % 1024;
+    
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
+    
+    //        core_read(finalAddress, readData);  // I think now is the time to do it ...
+    //        if (apndTrace)
+    //        {
+    //            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    //        }
+    return finalAddress;
+}
+
+/**
+ * sequential instruction fetch .....
+ */
+word24
+doAppendInstructionFetch(DCDstruct *i, word18 address)
+{
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    
+    // either sequential instruction fetch ...
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(Entry 1) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(Entry 2) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    
+    TPR.TRR = PPR.PRR;
+    TPR.TSR = PPR.PSR;
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(Entry 3) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
+    {
+        // No
+        
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(A):DSBR.U=%o\n", DSBR.U);
+        
+        if (DSBR.U == 0)
+        {
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+                // XXX initiate a directed fault
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "!PTW0.F");
+                // XXX what if they ignore the fault? Can it be ignored?
+            
+            if (!PTW0.U)
+                modifyDSPTW(TPR.TSR);
+            
+            fetchPSDW(TPR.TSR);
+        }
+        else
+            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        
+        if (SDW0.F == 0)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(A):SDW0.F == 0! Initiating directed fault\n");
+            
+            // XXX initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+        }
+        else
+            // load SDWAM .....
+            loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(B)\n");
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+        // Set fault ACV0 = IRO
+        acvFault(i, ACV0);
+    
+#ifndef QUIET_UNUSED
+F:; ///< transfer or instruction fetch
+#endif
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(F): instruction fetch\n");
+    
+    // C(TPR.TRR) < C(SDW .R1)?
+    if (TPR.TRR < SDW->R1)
+        acvFault(i, ACV1);
+    
+    //C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+        acvFault(i, ACV1);
+    
+    //SDW .E set ON?
+    if (!SDW->E)
+        acvFault(i, ACV2);
+    
+    //C(PPR.PRR) = C(TPR.TRR)?
+    if (PPR.PRR == TPR.TRR)
+        goto D;
+    
+    acvFault(i, ACV12);
+    
+D:;
+
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(D)\n");
+    
+    // instruction fetch
+    if (rRALR == 0)
+        goto G;
+    
+    // C(PPR.PRR) < RALR?
+    if (!(PPR.PRR < rRALR))
+        acvFault(i, ACV13);
+    
+    goto G;
+G:;
+    if (apndTrace)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(G)\n");
+    }
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((address >> 4) & 037777) > SDW->BOUND)
+        acvFault(i, ACV15);
+    
+    if (acvFaults)
+        // Initiate an access violation fault
+        doFault(i, acc_viol_fault, 0, "acvFaults");
+        // XXX what if they ignore the fault? Can it be ignored?
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+        goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA))
+    {
+        fetchPTW(SDW, address);
+        if (!PTW0.F)
+            // initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+        // XXX what if they ignore the fault? Can it be ignored?
+        
+        loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
+    
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    
+    finalAddress = SDW->ADDR + address;
+    
+//    core_read(finalAddress, readData);  // I think now is the time to do it ...
+//    if (apndTrace)
+//    {
+//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(H:FANP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+//    }
+    goto L;
+    
+I:;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(I)\n");
+    
+    // final address paged
+    
+    word24 y2 = address % 1024;
+    
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
+    
+    //core_read(finalAddress, readData);  // I think now is the time to do it ...
+    //if (apndTrace)
+    //{
+    //  sim_debug(DBG_APPENDING, &cpu_dev, "doAppendInstructionFetch(I:FAP) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *readData);
+    //}
+    goto L;
+    
+L:;
+    PPR.PSR = TPR.TSR;
+    
+#ifndef QUIET_UNUSED
+M:;
+#endif
+   sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M)\n");
+    
+    //C(TPR.TRR)= 0?
+    if (TPR.TRR == 0)
+        //C(SDW.P) → C(PPR.P)
+        PPR.P = SDW->P;
+    else
+        PPR.P = 0;
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M): Exit\n");
+    
+    return finalAddress;
+}
+
+
+word24 doAppendRead(DCDstruct *i, MemoryAccessType accessType, word18 address)
+{
+   sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry): accessType=%s IWB=%012llo A=%d\n", strAccessType(accessType), i->IWB, GET_A(i->IWB));
+    
+   word24 fa = 0;
+   switch (accessType)
+   {
+       case InstructionFetch:
+            fa = doAppendInstructionFetch(i, address);
+            break;
+       case IndirectRead:
+            //fa = doAppendIndirectRead(i, readData, Tag);
+            //break;
+       case DataRead:
+       case APUDataRead:        // append operations from absolute mode
+       case OperandRead:
+       case APUOperandRead:
+            fa = doAppendDataRead(i, address); // an operand read
+            break;
+       default:
+            sim_printf("doAppendRead(Entry): unsupported accessType=%s\n", strAccessType(accessType));
+            return 0;
+    }
+    didITSITP = false;
+    return fa;
+}
+
+
+word24
+doAppendDataWrite(DCDstruct *i, word18 address)
+{
+#ifndef QUIET_UNUSED
+    word3 RSDWH_R1; ///< I think
+#endif
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry) PPR.TRR=%o PPR.TSR=%o\n", PPR.PRR, PPR.PSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+    
+    if ((GET_A(i->IWB) && i->iwb->ndes == 0) || didITSITP)    // indirect or ITS/ITP just setup
+    {
+        if (didITSITP)
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): previous ITS/ITP detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        else if (GET_A(i->IWB))
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): bit-29 (a) detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        }
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry): wrote operand detected. TPR.TRR=%o TPR.TSR=%o\n",TPR.TRR, TPR.TSR);
+        
+        goto A;
+    }
+    
+    TPR.TRR = PPR.PRR;
+    TPR.TSR = PPR.PSR;
+
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Entry) TPR.TRR=%o TPR.TSR=%o\n", TPR.TRR, TPR.TSR);
+A:;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A)\n");
+    
+    // is SDW for C(TPR.TSR) in SDWAM?
+    if (!fetchSDWfromSDWAM(i, TPR.TSR))
+    {
+        // No
+        
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
+        
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):DSBR.U=%o\n", DSBR.U);
+        
+        if (DSBR.U == 0)
+        {
+            fetchDSPTW(TPR.TSR);
+            
+            if (!PTW0.F)
+                // XXX initiate a directed fault
+                doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+                // XXX what if they ignore the fault? Can it be ignored?
+            
+            if (!PTW0.U)
+                modifyDSPTW(TPR.TSR);
+            
+            fetchPSDW(TPR.TSR);
+        }
+        else
+            fetchNSDW(TPR.TSR); // load SDW0 from descriptor segment table.
+        
+        if (SDW0.F == 0)
+        {
+            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(A):SDW0.F == 0! Initiating directed fault\n");
+            // initiate a directed fault ...
+            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            // XXX what if they ignore the fault? Can it be ignored?
+        }
+        else
+            // load SDWAM .....
+            loadSDWAM(TPR.TSR);
+    }
+    
+#ifndef QUIET_UNUSED
+    // Yes...
+    RSDWH_R1 = SDW->R1;
+#endif
+    
+#ifndef QUIET_UNUSED
+B:;
+#endif
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(B)\n");
+    
+    
+    //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
+    if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
+        // Set fault ACV0 = IRO
+        acvFault(i, ACV0);
+    
+    //if (isSTROP(IWB))
+    // Yes ...
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(B): a STR-OP\n");
+    
+    // C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2)
+        //Set fault ACV5 = OWB
+        acvFault(i, ACV5);
+    
+    if (!SDW->W)
+        // Set fault ACV6 = W-OFF
+        acvFault(i, ACV6);
+    goto G;
+    
+G:;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(G)\n");
+    
+    //C(TPR.CA)0,13 > SDW.BOUND?
+    if (((address >> 4) & 037777) > SDW->BOUND)
+        acvFault(i, ACV15);
+    
+    if (acvFaults)
+        // Initiate an access violation fault
+        doFault(i, acc_viol_fault, 0, "acvFault");
+    // XXX what if they ignore the fault? Can it be ignored?
+    
+    
+    // is segment C(TPR.TSR) paged?
+    if (SDW->U)
+        goto H; // Not paged
+    
+    // Yes. segment is paged ...
+    // is PTW for C(TPR.CA) in PTWAM?
+    
+    if (!fetchPTWfromPTWAM(SDW->POINTER, address))
+    {
+        fetchPTW(SDW, address);
+        if (!PTW0.F)
+            // initiate a directed fault
+            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F != 0");
+        // XXX what if they ignore the fault? Can it be ignored?
+        
+        
+        loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
+    }
+    
+    // is prepage mode???
+    // XXX: don't know what todo with this yet ...
+    
+    goto I;
+    
+H:; ///< Final address nonpaged
+    
+    finalAddress = SDW->ADDR + address;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(H): SDW->ADDR=%08o finalAddress=%06o \n", SDW->ADDR, finalAddress);
+    
+//    core_write(finalAddress, writeData);  // I think now is the time to do it ...
+//    if (apndTrace)
+//    {
+//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(H:FANP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+//    }
+    return finalAddress;
+    
+I:;
+   sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(I)\n");
+    
+    //if (isSTROP(IWB) && PTW->M == 0)
+    if (PTW->M == 0)
+        modifyPTW(SDW, address);
+    
+    // final address paged
+    
+    word24 y2 = address % 1024;
+    
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
+    
+//    core_write(finalAddress, writeData);  // I think now is the time to do it ...
+//    if (apndTrace)
+//    {
+//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(I:FAP) Write: finalAddress=%08o writeData=%012llo\n", finalAddress, writeData);
+//    }
+    return finalAddress;
+    
+}
+
+
+

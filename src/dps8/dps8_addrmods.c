@@ -5,7 +5,7 @@
  * \author Harry Reed
  * \date 9/25/12
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
-*/
+ */
 
 #include <stdio.h>
 #include "dps8.h"
@@ -21,7 +21,7 @@ static bool directOperandFlag = false;
 static word36 directOperand = 0;
 
 
-bool adrTrace = false;   ///< when true do address modifications tracing
+bool adrTrace = false;   ///< when true do address modifications traceing
 
 static char *strCAFoper(eCAFoper o)
 {
@@ -41,13 +41,13 @@ static char *strCAFoper(eCAFoper o)
 word18 getCr(word4 Tdes)
 {
     directOperandFlag = false;
-
+    
     if (Tdes == 0)
         return 0;
     
     if (Tdes & 010) /* Xn */
         return rX[X(Tdes)];
-
+    
     switch(Tdes)
     {
         case TD_N:  ///< rY = address from opcode
@@ -60,12 +60,9 @@ word18 getCr(word4 Tdes)
             directOperand = 0;
             SETHI(directOperand, rY);
             directOperandFlag = true;
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "getCr(TD_DU): rY=%06o directOperand=%012llo\n", rY, directOperand);
-            }
-            
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "getCr(TD_DU): rY=%06o directOperand=%012llo\n", rY, directOperand);
+        
             return 0;
         case TD_IC: ///< rY + C(PPR.IC)
             return PPR.IC;
@@ -77,15 +74,327 @@ word18 getCr(word4 Tdes)
             directOperand = 0;
             SETLO(directOperand, rY);
             directOperandFlag = true;
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "getCr(TD_DL): rY=%06o directOperand=%012llo\n", rY, directOperand);
-            }
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "getCr(TD_DL): rY=%06o directOperand=%012llo\n", rY, directOperand);
             return 0;
     }
     return 0;
 }
+
+/*
+ * New address stuff (EXPERIMENTAL)
+ */
+extern int OPSIZE(DCDstruct *i);    // dps8_cpu.c
+
+PRIVATE
+char *
+opDescSTR(DCDstruct *i)
+{
+    static char temp[256];
+    
+    strcpy(temp, "");
+    
+    if (READOP(i))
+    {
+        switch (OPSIZE(i))
+        {
+            case 1:
+                strcat (temp, "readCY");
+                break;
+            case 2:
+                strcat (temp, "readCYpair2");
+                break;
+            case 8:
+                strcat (temp, "readCYblock8");
+                break;
+            case 16:
+                strcat (temp, "readCYblock16");
+                break;
+        }
+    }
+    if (WRITEOP(i))
+    {
+        if (strlen(temp))
+            strcat(temp, "/");
+        
+        switch (OPSIZE(i))
+        {
+            case 1:
+                strcat(temp, "writeCY");
+                break;
+            case 2:
+                strcat(temp, "writeCYpair2");
+                break;
+            case 8:
+                strcat(temp, "writeCYblock8");
+                break;
+            case 16:
+                strcat(temp, "writeCYblock16");
+                break;
+        }
+    }
+    if (TRANSOP(i))
+    {
+        if (strlen(temp))
+        strcat(temp, "/");
+        
+        strcat(temp, "prepareCA (TRA)");
+    }
+    
+    if (!READOP(i) && !WRITEOP(i) && !TRANSOP(i) && i->iwb->flags & PREPARE_CA)
+    {
+        if (strlen(temp))
+        strcat(temp, "/");
+        
+        strcat(temp, "prepareCA");
+    }
+    return temp;    //"opDescSTR(???)";
+}
+
+modificationContinuation _modCont, *modCont = &_modCont;
+
+PRIVATE
+char *modContSTR(modificationContinuation *i)
+{
+    if (!i)
+    return "modCont is null";
+    
+    //if (i->bActive == false)
+    //    return "modCont NOT active";
+    
+    static char temp[256];
+    sprintf(temp,
+            "Address:%06o tally:%d delta%d mod:%d tb:%d cf:%d indword:%012llo",
+            i->address, i->tally, i->delta, i->mod, i->tb, i->cf, i->indword );
+    return temp;
+    
+}
+
+
+void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
+{
+    if (modCont->bActive == false)
+        return; // no continuation available
+    
+    //    if (operType == writeCY)
+    //    {
+    //        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR(i));
+    //        return;
+    //    }
+    
+    directOperandFlag = false;
+    
+    //modCont->bActive = false;   // assume no continuation necessary
+    
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressContinuation(Entry): '%s'\n", modContSTR(modCont));
+    
+    switch (modCont->mod)
+    {
+        case IT_CI: ///< Character indirect (Td = 10)
+        
+            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
+            ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): restoring instruction continuation '%s'\n", modContSTR(modCont));
+        
+            int Yi = modCont->address ;
+            tTB = modCont->tb;
+            tCF = modCont->cf;
+        
+            word36 data;
+        
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, i->a); //TM_IT);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, Yi, tTB, tCF);
+        
+        // set byte/char
+        switch (tTB)
+        {
+            case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+            case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+            default:
+                sim_printf("IT_MOD(IT_CI): unknown tTB:%o\n", tTB);
+                break;
+        }
+        
+        // write it
+        Write(i, Yi, data, i->a);   //TM_IT);
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+        
+        return;
+        
+        case IT_SC: ///< Sequence character (Td = 12)
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
+        
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): restoring instruction continuation '%s'\n", modContSTR(modCont));
+        
+        Yi = modCont->address;
+        tTB = modCont->tb;
+        tCF = modCont->cf;
+        
+        // read data where chars/bytes now live (if it hasn't already been read in)
+        if (!(i->iwb->flags & READ_OPERAND))
+        Read(i, Yi, &data, DataRead, i->a); //TM_IT);
+        else
+        data = CY;
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+        
+        // set byte/char
+        switch (tTB)
+        {
+            case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+            case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+            default:
+                sim_printf("IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+                break;
+        }
+        
+        // write it
+        Write(i, Yi, data, i->a);   //TM_IT);
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+        
+        return;
+        
+        case IT_SCR: ///< Sequence character reverse (Td = 5)
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): restoring instruction continuation '%s'\n", modContSTR(modCont));
+        
+        Yi = modCont->address;
+        tTB = modCont->tb;
+        tCF = modCont->cf;
+        
+        
+        // read data where chars/bytes now live (if it hasn't already been read in)
+        if (!(i->iwb->flags & READ_OPERAND))
+        Read(i, Yi, &data, DataRead, i->a); //TM_IT);
+        else
+        data = CY;
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+        }
+        
+        // set byte/char
+        switch (tTB)
+        {
+            case TB6:
+            putChar(&data, CY & 077, tCF);
+            break;
+            case TB9:
+            putByte(&data, CY & 0777, tCF);
+            break;
+            default:
+            fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
+            break;
+        }
+        
+        // write it
+        Write(i, Yi, data, i->a);   //TM_IT);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+        
+        
+        return;
+        
+        case IT_I: ///< Indirect (Td = 11)
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): restoring continuation '%s'\n", modContSTR(modCont));
+            TPR.CA = modCont->address;
+        
+            Write(i, TPR.CA, CY, i->a); //TM_IT);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
+            return;
+        
+        case IT_AD: ///< Add delta (Td = 13)
+        ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
+        
+        // read data
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): restoring continuation '%s'\n", modContSTR(modCont));
+        
+            TPR.CA = modCont->address;
+        
+            Write(i, TPR.CA, CY, i->a); //TM_IT);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
+            return;
+        
+        case IT_SD: ///< Subtract delta (Td = 4)
+        ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): restoring continuation '%s'\n", modContSTR(modCont));
+        
+            Yi = modCont->address;
+        
+            Write(i, Yi, CY, i->a); //TM_IT);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
+            return;
+        
+        case IT_DI: ///< Decrement address, increment tally (Td = 14)
+        
+        ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): restoring continuation '%s'\n", modContSTR(modCont));
+        
+            Yi = modCont->address;
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
+        
+            Write(i, Yi, CY, i->a); //TM_IT);
+        
+            return;
+        
+        
+        case IT_ID: ///< Increment address, decrement tally (Td = 16)
+        
+            ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
+        
+        //if (operType == writeCY)
+        //{
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): restoring continuation '%s'\n", modContSTR(modCont));
+        
+            TPR.CA = modCont->address;
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
+        
+            Write(i, TPR.CA, CY, i->a); //TM_IT);
+        
+            return;
+        
+        default:
+            //sim_printf("doContinuedAddressContinuation(): How'd we get here (%d)???\n", modCont->mod);
+        
+            //sim_debug(DBG_ADDRMOD, &cpu_dev, "default: restoring continuation '%s'\n", modContSTR(modCont));
+            TPR.CA = modCont->address;
+        
+            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            WriteOP(i, TPR.CA, DataWrite, i->a);    //modCont->mod);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), CY, TPR.CA);
+            return;
+        
+        break;
+    }
+    
+}
+
+#ifdef OLD_WAY_DELETE_WHEN_READY
 
 #ifndef USE_CONTINUATIONS
 
@@ -102,11 +411,11 @@ void doComputedAddressFormation(DCDstruct *i, eCAFoper operType) // What about w
     //rY = address;
     
     if (i->iwb->flags & NO_TAG) // for instructions line STCA/STCQ
-        rTAG = 0;
+    rTAG = 0;
     else
-        rTAG = i->tag;
+    rTAG = i->tag;
     
-                         
+    
     if (adrTrace)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressFormation(Entry): operType:%s(%d) TPR.CA=%06o\n",
@@ -130,20 +439,20 @@ startCA:;
         case TM_IT:
             goto IT_MOD;
         case TM_IR:
-            goto IR_MOD;
+        goto IR_MOD;
     }
     sim_printf("doComputedAddressFormation(startCA): unknown Tm??? %o\n", GET_TM(rTAG));
     return;
     
     
-//! Register modification. Fig 6-3
+    //! Register modification. Fig 6-3
 R_MOD:;
     
     if (Td == 0) // TPR.CA = address from opcode
-        goto R_MOD1;
-  
+    goto R_MOD1;
+    
     word18 Cr = getCr(Td);  // C(r)
-
+    
     if (adrTrace)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: Cr=%06o\n", Cr);
@@ -157,7 +466,7 @@ R_MOD:;
     
     TPR.CA += Cr;
     TPR.CA &= MASK18;   // keep to 18-bits
-
+    
     if (adrTrace)
     {
         sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR.CA);
@@ -168,7 +477,7 @@ R_MOD1:;
     {
         processorCycle = APU_DATA_MOVEMENT; // ???
         Read(i, TPR.CA, &CY, DataRead, TM_R);
-
+        
         if (adrTrace)
         {
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: readCY: C(%06o)=%012llo\n", TPR.CA, CY);
@@ -183,8 +492,8 @@ R_MOD1:;
         }
     }
     return;
-
-//! Figure 6-4. Register Then Indirect Modification Flowchart
+    
+    //! Figure 6-4. Register Then Indirect Modification Flowchart
 RI_MOD:;
     
     if (adrTrace)
@@ -193,14 +502,14 @@ RI_MOD:;
     }
     
     if (Td == TD_DU || Td == TD_DL)
-        // XXX illegal procedure, illegal modifier, fault
-        doFault(i, illproc_fault, ill_mod, "Td == TD_DU || Td == TD_DL");
-
+    // XXX illegal procedure, illegal modifier, fault
+    doFault(i, illproc_fault, ill_mod, "Td == TD_DU || Td == TD_DL");
+    
     
     if (!Td == 0)
     {
         word18 Cr = getCr(Td);  // C(r)
-    
+        
         if (adrTrace)
         {
             sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Cr=%06o TPR.CA(Before)=%06o\n", Cr, TPR.CA);
@@ -233,8 +542,8 @@ RI_MOD2:;
     }
     
     goto startCA;
-
-//! Figure 6-5. Indirect Then Register Modification Flowchart
+    
+    //! Figure 6-5. Indirect Then Register Modification Flowchart
 IR_MOD:;
     
     cu.CT_HOLD = Td;
@@ -268,112 +577,112 @@ IR_MOD_2:;
     switch (Tm)
     {
         case TM_IT:
-             
-            if (adrTrace)
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
+        }
+        if (Td == IT_F2 || Td == IT_F3)
+        {
+            // Abort. FT2 or 3
+            switch (Td)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
-            }
-            if (Td == IT_F2 || Td == IT_F3)
-            {
-                // Abort. FT2 or 3
-                switch (Td)
-                {
-                    case IT_F2:
-                        doFault(i, f2_fault, 0, "IT_F2");
-                        return;
-                    case IT_F3:
-                        doFault(i, f3_fault, 0, "IT_F3");
-                        return;
-                }
-            }
-            // fall through to TM_R
-            
-        case TM_R:
-            Cr = getCr(cu.CT_HOLD);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): Cr=%06o\n", Cr);
-            }
-            
-            if (directOperandFlag)
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R:directOperandFlag): operand=%012llo\n", directOperand);
-                }
-                
-                CY = directOperand;
+                case IT_F2:
+                doFault(i, f2_fault, 0, "IT_F2");
+                return;
+                case IT_F3:
+                doFault(i, f3_fault, 0, "IT_F3");
                 return;
             }
-            TPR.CA += Cr;
-            TPR.CA &= MASK18;   // keep to 18-bits
-    
+        }
+        // fall through to TM_R
+        
+        case TM_R:
+        Cr = getCr(cu.CT_HOLD);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): Cr=%06o\n", Cr);
+        }
+        
+        if (directOperandFlag)
+        {
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): TPR.CA=%06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R:directOperandFlag): operand=%012llo\n", directOperand);
             }
             
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_R);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): readCY: C(Y)=%012llo\n", CY);
-                }
-
-            }
-            else if (operType == writeCY)
-            {
-                    processorCycle = APU_DATA_MOVEMENT; // ???
-                    Write(i, TPR.CA, CY, DataWrite, TM_R);
-                    
-                    if (adrTrace)
-                    {
-                        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): writeCY: C(Y)=%012llo\n", CY);
-                    }
-                
-            }
+            CY = directOperand;
             return;
+        }
+        TPR.CA += Cr;
+        TPR.CA &= MASK18;   // keep to 18-bits
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): TPR.CA=%06o\n", TPR.CA);
+        }
+        
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Read(i, TPR.CA, &CY, DataRead, TM_R);
             
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): readCY: C(Y)=%012llo\n", CY);
+            }
+            
+        }
+        else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Write(i, TPR.CA, CY, DataWrite, TM_R);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): writeCY: C(Y)=%012llo\n", CY);
+            }
+            
+        }
+        return;
+        
         case TM_RI:
-            Cr = getCr(Td);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n", Td, Cr, TPR.CA);
-            }
-            
-            TPR.CA += Cr;
-            TPR.CA &= MASK18;   // keep to 18-bits
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): TPR.CA(After)=%06o\n", TPR.CA);
-            }
-            
-            goto IR_MOD_1;
-            
+        Cr = getCr(Td);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n", Td, Cr, TPR.CA);
+        }
+        
+        TPR.CA += Cr;
+        TPR.CA &= MASK18;   // keep to 18-bits
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): TPR.CA(After)=%06o\n", TPR.CA);
+        }
+        
+        goto IR_MOD_1;
+        
         case TM_IR:
-            goto IR_MOD;
-            
+        goto IR_MOD;
+        
     }
     sim_printf("doComputedAddressFormation(IR_MOD): unknown Tm??? %o\n", GET_TM(rTAG));
     return;
     
 IT_MOD:;
-//    IT_SD     = 004,
-//    IT_SCR    = 005,
-//    IT_CI     = 010,
-//    IT_I      = 011,
-//    IT_SC     = 012,
-//    IT_AD     = 013,
-//    IT_DI     = 014,
-//    IT_DIC    = 015,
-//    IT_ID     = 016,
-//    IT_IDC    = 017
+    //    IT_SD     = 004,
+    //    IT_SCR    = 005,
+    //    IT_CI     = 010,
+    //    IT_I      = 011,
+    //    IT_SC     = 012,
+    //    IT_AD     = 013,
+    //    IT_DI     = 014,
+    //    IT_DIC    = 015,
+    //    IT_ID     = 016,
+    //    IT_IDC    = 017
     word12 tally;
     word6 idwtag, delta;
     word36 data;
@@ -382,12 +691,12 @@ IT_MOD:;
     switch (Td)
     {
         // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
-        // CAC: AL39: "The appending hardware mechanism may be invoked for 
-        // an instruction by setting bit 29 of the instruction word ON to 
-        // cause a reference to a properly loaded pointer register or by the 
-        // use of indirect-to-segment (its) or indirect-to-pointer (itp) 
+        // CAC: AL39: "The appending hardware mechanism may be invoked for
+        // an instruction by setting bit 29 of the instruction word ON to
+        // cause a reference to a properly loaded pointer register or by the
+        // use of indirect-to-segment (its) or indirect-to-pointer (itp)
         // modification in an indirect word.
-
+        
         // Special Address Modifiers
         //
         // Whenever the processor is forming a virtual address two special
@@ -415,890 +724,890 @@ IT_MOD:;
         //     41          itp      Indirect to pointer
         //     43          its      Indirect to segment
         //
-
-//        case SPEC_ITP:
-//        case SPEC_ITS:
-//            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
-//
-//            if (doITSITP(i, indword, rTAG))
-//                goto startCA;
-//            
-//            /// XXX need to put some tests in here...
-//            ///< XXX illegal procedure, illegal modifier, fault
-//            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
-
-            break;
-            
+        
+        //case SPEC_ITP:
+        //case SPEC_ITS:
+        //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+        
+        //if (doITSITP(i, indword, rTAG))
+        //    goto startCA;
+        
+        /// XXX need to put some tests in here...
+        ///< XXX illegal procedure, illegal modifier, fault
+        //doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+        
+        //break;
+        
         case 1:
         case 2:
         case 3:
-            ///< XXX illegal procedure, illegal modifier, fault
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
-            }
-            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
-            return;
-            
+        ///< XXX illegal procedure, illegal modifier, fault
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
+        }
+        doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+        return;
+        
         ///< XXX Abort. FT2 or 3
         case IT_F1:
-            doFault(i, f1_fault, 0, "IT_F1");
-            return;
+        doFault(i, f1_fault, 0, "IT_F1");
+        return;
         case IT_F2:
-            doFault(i, f2_fault, 0, "IT_F2");
-            return;
+        doFault(i, f2_fault, 0, "IT_F2");
+        return;
         case IT_F3:
-            doFault(i, f3_fault, 0, "IT_F3");
-            return;
+        doFault(i, f3_fault, 0, "IT_F3");
+        return;
         
         case IT_CI: ///< Character indirect (Td = 10)
-            
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
-            ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
+        
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
+        ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): indword=%012llo\n", indword);
+        }
+        
+        TPR.CA = GET_ADDR(indword);
+        tTB = GET_TB(GET_TAG(indword));
+        tCF = GET_CF(GET_TAG(indword));
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): tTB=%o tCF=%o TPR.CA=%06o\n", tTB, tCF, TPR.CA);
+        }
+        
+        if (tTB == TB6 && tCF > 5)
+        // generate an illegal procedure, illegal modifier fault
+        doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
+        
+        if (tTB == TB9 && tCF > 3)
+        // generate an illegal procedure, illegal modifier fault
+        doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
+        
+        
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            if (tTB == TB6)
+            CY = GETCHAR(CY, tCF);
+            else
+            CY = GETBYTE(CY, tCF);
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): reading indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
+            }
+        } else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, TM_IT); // Yi??!!
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
             }
             
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+            // set byte/char
+            switch (tTB)
+            {
+                case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+                case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+                default:
+                fprintf(stderr, "IT_MOD(IT_CI): unknown tTB:%o\n", tTB);
+                break;
+                
+            }
+            
+            // write it
+            Write(i, Yi, data, DataWrite, TM_IT);   // Yi??!!
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): indword=%012llo\n", indword);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
             }
-            
-            TPR.CA = GET_ADDR(indword);
-            tTB = GET_TB(GET_TAG(indword));
-            tCF = GET_CF(GET_TAG(indword));
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): tTB=%o tCF=%o TPR.CA=%06o\n", tTB, tCF, TPR.CA);
-            }
-            
-            if (tTB == TB6 && tCF > 5)
-                // generate an illegal procedure, illegal modifier fault
-                doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
-            
-            if (tTB == TB9 && tCF > 3)
-                // generate an illegal procedure, illegal modifier fault
-                doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
-            
-            
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                if (tTB == TB6)
-                    CY = GETCHAR(CY, tCF);
-                else
-                    CY = GETBYTE(CY, tCF);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
-                }
-            } else if (operType == writeCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                
-                // read data where chars/bytes now live
-                Read(i, Yi, &data, DataRead, TM_IT); // Yi??!!
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-                
-                // set byte/char
-                switch (tTB)
-                {
-                    case TB6:
-                        putChar(&data, CY & 077, tCF);
-                        break;
-                    case TB9:
-                        putByte(&data, CY & 0777, tCF);
-                        break;
-                    default:
-                        fprintf(stderr, "IT_MOD(IT_CI): unknown tTB:%o\n", tTB);
-                        break;
-                        
-                }
-                
-                // write it
-                Write(i, Yi, data, DataWrite, TM_IT);   // Yi??!!
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-            }
-            
-            return;
-            
+        }
+        
+        return;
+        
         case IT_SC: ///< Sequence character (Td = 12)
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): indword=%012llo\n", indword);
+        }
+        
+        tally = GET_TALLY(indword);    // 12-bits
+        idwtag = GET_TAG(indword);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally=%04o idwtag=%02o\n", tally, idwtag);
+        }
+        
+        //The computed address is the unmodified value of the ADDRESS field. The effective character/byte number is the unmodified value of the character position counter, cf, field of the indirect word.
+        tTB = GET_TB(idwtag);
+        tCF = GET_CF(idwtag);
+        Yi = GETHI(indword);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
+        }
+        
+        TPR.CA = Yi;
+        
+        // read data where chars/bytes live
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Read(i, TPR.CA, &data, DataRead, TM_IT);
             
-            if (adrTrace)
+            switch (tTB)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reading indirect word from %06o\n", TPR.CA);
-            }
-            
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): indword=%012llo\n", indword);
-            }
-            
-            tally = GET_TALLY(indword);    // 12-bits
-            idwtag = GET_TAG(indword);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally=%04o idwtag=%02o\n", tally, idwtag);
-            }
-            
-            //The computed address is the unmodified value of the ADDRESS field. The effective character/byte number is the unmodified value of the character position counter, cf, field of the indirect word.
-            tTB = GET_TB(idwtag);
-            tCF = GET_CF(idwtag);
-            Yi = GETHI(indword);
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
-            }
-            
-            TPR.CA = Yi;
-            
-            // read data where chars/bytes live
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &data, DataRead, TM_IT);
-                
-                switch (tTB)
-                {
-                    case TB6:
-                        CY = GETCHAR(data, tCF % 6);
-                        break;
-                    case TB9:
-                        CY = GETBYTE(data, tCF % 4);
-                        break;
-                    default:
-                        if (adrTrace)
-                        {
-                            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
-                        }
-                        break;
-                }
+                case TB6:
+                CY = GETCHAR(data, tCF % 6);
+                break;
+                case TB9:
+                CY = GETBYTE(data, tCF % 4);
+                break;
+                default:
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
                 }
+                break;
             }
-            else if (operType == writeCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                
-                // read data where chars/bytes now live
-                Read(i, Yi, &data, DataRead, TM_IT);
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-                
-                // set byte/char
-                switch (tTB)
-                {
-                    case TB6:
-                        putChar(&data, CY & 077, tCF);
-                        break;
-                    case TB9:
-                        putByte(&data, CY & 0777, tCF);
-                        break;
-                    default:
-                        fprintf(stderr, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
-                        break;
-                        
-                }
-                
-                // write it
-                Write(i, Yi, data, DataWrite, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-            }
-            else if (operType == prepareCA)
-            {
-              // prepareCA shouln't muck about with the tallys
-              return;
-            }
-
-            // For each reference to the indirect word, the character counter, cf, is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, overflows to 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF.
-            
-            tCF += 1;
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tCF = %o\n", tCF);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
             }
-
-            if(((tTB == TB6) && (tCF > 5)) || ((tTB == TB9) && (tCF > 3)))
-            {
-                tCF = 0;
-                Yi += 1;
-                Yi &= MASK18;
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reset tCF. Yi now %06o\n", Yi);
-                }
-
-            }
-           
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
+        }
+        else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, TM_IT);
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally now %o\n", tally);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
             }
-
-            SCF(tally == 0, rIR, I_TALLY);
             
+            // set byte/char
+            switch (tTB)
+            {
+                case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+                case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+                default:
+                fprintf(stderr, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+                break;
+                
+            }
+            
+            // write it
+            Write(i, Yi, data, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
+        }
+        else if (operType == prepareCA)
+        {
+            // prepareCA shouln't muck about with the tallys
+            return;
+        }
+        
+        // For each reference to the indirect word, the character counter, cf, is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, overflows to 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF.
+        
+        tCF += 1;
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tCF = %o\n", tCF);
+        }
+        
+        if(((tTB == TB6) && (tCF > 5)) || ((tTB == TB9) && (tCF > 3)))
+        {
+            tCF = 0;
+            Yi += 1;
+            Yi &= MASK18;
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reset tCF. Yi now %06o\n", Yi);
+            }
+            
+        }
+        
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally now %o\n", tally);
+        }
+        
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
+        Write(i, tmp18, indword, DataWrite, idwtag);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, tmp18);
+        }
+        
+        return;
+        
+        case IT_SCR: ///< Sequence character reverse (Td = 5)
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
+        }
+        
+        tally = GET_TALLY(indword);    // 12-bits
+        idwtag = GET_TAG(indword);
+        Yi = GETHI(indword);           // where chars/bytes live
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tally=%04o idwtag=%02o\n", tally, idwtag);
+        }
+        
+        tTB = GET_TB(idwtag);   //GET_TAG(indword));
+        tCF = GET_CF(idwtag);   //GET_TAG(indword));
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
+        }
+        
+        //For each reference to the indirect word, the character counter, cf, is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, underflows to -1, it is reset to 5 for 6-bit characters or to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the (possibly) decremented value of the ADDRESS field of the indirect word. The effective character/byte number is the decremented value of the character position count, cf, field of the indirect word.
+        
+        if (tCF == 0)
+        {
+            if (tTB == TB6)
+            tCF = 5;
+            else
+            tCF = 3;
+            Yi -= 1;
+            Yi &= MASK18;
+        } else
+        tCF -= 1;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
             indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
             Write(i, tmp18, indword, DataWrite, idwtag);
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
             }
-
-            return;
-            
-        case IT_SCR: ///< Sequence character reverse (Td = 5)
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
-            }
-
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
-            }
-            
-            tally = GET_TALLY(indword);    // 12-bits
-            idwtag = GET_TAG(indword);
-            Yi = GETHI(indword);           // where chars/bytes live
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tally=%04o idwtag=%02o\n", tally, idwtag);
-            }
-            
-            tTB = GET_TB(idwtag);   //GET_TAG(indword));
-            tCF = GET_CF(idwtag);   //GET_TAG(indword));
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
-            }
-
-            //For each reference to the indirect word, the character counter, cf, is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, underflows to -1, it is reset to 5 for 6-bit characters or to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the (possibly) decremented value of the ADDRESS field of the indirect word. The effective character/byte number is the decremented value of the character position count, cf, field of the indirect word.
-            
-            if (tCF == 0)
-            {
-                if (tTB == TB6)
-                    tCF = 5;
-                else
-                    tCF = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-            } else
-                tCF -= 1;
-            
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-            
-            if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
-                Write(i, tmp18, indword, DataWrite, idwtag);
-
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
-                }
-            }
-            
-            TPR.CA = Yi;
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                // read data where chars/bytes now live
-                
-                Read(i, Yi, &data, DataRead, TM_IT);
-                
-                switch (tTB)
-                {
-                    case TB6:
-                        CY = GETCHAR(data, tCF);
-                        break;
-                    case TB9:
-                        CY = GETBYTE(data, tCF);
-                        break;
-                    default:
-                        if (adrTrace)
-                        {
-                            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
-                        }
-                        break;
-                }
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
-                }
-                
-            } else if (operType == writeCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                
-                // read data where chars/bytes now live
-                Read(i, Yi, &data, DataRead, TM_IT);
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-                
-                // set byte/char
-                switch (tTB)
-                {
-                    case TB6:
-                        putChar(&data, CY & 077, tCF);
-                        break;
-                    case TB9:
-                        putByte(&data, CY & 0777, tCF);
-                        break;
-                    default:
-                        fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
-                        break;
-
-                }
-                
-                // write it
-                Write(i, Yi, data, DataWrite, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-                
-            }
-            return;
-            
-        case IT_I: ///< Indirect (Td = 11)
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
-            }
-
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): indword=%012llo\n", indword);
-            }
-            
-            TPR.CA = GET_ADDR(indword);
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
-                }
-            } else if (operType == writeCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
-                }
-            }
-            return;
-            
-        case IT_AD: ///< Add delta (Td = 13)
-            ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
-            }
-            
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-            tally = GET_TALLY(indword); // 12-bits
-            delta = GET_DELTA(indword); // 6-bits
-            Yi = GETHI(indword);        // from where data live
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): indword=%012llo\n", indword);
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
-            }
-            
-            TPR.CA = Yi;
-            // read data
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
-                }
-            } else if (operType == writeCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
-                }
-            }
-            else if (operType == prepareCA)
-            {
-              // prepareCA shouln't muck about with the tallys
-              return;
-            }
-
-            
-            Yi += delta;
-            Yi &= MASK18;
-            
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-            
-            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-            Write(i, tmp18, indword, DataWrite, DataWrite);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n", indword, tmp18);
-            }
-            return;
-            
-        case IT_SD: ///< Subtract delta (Td = 4)            
-            ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
-            
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
-            }
-            tally = GET_TALLY(indword); // 12-bits
-            delta = GET_DELTA(indword); // 6-bits
-            Yi    = GETHI(indword);     // from where data live
- 
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): indword=%012llo\n", indword);
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
-            }
-            
-            Yi -= delta;
-            Yi &= MASK18;
-            //TPR.CA = Yi;
-            
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-
-            if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-                Write(i, tmp18, indword, DataWrite, 0);
-            
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
-                }
-            }
-
-            // read data
-            if (operType == readCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                Read(i, Yi, &CY, DataRead, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
-                }
-            } else if (operType == writeCY)
-            {
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Write(i, TPR.CA, CY, DataWrite, TM_IT);
-                Write(i, Yi, CY, DataWrite, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
-                }
-            }
-
-
-            return;
-            
-        case IT_DI: ///< Decrement address, increment tally (Td = 14)
-            
-            ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
-            }
-            
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            word6 junk = GET_TAG(indword);    // get tag field, but ignore it
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): indword=%012llo\n", indword);
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): address:%06o tally:%04o\n", Yi, tally);
-            }
-
-            Yi -= 1;
-            Yi &= MASK18;
-            //TPR.CA = Yi;
-            
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-          
-            if (operType != prepareCA)
-              {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-
-                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
-
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
-                }
-            
-                Write(i, tmp18, indword, DataWrite, 0);
-            }
-            
-            // read data
-            if (operType == readCY)
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
-                }
-                
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                Read(i, Yi, &CY, DataRead, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
-                }
-                
-            } else if (operType == writeCY)
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
-                }
-                
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Write(i, TPR.CA, CY, DataWrite, TM_IT);
-                Write(i, Yi, CY, DataWrite, TM_IT);
-                
-            }
+        }
         
+        TPR.CA = Yi;
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            // read data where chars/bytes now live
+            
+            Read(i, Yi, &data, DataRead, TM_IT);
+            
+            switch (tTB)
+            {
+                case TB6:
+                CY = GETCHAR(data, tCF);
+                break;
+                case TB9:
+                CY = GETBYTE(data, tCF);
+                break;
+                default:
+                if (adrTrace)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
+                }
+                break;
+            }
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+            }
+            
+        } else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, TM_IT);
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
+            
+            // set byte/char
+            switch (tTB)
+            {
+                case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+                case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+                default:
+                fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
+                break;
+                
+            }
+            
+            // write it
+            Write(i, Yi, data, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
+            
+        }
+        return;
+        
+        case IT_I: ///< Indirect (Td = 11)
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): indword=%012llo\n", indword);
+        }
+        
+        TPR.CA = GET_ADDR(indword);
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
+            }
+        } else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
+            }
+        }
+        return;
+        
+        case IT_AD: ///< Add delta (Td = 13)
+        ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        tally = GET_TALLY(indword); // 12-bits
+        delta = GET_DELTA(indword); // 6-bits
+        Yi = GETHI(indword);        // from where data live
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): indword=%012llo\n", indword);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+        }
+        
+        TPR.CA = Yi;
+        // read data
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
+            }
+        } else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
+            }
+        }
+        else if (operType == prepareCA)
+        {
+            // prepareCA shouln't muck about with the tallys
             return;
-
-            
-            
-        case IT_ID: ///< Increment address, decrement tally (Td = 16)
-            
-            ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
-            
-            tmp18 = TPR.CA;
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
-            }
-            
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            
-
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            junk = GET_TAG(indword);    // get tag field, but ignore it
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
-            }
-            
-            TPR.CA = Yi;
-            // read data
-            if (operType == readCY)
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): reading operand from %06o\n", TPR.CA);
-                }
-                
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
-                }
-                
-            } else if (operType == writeCY)
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
-                }
-                
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
-            }
-            else if (operType == prepareCA)
-            {
-              // prepareCA shouln't muck about with the tallys
-              return;
-            }
-
-            
-            Yi += 1;
-            Yi &= MASK18;
-            
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-
+        }
+        
+        
+        Yi += delta;
+        Yi &= MASK18;
+        
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+        Write(i, tmp18, indword, DataWrite, DataWrite);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n", indword, tmp18);
+        }
+        return;
+        
+        case IT_SD: ///< Subtract delta (Td = 4)
+        ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
+        }
+        tally = GET_TALLY(indword); // 12-bits
+        delta = GET_DELTA(indword); // 6-bits
+        Yi    = GETHI(indword);     // from where data live
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): indword=%012llo\n", indword);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+        }
+        
+        Yi -= delta;
+        Yi &= MASK18;
+        //TPR.CA = Yi;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
             // write back out indword
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+            Write(i, tmp18, indword, DataWrite, 0);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
+            }
+        }
+        
+        // read data
+        if (operType == readCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            Read(i, Yi, &CY, DataRead, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
+            }
+        } else if (operType == writeCY)
+        {
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            Write(i, Yi, CY, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
+            }
+        }
+        
+        
+        return;
+        
+        case IT_DI: ///< Decrement address, increment tally (Td = 14)
+        
+        ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        word6 junk = GET_TAG(indword);    // get tag field, but ignore it
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): indword=%012llo\n", indword);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): address:%06o tally:%04o\n", Yi, tally);
+        }
+        
+        Yi -= 1;
+        Yi &= MASK18;
+        //TPR.CA = Yi;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            // write back out indword
+            
             indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
             Write(i, tmp18, indword, DataWrite, 0);
-
+        }
+        
+        // read data
+        if (operType == readCY)
+        {
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
+            }
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            Read(i, Yi, &CY, DataRead, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
+            }
+            
+        } else if (operType == writeCY)
+        {
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
+            }
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            Write(i, Yi, CY, DataWrite, TM_IT);
+            
+        }
+        
+        return;
+        
+        
+        
+        case IT_ID: ///< Increment address, decrement tally (Td = 16)
+        
+        ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
+        
+        tmp18 = TPR.CA;
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
+        }
+        
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        junk = GET_TAG(indword);    // get tag field, but ignore it
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
+        }
+        
+        TPR.CA = Yi;
+        // read data
+        if (operType == readCY)
+        {
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): reading operand from %06o\n", TPR.CA);
+            }
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
+            }
+            
+        } else if (operType == writeCY)
+        {
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
+            }
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Write(i, TPR.CA, CY, DataWrite, TM_IT);
+        }
+        else if (operType == prepareCA)
+        {
+            // prepareCA shouln't muck about with the tallys
             return;
-
+        }
+        
+        
+        Yi += 1;
+        Yi &= MASK18;
+        
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        // write back out indword
+        indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
+        }
+        
+        Write(i, tmp18, indword, DataWrite, 0);
+        
+        return;
+        
         case IT_DIC: ///< Decrement address, increment tally, and continue (Td = 15)
-            
-            ///< The action for this variation is identical to that for the decrement address, increment tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed .
+        
+        ///< The action for this variation is identical to that for the decrement address, increment tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed .
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        idwtag = GET_TAG(indword);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+        }
+        
+        Yi -= 1;
+        Yi &= MASK18;
+        
+        word24 YiSafe2 = Yi; // save indirect address for later use
+        
+        TPR.CA = Yi;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            // write back out indword
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+            Write(i, tmp18, indword, DataWrite, 0);
+        }
+        
+        // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+        
+        //TPR.CA = GETHI(CY);
+        
+        TPR.CA = YiSafe2;
+        
+        //rTAG = idwtag & 0x60; // force R to 0 (except for IT)
+        rTAG = idwtag & 0x70; // force R to 0
+        Td = GET_TD(rTAG);
+        Tm = GET_TM(rTAG);
+        
+        //TPR.CA = i->address;
+        //rY = TPR.CA;    //i->address;
+        
+        switch(Tm)
+        {
+            case TM_R:
+            goto R_MOD;
             
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            idwtag = GET_TAG(indword);
+            case TM_RI:
+            goto RI_MOD;
             
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
-            }
+            case TM_IR:
+            goto IR_MOD;
             
-            Yi -= 1;
-            Yi &= MASK18;
-           
-            word24 YiSafe2 = Yi; // save indirect address for later use
-            
-            TPR.CA = Yi;
-            
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-            
-            if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
-            
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
-                }
-
-                Write(i, tmp18, indword, DataWrite, 0);
-            }
-            
-            // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
-            
-            //TPR.CA = GETHI(CY);
-            
-            TPR.CA = YiSafe2;
-            
-            //rTAG = idwtag & 0x60; // force R to 0 (except for IT)
-            rTAG = idwtag & 0x70; // force R to 0
+            case TM_IT:
+            rTAG = idwtag;
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
             
-            //TPR.CA = i->address;
-            //rY = TPR.CA;    //i->address;
-            
-            switch(Tm)
-            {
-                case TM_R:
-                    goto R_MOD;
-                    
-                case TM_RI:
-                    goto RI_MOD;
-                    
-                case TM_IR:
-                    goto IR_MOD;
-                    
-                case TM_IT:
-                    rTAG = idwtag;
-                    Td = GET_TD(rTAG);
-                    Tm = GET_TM(rTAG);
-                    
-                    goto IT_MOD;
-            }
-            sim_printf("IT_DIC: how'd we get here???\n");
-            return;
-            
+            goto IT_MOD;
+        }
+        sim_printf("IT_DIC: how'd we get here???\n");
+        return;
+        
         case IT_IDC: ///< Increment address, decrement tally, and continue (Td = 17)
-            
-            ///< The action for this variation is identical to that for the increment address, decrement tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+        
+        ///< The action for this variation is identical to that for the increment address, decrement tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        idwtag = GET_TAG(indword);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+        }
+        
+        word24 YiSafe = Yi; // save indirect address for later use
+        
+        Yi += 1;
+        Yi &= MASK18;
+        
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            // write back out indword
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
             
-            tmp18 = TPR.CA;
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+            Write(i, tmp18, indword, DataWrite, TM_IT);
+        }
+        
+        // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+        // But for the dps88 you can use everything but ir/ri.
+        
+        // force R to 0 (except for IT)
+        TPR.CA = YiSafe;
+        //TPR.CA = GETHI(indword);
+        
+        rTAG = idwtag & 0x70; // force R to 0 (except for IT)
+        //rTAG = GET_TAG(CY) & 0x60; // force R to 0 (except for IT)
+        Td = GET_TD(rTAG);
+        Tm = GET_TM(rTAG);
+        
+        //TPR.CA = i->address;
+        rY = TPR.CA;    //i->address;
+        
+        switch(Tm)
+        {
+            case TM_R:
+            goto R_MOD;
             
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            idwtag = GET_TAG(indword);
+            case TM_RI:
+            goto RI_MOD;
             
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
-            }
+            case TM_IR:
+            goto IR_MOD;
             
-            word24 YiSafe = Yi; // save indirect address for later use
+            case TM_IT:
+            rTAG = GET_TAG(idwtag);
+            Td = _TD(rTAG);
+            Tm = _TM(rTAG);
             
-            Yi += 1;
-            Yi &= MASK18;
-            
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-            
-            if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
-            
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
-                }
-            
-                Write(i, tmp18, indword, DataWrite, TM_IT);
-            }
-            
-            // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
-            // But for the dps88 you can use everything but ir/ri.
-            
-            // force R to 0 (except for IT)
-            TPR.CA = YiSafe;
-            //TPR.CA = GETHI(indword);
-            
-            rTAG = idwtag & 0x70; // force R to 0 (except for IT)
-            //rTAG = GET_TAG(CY) & 0x60; // force R to 0 (except for IT)
-            Td = GET_TD(rTAG);
-            Tm = GET_TM(rTAG);
-            
-            //TPR.CA = i->address;
-            rY = TPR.CA;    //i->address;
-            
-            switch(Tm)
-            {
-                case TM_R:
-                    goto R_MOD;
-                    
-                case TM_RI:
-                    goto RI_MOD;
-                   
-                case TM_IR:
-                    goto IR_MOD;
-    
-                case TM_IT:
-                    rTAG = GET_TAG(idwtag);
-                    Td = _TD(rTAG);
-                    Tm = _TM(rTAG);
-                    
-                    goto IT_MOD;
-            }
-            sim_printf("IT_IDC: how'd we get here???\n");
-            return;
+            goto IT_MOD;
+        }
+        sim_printf("IT_IDC: how'd we get here???\n");
+        return;
     }
     
     
@@ -1306,116 +1615,31 @@ IT_MOD:;
 
 #else
 
-/*
- * New address stuff (EXPERIMENTAL)
- */
-extern int OPSIZE(DCDstruct *i);    // dps8_cpu.c
-
-PRIVATE
-char *
-opDescSTR(DCDstruct *i)
-{
-    static char temp[256];
-    
-    strcpy(temp, "");
-    
-    if (READOP(i))
-    {
-        switch (OPSIZE(i))
-        {
-            case 1:
-                strcat (temp, "readCY");
-                break;
-            case 2:
-                strcat (temp, "readCYpair2)");
-                break;
-            case 8:
-                strcat (temp, "readCYblock8");
-                break;
-            case 16:
-                strcat (temp, "readCYblock16");
-                break;
-        }
-    }
-    if (WRITEOP(i))
-    {
-        if (strlen(temp))
-            strcat(temp, "/");
-        
-        switch (OPSIZE(i))
-        {
-            case 1:
-                strcat(temp, "writeCY");
-                break;
-            case 2:
-                strcat(temp, "writeCYpair2)");
-                break;
-            case 8:
-                strcat(temp, "writeCYblock8");
-                break;
-            case 16:
-                strcat(temp, "writeCYblock16");
-                break;
-        }
-    }
-    if (TRANSOP(i))
-    {
-        if (strlen(temp))
-            strcat(temp, "/");
-
-        strcat(temp, "prepareCA (TRA)");
-    }
-    
-    if (!READOP(i) && !WRITEOP(i) && !TRANSOP(i) && i->iwb->flags & PREPARE_CA)
-    {
-        if (strlen(temp))
-            strcat(temp, "/");
-        
-        strcat(temp, "prepareCA");
-    }
-    return temp;    //"opDescSTR(???)";
-}
-
-modificationContinuation _modCont, *modCont = &_modCont;
-
-PRIVATE
-char *modContSTR(modificationContinuation *i)
-{
-    if (!i)
-        return "modCont is null";
-    
-    //if (i->bActive == false)
-    //    return "modCont NOT active";
-    
-    static char temp[256];
-    sprintf(temp,
-            "Address:%06o tally:%d delta%d mod:%d tb:%d cf:%d indword:%012llo",
-            i->address, i->tally, i->delta, i->mod, i->tb, i->cf, i->indword );
-    return temp;
-    
-}
 
 void doPreliminaryComputedAddressFormation(DCDstruct *i)    //, eCAFoper operType)
 {
     eCAFoper operType = prepareCA;  // just for now
     if (RMWOP(i))
-        operType = rmwCY;           // r/m/w cycle
+    operType = rmwCY;           // r/m/w cycle
     else if (READOP(i))
-        operType = readCY;          // read cycle
+    operType = readCY;          // read cycle
     else if (WRITEOP(i))
-        operType = writeCY;         // write cycle
+    operType = writeCY;         // write cycle
     
     word18 tmp18;
     word36 indword;
-
+    
+    int iTAG;   // tag of word preceeding an indirect fetch
+    word18 iCA; // CA   "" "" "" ""
+    
     directOperandFlag = false;
     
     modCont->bActive = false;   // assume no continuation necessary
     
     if (i->iwb->flags & NO_TAG) // for instructions line STCA/STCQ
-        rTAG = 0;
+    rTAG = 0;
     else
-        rTAG = i->tag;
+    rTAG = i->tag;
     
     if (adrTrace)
     {
@@ -1433,13 +1657,13 @@ startCA:;
     }
     switch(Tm) {
         case TM_R:
-            goto R_MOD;
+        goto R_MOD;
         case TM_RI:
-            goto RI_MOD;
+        goto RI_MOD;
         case TM_IT:
-            goto IT_MOD;
+        goto IT_MOD;
         case TM_IR:
-            goto IR_MOD;
+        goto IR_MOD;
     }
     sim_printf("doPreliminaryComputedAddressFormation(startCA): unknown Tm??? %o\n", GET_TM(rTAG));
     return;
@@ -1449,7 +1673,7 @@ startCA:;
 R_MOD:;
     
     if (Td == 0) // TPR.CA = address from opcode
-        goto R_MOD1;
+    goto R_MOD1;
     
     word18 Cr = getCr(Td);  // C(r)
     
@@ -1485,19 +1709,19 @@ R_MOD1:;
     }
     if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
     {
-       modCont->bActive = true;    // will continue the write operation after instruction implementation
-       modCont->address = TPR.CA;
-       modCont->mod = TM_R;
-       modCont->i = i;
-
-       sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(i), modContSTR(modCont));
-
-       // Write(i, TPR.CA, CY, DataWrite, TM_R);
-       //
-       // if (adrTrace)
-       // {
-       //     sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
-       // }
+        modCont->bActive = true;    // will continue the write operation after instruction implementation
+        modCont->address = TPR.CA;
+        modCont->mod = TM_R;
+        modCont->i = i;
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(i), modContSTR(modCont));
+        
+        // Write(i, TPR.CA, CY, DataWrite, TM_R);
+        //
+        // if (adrTrace)
+        // {
+        //     sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
+        // }
     }
     
     return;
@@ -1511,8 +1735,8 @@ RI_MOD:;
     }
     
     if (Td == TD_DU || Td == TD_DL)
-        // XXX illegal procedure, illegal modifier, fault
-        doFault(i, illproc_fault, ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
+    // XXX illegal procedure, illegal modifier, fault
+    doFault(i, illproc_fault, ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
     
     if (!Td == 0)
     {
@@ -1536,29 +1760,14 @@ RI_MOD:;
 //    {
 //        Read(i, TPR.CA, &indword, DataRead, rTAG);
 //        TPR.CA = GETHI(indword);
-//        
-//        int iTAG = GET_TAG(indword);
-//        if (iTAG == 043 || iTAG == 041)
-//            doAppendCycle(i, IndirectRead, iTAG, 0, Ypair);
-///*
-//        // Load registers according to what EPP expects
-//        word36 itxPair[2];
-//        Read(i, TPR.CA, &itxPair[0], DataRead, rTAG);
-//        Read(i, TPR.CA+1, &itxPair[1], DataRead, rTAG);
-//        
-//        TPR.CA -= 1;
-//        
-//        TPR.TRR = GET_ITS_RN(itxPair);
-//        TPR.TSR = GET_ITS_SEGNO(itxPair);
-//        TPR.CA = GET_ITS_WORDNO(itxPair);
-//        TPR.TBR = GET_ITS_BITNO(itxPair);
-//*/
 //        return;
 //    }
-    
-    
+    iCA = TPR.CA;
+    iTAG = rTAG;
+
     Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
     //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
+    
     
     TPR.CA = GETHI(indword);
     rTAG = GET_TAG(indword);
@@ -1575,8 +1784,8 @@ RI_MOD2:;
     
     //if (operType == prepareCA)
     //{
-        //CY = directOperand;
-        //return;
+    //CY = directOperand;
+    //return;
     //}
     goto startCA;
     
@@ -1616,96 +1825,96 @@ IR_MOD_2:;
     {
         case TM_IT:
         
-            if (adrTrace)
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
+        }
+        if (Td == IT_F2 || Td == IT_F3)
+        {
+            // Abort. FT2 or 3
+            switch (Td)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
-            }
-            if (Td == IT_F2 || Td == IT_F3)
-            {
-                // Abort. FT2 or 3
-                switch (Td)
-                {
-                    case IT_F2:
-                        doFault(i, f2_fault, 0, "IT_F2");
-                        return;
-                    case IT_F3:
-                        doFault(i, f3_fault, 0, "IT_F3");
-                        return;
-                }
-            }
-            // fall through to TM_R
-        
-        case TM_R:
-            Cr = getCr(cu.CT_HOLD);
-        
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): Cr=%06o\n", Cr);
-            }
-        
-            if (directOperandFlag)
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R:directOperandFlag): operand=%012llo\n", directOperand);
-                }
-            
-                CY = directOperand;
+                case IT_F2:
+                doFault(i, f2_fault, 0, "IT_F2");
+                return;
+                case IT_F3:
+                doFault(i, f3_fault, 0, "IT_F3");
                 return;
             }
-            TPR.CA += Cr;
-            TPR.CA &= MASK18;   // keep to 18-bits
+        }
+        // fall through to TM_R
         
+        case TM_R:
+        Cr = getCr(cu.CT_HOLD);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): Cr=%06o\n", Cr);
+        }
+        
+        if (directOperandFlag)
+        {
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): TPR.CA=%06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R:directOperandFlag): operand=%012llo\n", directOperand);
             }
-
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                //Read(i, TPR.CA, &CY, DataRead, TM_R);
-                ReadOP(i, TPR.CA, DataRead, TM_R);
-
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): %s: C(Y)=%012llo\n", opDescSTR(i), CY);
-                }
-                
-            } else
             
-            // writes are handled by doAddressContinuation()
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
-            {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = TPR.CA;
-                modCont->mod = TM_R;
-                modCont->i = i;
-            
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(): saving continuation '%s'\n", modContSTR(modCont));
-            }
-        
+            CY = directOperand;
             return;
+        }
+        TPR.CA += Cr;
+        TPR.CA &= MASK18;   // keep to 18-bits
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): TPR.CA=%06o\n", TPR.CA);
+        }
+        
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            //Read(i, TPR.CA, &CY, DataRead, TM_R);
+            ReadOP(i, TPR.CA, DataRead, TM_R);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): %s: C(Y)=%012llo\n", opDescSTR(i), CY);
+            }
+            
+        } else
+        
+        // writes are handled by doAddressContinuation()
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = TPR.CA;
+            modCont->mod = TM_R;
+            modCont->i = i;
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(): saving continuation '%s'\n", modContSTR(modCont));
+        }
+        
+        return;
         
         case TM_RI:
-            Cr = getCr(Td);
+        Cr = getCr(Td);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n", Td, Cr, TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n", Td, Cr, TPR.CA);
+        }
         
-            TPR.CA += Cr;
-            TPR.CA &= MASK18;   // keep to 18-bits
+        TPR.CA += Cr;
+        TPR.CA &= MASK18;   // keep to 18-bits
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): TPR.CA(After)=%06o\n", TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): TPR.CA(After)=%06o\n", TPR.CA);
+        }
         
-            goto IR_MOD_1;
+        goto IR_MOD_1;
         
         case TM_IR:
-            goto IR_MOD;
+        goto IR_MOD;
         
     }
     
@@ -1733,900 +1942,900 @@ IT_MOD:;
         // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
         case SPEC_ITP:
         case SPEC_ITS:
-            //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
-        
-            if (doITSITP(i, indword, rTAG))
-                goto startCA;
-        
-            ///< XXX illegal procedure, illegal modifier, fault
-            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
-            break;
-        
-        //case 1:
-        case 2:
-        //case 3:
-            ///< XXX illegal procedure, illegal modifier, fault
-        
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
-            }
-            doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
             return;
+        //bool doITSITP(DCDstruct *i, word36 indword, word6 Tag)
+//
+//        TPR.CA = iCA;
+//        if (doITSITP(i, indword, iTAG))
+//            return;
+////        goto startCA;
+
+        ///< XXX illegal procedure, illegal modifier, fault
+        doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+        break;
+        
+        //      case 1:
+        case 2:
+        //       case 3:
+        ///< XXX illegal procedure, illegal modifier, fault
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
+        }
+        doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+        return;
         
         ///< XXX Abort. FT2 or 3
         case IT_F1:
-            doFault(i, f1_fault, 0, "IT_F1");
-            return;
+        doFault(i, f1_fault, 0, "IT_F1");
+        return;
         
         case IT_F2:
-            doFault(i, f2_fault, 0, "IT_F2");
-            return;
+        doFault(i, f2_fault, 0, "IT_F2");
+        return;
         case IT_F3:
-            doFault(i, f3_fault, 0, "IT_F3");
-            return;
+        doFault(i, f3_fault, 0, "IT_F3");
+        return;
         
         case IT_CI: ///< Character indirect (Td = 10)
         
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
-            ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
+        ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): reading indirect word from %06o\n", TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): reading indirect word from %06o\n", TPR.CA);
+        }
         
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): indword=%012llo\n", indword);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): indword=%012llo\n", indword);
+        }
         
-            TPR.CA = GET_ADDR(indword);
-            tTB = GET_TB(GET_TAG(indword));
-            tCF = GET_CF(GET_TAG(indword));
+        TPR.CA = GET_ADDR(indword);
+        tTB = GET_TB(GET_TAG(indword));
+        tCF = GET_CF(GET_TAG(indword));
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): tTB=%o tCF=%o TPR.CA=%06o\n", tTB, tCF, TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): tTB=%o tCF=%o TPR.CA=%06o\n", tTB, tCF, TPR.CA);
+        }
         
-            if (tTB == TB6 && tCF > 5)
-                // generate an illegal procedure, illegal modifier fault
-                doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
+        if (tTB == TB6 && tCF > 5)
+        // generate an illegal procedure, illegal modifier fault
+        doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
         
-            if (tTB == TB9 && tCF > 3)
-                // generate an illegal procedure, illegal modifier fault
-                doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
+        if (tTB == TB9 && tCF > 3)
+        // generate an illegal procedure, illegal modifier fault
+        doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
         
         
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                ReadOP(i, TPR.CA, DataRead, TM_IT);
-                if (tTB == TB6)
-                    CY = GETCHAR(CY, tCF);
-                else
-                    CY = GETBYTE(CY, tCF);
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            ReadOP(i, TPR.CA, DataRead, TM_IT);
+            if (tTB == TB6)
+            CY = GETCHAR(CY, tCF);
+            else
+            CY = GETBYTE(CY, tCF);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
-                }
-            }
-            if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
+            if (adrTrace)
             {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = TPR.CA;
-                modCont->mod = IT_CI;
-                modCont->i = i;
-                modCont->tb = tTB;
-                modCont->cf = tCF;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): saving continuation '%s'\n", modContSTR(modCont));
- 
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
+            }
+        }
+        if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = TPR.CA;
+            modCont->mod = IT_CI;
+            modCont->i = i;
+            modCont->tb = tTB;
+            modCont->cf = tCF;
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): saving continuation '%s'\n", modContSTR(modCont));
+            
 #if NOW_HANDLED_BY_CONTINUATION
-                // read data where chars/bytes now live
-                Read(i, Yi, &data, DataRead, TM_IT);
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-            
-                // set byte/char
-                switch (tTB)
-                {
-                    case TB6:
-                        putChar(&data, CY & 077, tCF);
-                        break;
-                    case TB9:
-                        putByte(&data, CY & 0777, tCF);
-                        break;
-                    default:
-                        fprintf(stderr, "IT_MOD(IT_CI): unknown tTB:%o\n", tTB);
-                    break;
-                
-                }
-            
-                // write it
-                Write(i, Yi, data, DataWrite, TM_IT);
-            
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
-#endif
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, TM_IT);
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
             }
+            
+            // set byte/char
+            switch (tTB)
+            {
+                case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+                case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+                default:
+                fprintf(stderr, "IT_MOD(IT_CI): unknown tTB:%o\n", tTB);
+                break;
+                
+            }
+            
+            // write it
+            Write(i, Yi, data, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
+#endif
+        }
         
-            return;
+        return;
         
         case IT_SC: ///< Sequence character (Td = 12)
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reading indirect word from %06o\n", TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reading indirect word from %06o\n", TPR.CA);
+        }
         
-            tmp18 = TPR.CA;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        tmp18 = TPR.CA;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): indword=%012llo\n", indword);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): indword=%012llo\n", indword);
+        }
         
-            tally = GET_TALLY(indword);    // 12-bits
-            idwtag = GET_TAG(indword);
+        tally = GET_TALLY(indword);    // 12-bits
+        idwtag = GET_TAG(indword);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally=%04o idwtag=%02o\n", tally, idwtag);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally=%04o idwtag=%02o\n", tally, idwtag);
+        }
         
-            //The computed address is the unmodified value of the ADDRESS field. The effective character/byte number is the unmodified value of the character position counter, cf, field of the indirect word.
-            tTB = GET_TB(idwtag);
-            tCF = GET_CF(idwtag);
-            Yi = GETHI(indword);
+        //The computed address is the unmodified value of the ADDRESS field. The effective character/byte number is the unmodified value of the character position counter, cf, field of the indirect word.
+        tTB = GET_TB(idwtag);
+        tCF = GET_CF(idwtag);
+        Yi = GETHI(indword);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
+        }
         
-            TPR.CA = Yi;
+        TPR.CA = Yi;
         
-            // read data where chars/bytes live
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                Read(i, TPR.CA, &data, DataRead, TM_IT);
+        // read data where chars/bytes live
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            Read(i, TPR.CA, &data, DataRead, TM_IT);
             
-                switch (tTB)
-                {
-                    case TB6:
-                        CY = GETCHAR(data, tCF % 6);
-                        break;
-                    case TB9:
-                        CY = GETBYTE(data, tCF % 4);
-                        break;
-                    default:
-                        if (adrTrace)
-                        {
-                            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
-                        }
-                    break;
-                }
+            switch (tTB)
+            {
+                case TB6:
+                CY = GETCHAR(data, tCF % 6);
+                break;
+                case TB9:
+                CY = GETBYTE(data, tCF % 4);
+                break;
+                default:
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
                 }
+                break;
             }
-        
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+            if (adrTrace)
             {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = Yi;
-                modCont->mod = IT_SC;
-                modCont->i = i;
-                modCont->tb = tTB;
-                modCont->cf = tCF;
-                modCont->indword = indword;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): saving continuation '%s'\n", modContSTR(modCont));
-
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+            }
+        }
+        
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = Yi;
+            modCont->mod = IT_SC;
+            modCont->i = i;
+            modCont->tb = tTB;
+            modCont->cf = tCF;
+            modCont->indword = indword;
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): saving continuation '%s'\n", modContSTR(modCont));
+            
 #if NOW_HANDLED_BY_CONTINUATION
-                // read data where chars/bytes now live
-                Read(i, Yi, &data, DataRead, TM_IT);
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, TM_IT);
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
             
-                // set byte/char
-                switch (tTB)
-                {
-                    case TB6:
-                        putChar(&data, CY & 077, tCF);
-                        break;
-                    case TB9:
-                        putByte(&data, CY & 0777, tCF);
-                        break;
-                    default:
-                        fprintf(stderr, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
-                    break;
+            // set byte/char
+            switch (tTB)
+            {
+                case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+                case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+                default:
+                fprintf(stderr, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+                break;
                 
-                }
+            }
             
-                // write it
-                Write(i, Yi, data, DataWrite, TM_IT);
+            // write it
+            Write(i, Yi, data, DataWrite, TM_IT);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
 #endif
-            }
-            if (operType == prepareCA)
-            {
-                // prepareCA shouln't muck about with the tallys, But I don;t think it's ever hit this
-                return;
-            }
-        
-            // For each reference to the indirect word, the character counter, cf, is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, overflows to 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF.
-        
-            tCF += 1;
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tCF = %o\n", tCF);
-            }
-        
-            if(((tTB == TB6) && (tCF > 5)) || ((tTB == TB9) && (tCF > 3)))
-            {
-                tCF = 0;
-                Yi += 1;
-                Yi &= MASK18;
-            
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reset tCF. Yi now %06o\n", Yi);
-                }
-            
-            }
-        
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally now %o\n", tally);
-            }
-        
-            SCF(tally == 0, rIR, I_TALLY);
-        
-            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
-            Write(i, tmp18, indword, DataWrite, idwtag);
-        
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, tmp18);
-            }
-        
+        }
+        if (operType == prepareCA)
+        {
+            // prepareCA shouln't muck about with the tallys, But I don;t think it's ever hit this
             return;
+        }
+        
+        // For each reference to the indirect word, the character counter, cf, is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, overflows to 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF.
+        
+        tCF += 1;
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tCF = %o\n", tCF);
+        }
+        
+        if(((tTB == TB6) && (tCF > 5)) || ((tTB == TB9) && (tCF > 3)))
+        {
+            tCF = 0;
+            Yi += 1;
+            Yi &= MASK18;
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reset tCF. Yi now %06o\n", Yi);
+            }
+            
+        }
+        
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally now %o\n", tally);
+        }
+        
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
+        Write(i, tmp18, indword, DataWrite, idwtag);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, tmp18);
+        }
+        
+        return;
         
         case IT_SCR: ///< Sequence character reverse (Td = 5)
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
+        ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
+        }
         
-            tmp18 = TPR.CA;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        tmp18 = TPR.CA;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
+        }
         
-            tally = GET_TALLY(indword);    // 12-bits
-            idwtag = GET_TAG(indword);
-            Yi = GETHI(indword);           // where chars/bytes live
+        tally = GET_TALLY(indword);    // 12-bits
+        idwtag = GET_TAG(indword);
+        Yi = GETHI(indword);           // where chars/bytes live
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tally=%04o idwtag=%02o\n", tally, idwtag);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tally=%04o idwtag=%02o\n", tally, idwtag);
+        }
         
-            tTB = GET_TB(idwtag);   //GET_TAG(indword));
-            tCF = GET_CF(idwtag);   //GET_TAG(indword));
+        tTB = GET_TB(idwtag);   //GET_TAG(indword));
+        tCF = GET_CF(idwtag);   //GET_TAG(indword));
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
+        }
         
-            //For each reference to the indirect word, the character counter, cf, is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, underflows to -1, it is reset to 5 for 6-bit characters or to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the (possibly) decremented value of the ADDRESS field of the indirect word. The effective character/byte number is the decremented value of the character position count, cf, field of the indirect word.
+        //For each reference to the indirect word, the character counter, cf, is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, underflows to -1, it is reset to 5 for 6-bit characters or to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the (possibly) decremented value of the ADDRESS field of the indirect word. The effective character/byte number is the decremented value of the character position count, cf, field of the indirect word.
         
-            if (tCF == 0)
-            {
-                if (tTB == TB6)
-                    tCF = 5;
-                else
-                    tCF = 3;
-                Yi -= 1;
-                Yi &= MASK18;
-            } else
-                tCF -= 1;
+        if (tCF == 0)
+        {
+            if (tTB == TB6)
+            tCF = 5;
+            else
+            tCF = 3;
+            Yi -= 1;
+            Yi &= MASK18;
+        } else
+        tCF -= 1;
         
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
         
-            //if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
-                Write(i, tmp18, indword, DataWrite, idwtag);
+        //if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
+            Write(i, tmp18, indword, DataWrite, idwtag);
             
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
+            }
+        }
+        
+        TPR.CA = Yi;
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            // read data where chars/bytes now live
+            
+            Read(i, Yi, &data, DataRead, TM_IT);
+            
+            switch (tTB)
+            {
+                case TB6:
+                CY = GETCHAR(data, tCF);
+                break;
+                case TB9:
+                CY = GETBYTE(data, tCF);
+                break;
+                default:
                 if (adrTrace)
                 {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
                 }
+                break;
             }
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+            }
+        }
         
-            TPR.CA = Yi;
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                // read data where chars/bytes now live
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = Yi;
+            modCont->mod = IT_SCR;
+            modCont->i = i;
+            modCont->tb = tTB;
+            modCont->cf = tCF;
+            modCont->indword = indword;
             
-                Read(i, Yi, &data, DataRead, TM_IT);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): saving instruction continuation '%s'\n", modContSTR(modCont));
             
-                switch (tTB)
-                {
-                    case TB6:
-                        CY = GETCHAR(data, tCF);
-                        break;
-                    case TB9:
-                        CY = GETBYTE(data, tCF);
-                        break;
-                    default:
-                        if (adrTrace)
-                        {
-                            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
-                        }
-                        break;
-                }
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
-                }
-            }
-            
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
-            {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = Yi;
-                modCont->mod = IT_SCR;
-                modCont->i = i;
-                modCont->tb = tTB;
-                modCont->cf = tCF;
-                modCont->indword = indword;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): saving instruction continuation '%s'\n", modContSTR(modCont));
-                
 #if NOW_HANDLED_BY_CONTINUATION
-                
-                // read data where chars/bytes now live
-                Read(i, Yi, &data, DataRead, TM_IT);
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
             
-                // set byte/char
-                switch (tTB)
-                {
-                    case TB6:
-                        putChar(&data, CY & 077, tCF);
-                        break;
-                    case TB9:
-                        putByte(&data, CY & 0777, tCF);
-                        break;
-                    default:
-                        fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
-                    break;
-                }
+            // read data where chars/bytes now live
+            Read(i, Yi, &data, DataRead, TM_IT);
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
             
-                // write it
-                Write(i, Yi, data, DataWrite, TM_IT);
+            // set byte/char
+            switch (tTB)
+            {
+                case TB6:
+                putChar(&data, CY & 077, tCF);
+                break;
+                case TB9:
+                putByte(&data, CY & 0777, tCF);
+                break;
+                default:
+                fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
+                break;
+            }
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-                }
+            // write it
+            Write(i, Yi, data, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+            }
 #endif
             
-            }
-            return;
+        }
+        return;
         
         case IT_I: ///< Indirect (Td = 11)
         
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): indword=%012llo\n", indword);
+        }
+        
+        TPR.CA = GET_ADDR(indword);
+        
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            ReadOP(i, TPR.CA, DataRead, TM_IT);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
             }
+        }
         
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-        
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): indword=%012llo\n", indword);
-            }
-        
-            TPR.CA = GET_ADDR(indword);
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = TPR.CA;
+            modCont->mod = IT_I;
+            modCont->i = i;
+            modCont->indword = indword;
             
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                ReadOP(i, TPR.CA, DataRead, TM_IT);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): saving continuation '%s'\n", modContSTR(modCont));
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
-                }
-            }
-            
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
-            {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = TPR.CA;
-                modCont->mod = IT_I;
-                modCont->i = i;
-                modCont->indword = indword;
-            
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): saving continuation '%s'\n", modContSTR(modCont));
-                
 #if NOW_HANDLED_BY_CONTINUATION
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            Write(i, TPR.CA, CY, DataWrite, TM_IT);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
-                }
-#endif
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
             }
-            return;
+#endif
+        }
+        return;
         
         case IT_AD: ///< Add delta (Td = 13)
-            ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
+        ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
+        }
         
-            tmp18 = TPR.CA;
-//            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-            Read(i, TPR.CA, &indword, DataRead, TM_IT);
+        tmp18 = TPR.CA;
+        //            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        Read(i, TPR.CA, &indword, DataRead, TM_IT);
         
-            tally = GET_TALLY(indword); // 12-bits
-            delta = GET_DELTA(indword); // 6-bits
-            Yi = GETHI(indword);        // from where data live
+        tally = GET_TALLY(indword); // 12-bits
+        delta = GET_DELTA(indword); // 6-bits
+        Yi = GETHI(indword);        // from where data live
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): indword=%012llo\n", indword);
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): indword=%012llo\n", indword);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+        }
         
-            TPR.CA = Yi;
-            // read data
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                ReadOP(i, TPR.CA, DataRead, TM_R);
+        TPR.CA = Yi;
+        // read data
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            ReadOP(i, TPR.CA, DataRead, TM_R);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
-                }
-            }
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+            if (adrTrace)
             {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = TPR.CA;
-                modCont->mod = IT_AD;
-                modCont->i = i;
-                modCont->indword = indword;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): saving continuation '%s'\n", modContSTR(modCont));
-                
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
+            }
+        }
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = TPR.CA;
+            modCont->mod = IT_AD;
+            modCont->i = i;
+            modCont->indword = indword;
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): saving continuation '%s'\n", modContSTR(modCont));
+            
 #if NOW_HANDLED_BY_CONTINUATION
-
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
-                }
-                
-#endif
-            }
-
-            //else if (operType == prepareCA)
-            //{
-            //    // prepareCA shouln't muck about with the tallys
-            //    return;
-            //}
-        
-            Yi += delta;
-            Yi &= MASK18;
-        
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-        
-            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-            Write(i, tmp18, indword, DataWrite, DataWrite);
-        
+            Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n", indword, tmp18);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
             }
-            return;
+            
+#endif
+        }
+        
+        //else if (operType == prepareCA)
+        //{
+        //    // prepareCA shouln't muck about with the tallys
+        //    return;
+        //}
+        
+        Yi += delta;
+        Yi &= MASK18;
+        
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+        Write(i, tmp18, indword, DataWrite, DataWrite);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n", indword, tmp18);
+        }
+        return;
         
         case IT_SD: ///< Subtract delta (Td = 4)
-            ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
+        ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
         
-            tmp18 = TPR.CA;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        tmp18 = TPR.CA;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
         
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
+        }
+        tally = GET_TALLY(indword); // 12-bits
+        delta = GET_DELTA(indword); // 6-bits
+        Yi    = GETHI(indword);     // from where data live
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): indword=%012llo\n", indword);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+        }
+        
+        Yi -= delta;
+        Yi &= MASK18;
+        //TPR.CA = Yi;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        //if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            // write back out indword
+            indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+            Write(i, tmp18, indword, DataWrite, 0);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
             }
-            tally = GET_TALLY(indword); // 12-bits
-            delta = GET_DELTA(indword); // 6-bits
-            Yi    = GETHI(indword);     // from where data live
+        }
         
+        // read data
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
+            //Read(i, Yi, &CY, DataRead, TM_IT);
+            ReadOP(i, Yi, DataRead, TM_IT);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): indword=%012llo\n", indword);
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
             }
+        }
         
-            Yi -= delta;
-            Yi &= MASK18;
-            //TPR.CA = Yi;
-        
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-        
-            //if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-                Write(i, tmp18, indword, DataWrite, 0);
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = Yi;
+            modCont->mod = IT_SD;
+            modCont->i = i;
+            modCont->indword = indword;
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
-                }
-            }
-        
-            // read data
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                //Read(i, Yi, &CY, DataRead, TM_IT);
-                ReadOP(i, Yi, DataRead, TM_IT);
-
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
-                }
-            }
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): saving instruction continuation '%s'\n", modContSTR(modCont));
             
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
-            {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = Yi;
-                modCont->mod = IT_SD;
-                modCont->i = i;
-                modCont->indword = indword;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): saving instruction continuation '%s'\n", modContSTR(modCont));
-                
 #if NOW_HANDLED_BY_CONTINUATION
-
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Write(i, TPR.CA, CY, DataWrite, TM_IT);
-                Write(i, Yi, CY, DataWrite, TM_IT);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
-                }
-#endif
-                
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            Write(i, Yi, CY, DataWrite, TM_IT);
+            
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
             }
-            if (operType == prepareCA)
-                TPR.CA = Yi;
+#endif
             
-            return;
+        }
+        if (operType == prepareCA)
+        TPR.CA = Yi;
+        
+        return;
         
         case IT_DI: ///< Decrement address, increment tally (Td = 14)
         
-            ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
+        ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
         
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        word6 junk = GET_TAG(indword);    // get tag field, but ignore it
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): indword=%012llo\n", indword);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): address:%06o tally:%04o\n", Yi, tally);
+        }
+        
+        Yi -= 1;
+        Yi &= MASK18;
+        //TPR.CA = Yi;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        // if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            // write back out indword
+            
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
+            
+            Write(i, tmp18, indword, DataWrite, 0);
+        }
         
-            tmp18 = TPR.CA;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-        
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            word6 junk = GET_TAG(indword);    // get tag field, but ignore it
-        
+        // read data
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): indword=%012llo\n", indword);
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): address:%06o tally:%04o\n", Yi, tally);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
             }
-        
-            Yi -= 1;
-            Yi &= MASK18;
-            //TPR.CA = Yi;
-        
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-        
-            // if (operType != prepareCA)
+            
+            //Read(i, Yi, &CY, DataRead, TM_IT);
+            ReadOP(i, Yi, DataRead, TM_R);
+            
+            if (adrTrace)
             {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-            
-                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
-            
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
-                }
-            
-                Write(i, tmp18, indword, DataWrite, 0);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
             }
-        
-            // read data
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
-                }
             
-                //Read(i, Yi, &CY, DataRead, TM_IT);
-                ReadOP(i, Yi, DataRead, TM_R);
-                
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
-                }
+        }
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = Yi;
+            modCont->mod = IT_DI;
+            modCont->i = i;
+            modCont->indword = indword;
             
-            }
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
-            {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = Yi;
-                modCont->mod = IT_DI;
-                modCont->i = i;
-                modCont->indword = indword;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): saving continuation '%s'\n", modContSTR(modCont));
-                
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): saving continuation '%s'\n", modContSTR(modCont));
+            
 #if NOW_HANDLED_BY_CONTINUATION
-
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
-                }
             
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Write(i, TPR.CA, CY, DataWrite, TM_IT);
-                Write(i, Yi, CY, DataWrite, TM_IT);
-#endif
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
             }
-            if (operType == prepareCA)
-                TPR.CA = Yi;
-    
-            return;
-
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
+            Write(i, Yi, CY, DataWrite, TM_IT);
+#endif
+        }
+        if (operType == prepareCA)
+        TPR.CA = Yi;
+        
+        return;
+        
         
         case IT_ID: ///< Increment address, decrement tally (Td = 16)
         
-            ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
+        ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
         
-            tmp18 = TPR.CA;
+        tmp18 = TPR.CA;
         
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
+        }
+        
+        processorCycle = INDIRECT_WORD_FETCH;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        junk = GET_TAG(indword);    // get tag field, but ignore it
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
+        }
+        
+        TPR.CA = Yi;
+        // read data
+        if (operType == readCY || operType == rmwCY) //READOP(i))
+        {
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): reading operand from %06o\n", TPR.CA);
             }
-        
-            processorCycle = INDIRECT_WORD_FETCH;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-        
-        
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            junk = GET_TAG(indword);    // get tag field, but ignore it
-        
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+            ReadOP(i, Yi, DataRead, TM_IT);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
             }
-        
-            TPR.CA = Yi;
-            // read data
-            if (operType == readCY || operType == rmwCY) //READOP(i))
-            {
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): reading operand from %06o\n", TPR.CA);
-                }
             
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                ReadOP(i, Yi, DataRead, TM_IT);
+        }
+        if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = TPR.CA;
+            modCont->mod = IT_DI;
+            modCont->i = i;
+            modCont->indword = indword;
+            modCont->tmp18 = tmp18;
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
-                }
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): saving instruction continuation '%s'\n", modContSTR(modCont));
             
-            }
-            if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
-            {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
-                modCont->address = TPR.CA;
-                modCont->mod = IT_DI;
-                modCont->i = i;
-                modCont->indword = indword;
-                modCont->tmp18 = tmp18;
-                
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): saving instruction continuation '%s'\n", modContSTR(modCont));
-                
 #if NOW_HANDLED_BY_CONTINUATION
-
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
-                }
             
-                processorCycle = APU_DATA_MOVEMENT; // ???
-                Write(i, TPR.CA, CY, DataWrite, TM_IT);
-#endif
+            if (adrTrace)
+            {
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
             }
+            
+            processorCycle = APU_DATA_MOVEMENT; // ???
+            Write(i, TPR.CA, CY, DataWrite, TM_IT);
+#endif
+        }
         //    else if (operType == prepareCA)
         //    {
         //        // prepareCA shouln't muck about with the tallys
         //        return;
         //    }
         
-            Yi += 1;
-            Yi &= MASK18;
+        Yi += 1;
+        Yi &= MASK18;
         
-            tally -= 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
+        tally -= 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
         
-            // write back out indword
-            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+        // write back out indword
+        indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
-            }
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
+        }
         
-            Write(i, tmp18, indword, DataWrite, 0);
+        Write(i, tmp18, indword, DataWrite, 0);
         
-            TPR.CA = Yi;
-    
-            return;
-    
+        TPR.CA = Yi;
+        
+        return;
+        
         case IT_DIC: ///< Decrement address, increment tally, and continue (Td = 15)
         
-            ///< The action for this variation is identical to that for the decrement address, increment tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed .
+        ///< The action for this variation is identical to that for the decrement address, increment tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed .
         
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
+        }
+        
+        tmp18 = TPR.CA;
+        Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+        
+        Yi = GETHI(indword);
+        tally = GET_TALLY(indword); // 12-bits
+        idwtag = GET_TAG(indword);
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+        }
+        
+        Yi -= 1;
+        Yi &= MASK18;
+        
+        word24 YiSafe2 = Yi; // save indirect address for later use
+        
+        TPR.CA = Yi;
+        
+        tally += 1;
+        tally &= 07777; // keep to 12-bits
+        SCF(tally == 0, rIR, I_TALLY);
+        
+        // if (operType != prepareCA)
+        {
+            // Only update the tally and address if not prepareCA
+            // write back out indword
+            indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
+            
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
             }
-        
-            tmp18 = TPR.CA;
-            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-        
-            Yi = GETHI(indword);
-            tally = GET_TALLY(indword); // 12-bits
-            idwtag = GET_TAG(indword);
-        
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
-            }
-        
-            Yi -= 1;
-            Yi &= MASK18;
-        
-            word24 YiSafe2 = Yi; // save indirect address for later use
-        
-            TPR.CA = Yi;
-        
-            tally += 1;
-            tally &= 07777; // keep to 12-bits
-            SCF(tally == 0, rIR, I_TALLY);
-        
-           // if (operType != prepareCA)
-            {
-                // Only update the tally and address if not prepareCA
-                // write back out indword
-                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
-                }
+            Write(i, tmp18, indword, DataWrite, 0);
+        }
+        
+        // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+        
+        //TPR.CA = GETHI(CY);
+        
+        TPR.CA = YiSafe2;
+        
+        rTAG = idwtag & 0x70; // force R to 0
+        Td = GET_TD(rTAG);
+        Tm = GET_TM(rTAG);
+        
+        //TPR.CA = i->address;
+        //rY = TPR.CA;    //i->address;
+        
+        switch(Tm)
+        {
+            case TM_R:
+            goto R_MOD;
             
-                Write(i, tmp18, indword, DataWrite, 0);
-            }
-        
-            // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
-        
-            //TPR.CA = GETHI(CY);
-        
-            TPR.CA = YiSafe2;
-        
-            rTAG = idwtag & 0x70; // force R to 0
+            case TM_RI:
+            goto RI_MOD;
+            
+            case TM_IR:
+            goto IR_MOD;
+            
+            case TM_IT:
+            rTAG = idwtag;
             Td = GET_TD(rTAG);
             Tm = GET_TM(rTAG);
-        
-            //TPR.CA = i->address;
-            //rY = TPR.CA;    //i->address;
-        
-            switch(Tm)
-            {
-                case TM_R:
-                    goto R_MOD;
             
-                case TM_RI:
-                    goto RI_MOD;
-            
-                case TM_IR:
-                    goto IR_MOD;
-            
-                case TM_IT:
-                    rTAG = idwtag;
-                    Td = GET_TD(rTAG);
-                    Tm = GET_TM(rTAG);
-            
-                goto IT_MOD;
-            }
-            sim_printf("IT_DIC: how'd we get here???\n");
-            return;
+            goto IT_MOD;
+        }
+        sim_printf("IT_DIC: how'd we get here???\n");
+        return;
         
         case IT_IDC: ///< Increment address, decrement tally, and continue (Td = 17)
         
             ///< The action for this variation is identical to that for the increment address, decrement tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
-            }
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
         
             tmp18 = TPR.CA;
             Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
@@ -2635,10 +2844,7 @@ IT_MOD:;
             tally = GET_TALLY(indword); // 12-bits
             idwtag = GET_TAG(indword);
         
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
-            }
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
         
             word24 YiSafe = Yi; // save indirect address for later use
         
@@ -2655,14 +2861,11 @@ IT_MOD:;
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
             
-                if (adrTrace)
-                {
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
-                }
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
             
                 Write(i, tmp18, indword, DataWrite, TM_IT);
             }
-                
+        
             // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
             // But for the dps88 you can use everything but ir/ri.
         
@@ -2697,254 +2900,1089 @@ IT_MOD:;
             }
             sim_printf("IT_IDC: how'd we get here???\n");
             return;
-        }
-
-}
-
-void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
-{
-    if (modCont->bActive == false)
-        return; // no continuation available
-    
-//    if (operType == writeCY)
-//    {
-//        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR(i));
-//        return;
-//    }
-    
-    directOperandFlag = false;
-    
-    //modCont->bActive = false;   // assume no continuation necessary
-    
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressContinuation(Entry): '%s'\n", modContSTR(modCont));
-    
-
-    switch (modCont->mod)
-    {
-        
-        case IT_CI: ///< Character indirect (Td = 10)
-        
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
-            ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
-
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): restoring instruction continuation '%s'\n", modContSTR(modCont));
-
-            int Yi = modCont->address ;
-            tTB = modCont->tb;
-            tCF = modCont->cf;
-            
-            word36 data;
-
-            // read data where chars/bytes now live
-            Read(i, Yi, &data, DataRead, TM_IT);
-        
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, Yi, tTB, tCF);
-        
-            // set byte/char
-            switch (tTB)
-            {
-                case TB6:
-                    putChar(&data, CY & 077, tCF);
-                    break;
-                case TB9:
-                    putByte(&data, CY & 0777, tCF);
-                    break;
-                default:
-                    fprintf(stderr, "IT_MOD(IT_CI): unknown tTB:%o\n", tTB);
-                    break;
-            }
-            
-            // write it
-            Write(i, Yi, data, DataWrite, TM_IT);
-            
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-        
-            return;
-        
-        case IT_SC: ///< Sequence character (Td = 12)
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
-        
-        
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): restoring instruction continuation '%s'\n", modContSTR(modCont));
-            
-            Yi = modCont->address;
-            tTB = modCont->tb;
-            tCF = modCont->cf;
-        
-            // read data where chars/bytes now live (if it hasn't already been read in)
-            if (!(i->iwb->flags & READ_OPERAND))
-                Read(i, Yi, &data, DataRead, TM_IT);
-            else
-                data = CY;
-            
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-        
-            // set byte/char
-            switch (tTB)
-            {
-                case TB6:
-                    putChar(&data, CY & 077, tCF);
-                    break;
-                case TB9:
-                    putByte(&data, CY & 0777, tCF);
-                    break;
-                default:
-                    fprintf(stderr, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
-                    break;
-            }
-            
-            // write it
-            Write(i, Yi, data, DataWrite, TM_IT);
-            
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-        
-            return;
-        
-        case IT_SCR: ///< Sequence character reverse (Td = 5)
-            ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
-        
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): restoring instruction continuation '%s'\n", modContSTR(modCont));
-
-            Yi = modCont->address;
-            tTB = modCont->tb;
-            tCF = modCont->cf;
-        
-            
-            // read data where chars/bytes now live (if it hasn't already been read in)
-            if (!(i->iwb->flags & READ_OPERAND))
-                Read(i, Yi, &data, DataRead, TM_IT);
-            else
-                data = CY;
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-            }
-            
-            // set byte/char
-            switch (tTB)
-            {
-                case TB6:
-                    putChar(&data, CY & 077, tCF);
-                    break;
-                case TB9:
-                    putByte(&data, CY & 0777, tCF);
-                    break;
-                default:
-                    fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
-                    break;
-            }
-            
-            // write it
-            Write(i, Yi, data, DataWrite, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-            }
-        
-        
-            return;
-        
-        case IT_I: ///< Indirect (Td = 11)
-
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): restoring continuation '%s'\n", modContSTR(modCont));
-            TPR.CA = modCont->address;
-            
-            Write(i, TPR.CA, CY, DataWrite, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
-            }
-            return;
-        
-        case IT_AD: ///< Add delta (Td = 13)
-            ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
-        
-            // read data
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): restoring continuation '%s'\n", modContSTR(modCont));
-
-            TPR.CA = modCont->address;
-      
-            Write(i, TPR.CA, CY, DataWrite, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
-            }
-            return;
-        
-        case IT_SD: ///< Subtract delta (Td = 4)
-            ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
-        
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): restoring continuation '%s'\n", modContSTR(modCont));
-            
-            Yi = modCont->address;
-            
-            Write(i, Yi, CY, DataWrite, TM_IT);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
-            }
-            return;
-        
-        case IT_DI: ///< Decrement address, increment tally (Td = 14)
-        
-            ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
-        
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): restoring continuation '%s'\n", modContSTR(modCont));
-
-            Yi = modCont->address;
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
-            }
-            
-            Write(i, Yi, CY, DataWrite, TM_IT);
-        
-            return;
-        
-        
-        case IT_ID: ///< Increment address, decrement tally (Td = 16)
-        
-            ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
-       
-        //if (operType == writeCY)
-        //{
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): restoring continuation '%s'\n", modContSTR(modCont));
-            
-            TPR.CA = modCont->address;
-
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
-            }
-            
-            Write(i, TPR.CA, CY, DataWrite, TM_IT);
-        
-            return;
-            
-        default:
-            //sim_printf("doContinuedAddressContinuation(): How'd we get here (%d)???\n", modCont->mod);
-            
-            //sim_debug(DBG_ADDRMOD, &cpu_dev, "default: restoring continuation '%s'\n", modContSTR(modCont));
-            TPR.CA = modCont->address;
-            
-            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
-            WriteOP(i, TPR.CA, DataWrite, modCont->mod);
-            
-            if (adrTrace)
-            {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), CY, TPR.CA);
-            }
-            return;
-
-            break;
     }
-
+    
 }
 
 #endif
+
+#endif // delete_when_ready
+
+
+/*
+ * new stuff ...
+ */
+word36 itxPair[2];   // a Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
+
+bool didITSITP = false; ///< true after an ITS/ITP processing
+
+static void doITP(word4 Tag)
+{
+    sim_debug(DBG_APPENDING, &cpu_dev, "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n", GET_ITP_PRNUM(Ypair), GET_ITP_WORDNO(Ypair), GET_ITP_BITNO(Ypair), GET_ITP_MOD(Ypair));
+    /**
+     For n = C(ITP.PRNUM):
+     C(PRn.SNR) → C(TPR.TSR)
+     maximum of ( C(PRn.RNR), C(SDW.R1), C(TPR.TRR) ) → C(TPR.TRR)
+     C(ITP.BITNO) → C(TPR.TBR)
+     C(PRn.WORDNO) + C(ITP.WORDNO) + C(r) → C(TPR.CA)
+     
+     Notes:
+     1. r = C(CT-HOLD) if the instruction word or preceding indirect word specified indirect then register modification, or
+     2. r = C(ITP.MOD.Td) if the instruction word or preceding indirect word specified register then indirect modification and ITP.MOD.Tm specifies either register or register then indirect modification.
+     3. SDW.R1 is the upper limit of the read/write ring bracket for the segment C(TPR.TSR) (see Section 8).
+     */
+    word3 n = GET_ITP_PRNUM(itxPair);
+    TPR.TSR = PR[n].SNR;
+    TPR.TRR = max3(PR[n].RNR, SDW->R1, TPR.TRR);
+    TPR.TBR = GET_ITP_BITNO(itxPair);
+    TPR.CA = PAR[n].WORDNO + GET_ITP_WORDNO(itxPair) + getCr(GET_TD(Tag));
+    rY = TPR.CA;
+    
+    rTAG = GET_ITP_MOD(itxPair);
+    return;
+}
+
+static void doITS(word4 Tag)
+{
+    if ((cpu_dev.dctrl & DBG_APPENDING) && sim_deb)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "ITS Pair: SEGNO=%o RN=%o WORDNO=%o BITNO=%o MOD=%o\n", GET_ITS_SEGNO(itxPair), GET_ITS_RN(itxPair), GET_ITS_WORDNO(itxPair), GET_ITS_BITNO(itxPair), GET_ITS_MOD(itxPair));
+    }
+    /*
+     C(ITS.SEGNO) → C(TPR.TSR)
+     maximum of ( C(ITS. RN), C(SDW.R1), C(TPR.TRR) ) → C(TPR.TRR)
+     C(ITS.BITNO) → C(TPR.TBR)
+     C(ITS.WORDNO) + C(r) → C(TPR.CA)
+     
+     1. r = C(CT-HOLD) if the instruction word or preceding indirect word specified indirect then register modification, or
+     2. r = C(ITS.MOD.Td) if the instruction word or preceding indirect word specified register then indirect modification and ITS.MOD.Tm specifies either register or register then indirect modification.
+     3. SDW.R1 is the upper limit of the read/write ring bracket for the segment C(TPR.TSR) (see Section 8).
+     */
+    TPR.TSR = GET_ITS_SEGNO(itxPair);
+    TPR.TRR = max3(GET_ITS_RN(itxPair), SDW->R1, TPR.TRR);
+    TPR.TBR = GET_ITS_BITNO(itxPair);
+    TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(Tag));
+    rY = TPR.CA;
+    
+    rTAG = GET_ITS_MOD(itxPair);
+    
+    return;
+}
+
+
+bool
+doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
+{
+    word6 indTag = GET_TAG(indword);
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: indword:%012llo Tag:%o\n", indword, Tag);
+    
+    if (!((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword))))
+    //if (!(ISITP(indword) || ISITS(indword)))
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: returning false\n");
+        doFault(i, illproc_fault, ill_mod, "Incorrect address modifier");
+        return false;  // couldnt/woudlnt/shouldnt do ITS/ITP indirection
+    }
+    
+    /*
+     Whenever the processor is forming a virtual address two special address modifiers may be specified and are effective under certain restrictive conditions. The special address modifiers are shown in Table 6-4 and discussed in the paragraphs below.
+     The conditions for which the special address modifiers are effective are as follows:
+     1. The instruction word (or preceding indirect word) must specify indirect then register or register then indirect modification.
+     2. The computed address for the indirect word must be even.
+     If these conditions are satisfied, the processor examines the indirect word TAG field for the special address modifiers.
+     XXX If either condition is violated, the indirect word TAG field is interpreted as a normal address modifier and the presence of a special address modifier will cause an illegal procedure, illegal modifier, fault.
+     */
+    //if (processorAddressingMode != APPEND_MODE || TPR.CA & 1)
+    /*
+     if (get_addr_mode() != APPEND_mode || (TPR.CA & 1))
+     // XXX illegal procedure, illegal modifier, fault
+     doFault(i, illproc_fault, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
+     */
+//    if ((TPR.CA & 1))
+//        // XXX illegal procedure, illegal modifier, fault
+//    doFault(i, illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: reading indirect words from %06o\n", address);
+    
+    // this is probably sooo wrong, but it's a start ...
+    itxPair[0] = indword;
+    
+    //int safe = TPR.CA;
+    
+    Read(i, address + 1, &itxPair[1], DataRead, i->a);
+    
+    //TPR.CA = safe;
+    
+    sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012llo %012llo\n", itxPair[0], itxPair[1]);
+    
+    if (ISITS(indTag))
+        doITS(Tag);
+    else
+        doITP(Tag);
+    
+    didITSITP = true;
+    return true;
+    
+}
+
+t_stat doCAF(DCDstruct *i)
+{
+    eCAFoper operType = prepareCA;  // just for now
+    if (RMWOP(i))
+        operType = rmwCY;           // r/m/w cycle
+    else if (READOP(i))
+        operType = readCY;          // read cycle
+    else if (WRITEOP(i))
+        operType = writeCY;         // write cycle (handled by continuations)
+    
+    word18 tmp18;
+    word36 indword;
+        
+    int iTAG;   // tag of word preceeding an indirect fetch
+    word18 iCA; // CA   "" "" "" ""
+        
+    directOperandFlag = false;
+        
+    modCont->bActive = false;   // assume no continuation necessary
+        
+    if (i->iwb->flags & NO_TAG) // for instructions line STCA/STCQ
+        rTAG = 0;
+    else
+        rTAG = i->tag;
+        
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation(Entry): operType:%s TPR.CA=%06o\n", opDescSTR(i), TPR.CA);
+    
+startCA:;
+        
+        Td = GET_TD(rTAG);
+        Tm = GET_TM(rTAG);
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormation(startCA): TAG=%02o(%s) Tm=%o Td=%o\n", rTAG, getModString(rTAG), Tm, Td);
+    
+        switch(Tm)
+        {
+            case TM_R:
+                goto R_MOD;
+            case TM_RI:
+                goto RI_MOD;
+            case TM_IT:
+                goto IT_MOD;
+            case TM_IR:
+                goto IR_MOD;
+        }
+        sim_printf("doPreliminaryComputedAddressFormation(startCA): unknown Tm??? %o\n", GET_TM(rTAG));
+        return SCPE_OK;
+        
+        
+        //! Register modification. Fig 6-3
+R_MOD:;
+        
+        if (Td == 0) // TPR.CA = address from opcode
+            goto R_MOD1;
+        
+        word18 Cr = getCr(Td);  // C(r)
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: Cr=%06o\n", Cr);
+    
+        if (directOperandFlag)
+        {
+            CY = directOperand;
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: directOperand = %012llo\n", CY);
+
+            return SCPE_OK;
+        }
+        
+        TPR.CA += Cr;
+        TPR.CA &= MASK18;   // keep to 18-bits
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR.CA);
+    
+    R_MOD1:;
+    
+        if (operType == readCY || operType == rmwCY)
+        {
+            ReadOP(i, TPR.CA, DataRead, i->a);  // read appropriate operand(s)
+          
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: %s: C(%06o)=%012llo\n", opDescSTR(i), TPR.CA, CY);
+        }
+    
+        if (operType == writeCY || operType == rmwCY)
+        {
+            modCont->bActive = true;    // will continue the write operation after instruction implementation
+            modCont->address = TPR.CA;
+            modCont->mod = TM_R;
+            modCont->i = i;
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(i), modContSTR(modCont));
+        }
+        
+        return SCPE_OK;
+        
+        //! Figure 6-4. Register Then Indirect Modification Flowchart
+    RI_MOD:;
+        
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Td=%o\n", Td);
+    
+        if (Td == TD_DU || Td == TD_DL) // XXX illegal procedure, illegal modifier, fault
+            doFault(i, illproc_fault, ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
+        
+        if (!Td == 0)
+        {
+            word18 Cr = getCr(Td);  // C(r)
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Cr=%06o TPR.CA(Before)=%06o\n", Cr, TPR.CA);
+            
+            TPR.CA += Cr;
+            TPR.CA &= MASK18;
+            
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "TPR.CA(After)=%06o\n", TPR.CA);
+        }
+        
+        //    if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
+        //    {
+        //        Read(i, TPR.CA, &indword, DataRead, rTAG);
+        //        TPR.CA = GETHI(indword);
+        //        return;
+        //    }
+        iCA = TPR.CA;
+        iTAG = rTAG;
+        
+        Read(i, TPR.CA, &indword, IndirectRead, i->a); //TM_RI);
+    
+        TPR.CA = GETHI(indword);
+        rTAG = GET_TAG(indword);
+        
+        rY = TPR.CA;
+        
+#ifndef QUIET_UNUSED
+    RI_MOD2:;
+#endif
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n", indword, TPR.CA, rTAG);
+    
+        //if (operType == prepareCA)
+        //{
+        //CY = directOperand;
+        //return;
+        //}
+        goto startCA;
+        
+        //! Figure 6-5. Indirect Then Register Modification Flowchart
+    IR_MOD:;
+        
+        cu.CT_HOLD = Td;
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: CT_HOLD=%o %o\n", cu.CT_HOLD, Td);
+    
+    IR_MOD_1:
+    
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: fetching indirect word from %06o\n", TPR.CA);
+    
+        Read(i, TPR.CA, &indword, IndirectRead, i->a);
+        
+        TPR.CA = GETHI(indword);
+        rY = TPR.CA;
+        
+        Td = GET_TAG(GET_TD(indword));
+        Tm = GET_TAG(GET_TM(indword));
+        
+#ifndef QUIET_UNUSED
+    IR_MOD_2:;
+#endif
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD1: indword=%012llo TPR.CA=%06o Tm=%o Td=%02o (%s)\n", indword, TPR.CA, Tm, Td, getModString(GET_TAG(indword)));
+    
+        switch (Tm)
+        {
+            case TM_IT:
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_IT): Td=%02o => %02o\n", Td, cu.CT_HOLD);
+                if (Td == IT_F2 || Td == IT_F3)
+                {
+                    // Abort. FT2 or 3
+                    switch (Td)
+                    {
+                        case IT_F2:
+                            doFault(i, f2_fault, 0, "IT_F2");
+                            return SCPE_OK;
+                        case IT_F3:
+                            doFault(i, f3_fault, 0, "IT_F3");
+                            return SCPE_OK;
+                    }
+                }
+                // fall through to TM_R
+        
+            case TM_R:
+                Cr = getCr(cu.CT_HOLD);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): Cr=%06o\n", Cr);
+            
+                if (directOperandFlag)
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R:directOperandFlag): operand=%012llo\n", directOperand);
+                    CY = directOperand;
+                
+                    return SCPE_OK;
+                }
+                TPR.CA += Cr;
+                TPR.CA &= MASK18;   // keep to 18-bits
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): TPR.CA=%06o\n", TPR.CA);
+            
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    ReadOP(i, TPR.CA, DataRead, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): %s: C(Y)=%012llo\n", opDescSTR(i), CY);
+                    
+                }
+            
+                // writes are handled by doAddressContinuation()
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = TPR.CA;
+                    modCont->mod = TM_R;
+                    modCont->i = i;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(): saving continuation '%s'\n", modContSTR(modCont));
+                }
+            
+                return SCPE_OK;
+            
+            case TM_RI:
+                Cr = getCr(Td);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): Td=%o Cr=%06o TPR.CA(Before)=%06o\n", Td, Cr, TPR.CA);
+            
+                TPR.CA += Cr;
+                TPR.CA &= MASK18;   // keep to 18-bits
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_RI): TPR.CA(After)=%06o\n", TPR.CA);
+            
+                goto IR_MOD_1;
+            
+            case TM_IR:
+                goto IR_MOD;
+            
+        }
+        
+        sim_printf("doPreliminaryComputedAddressFormation(IR_MOD): unknown Tm??? %o\n", GET_TM(rTAG));
+        return SCPE_OK;
+        
+    IT_MOD:;
+        //    IT_SD     = 004,
+        //    IT_SCR	= 005,
+        //    IT_CI     = 010,
+        //    IT_I      = 011,
+        //    IT_SC     = 012,
+        //    IT_AD     = 013,
+        //    IT_DI     = 014,
+        //    IT_DIC	= 015,
+        //    IT_ID     = 016,
+        //    IT_IDC	= 017
+        word12 tally;
+        word6 idwtag, delta;
+        word36 data;
+        word24 Yi = -1;
+        
+        switch (Td)
+        {
+            // XXX this is probably wrong. ITS/ITP are not standard addr mods .....
+            case SPEC_ITP:
+            case SPEC_ITS:
+            //TODO: insert special rules for abs mode ITS/ITP ...
+            
+                if ((iCA & 1))
+                    // XXX illegal procedure, illegal modifier, fault
+                    doFault(i, illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
+
+                if (!doITSITP(i, iCA, indword, iTAG))
+                    return SCPE_UNK;    // some problem with ITS/ITP stuff
+
+                if (operType == prepareCA)
+                {
+                    return SCPE_OK;
+                    
+                } else if (operType == readCY || operType == rmwCY)
+                {
+                    ReadOP(i, TPR.CA, DataRead, i->a);
+                
+                } else if (operType == writeCY || operType == rmwCY)
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = TPR.CA;
+                    modCont->mod = TM_R;
+                    modCont->i = i;
+                    
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
+                }
+    
+                return SCPE_OK;
+            
+                // check for illegal ITS/ITP
+                ///< XXX illegal procedure, illegal modifier, fault
+                doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+                break;
+            
+            case 2:
+                ///< XXX illegal procedure, illegal modifier, fault
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
+                doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+                return SCPE_OK;
+            
+                ///< XXX Abort. FT2 or 3
+            case IT_F1:
+                doFault(i, f1_fault, 0, "IT_F1");
+                return SCPE_OK;
+            
+            case IT_F2:
+                doFault(i, f2_fault, 0, "IT_F2");
+                return SCPE_OK;
+            case IT_F3:
+                doFault(i, f3_fault, 0, "IT_F3");
+                return SCPE_OK;
+            
+            case IT_CI: ///< Character indirect (Td = 10)
+            
+                ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position value, cf. Bits 31-32 of the TAG field must be zero.
+                ///< If the character position value is greater than 5 for 6-bit characters or greater than 3 for 9- bit bytes, an illegal procedure, illegal modifier, fault will occur. The TALLY field is ignored. The computed address is the value of the ADDRESS field of the indirect word. The effective character/byte number is the value of the character position count, cf, field of the indirect word.
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): reading indirect word from %06o\n", TPR.CA);
+            
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);  //TM_IT);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): indword=%012llo\n", indword);
+            
+                TPR.CA = GET_ADDR(indword);
+                tTB = GET_TB(GET_TAG(indword));
+                tCF = GET_CF(GET_TAG(indword));
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): tTB=%o tCF=%o TPR.CA=%06o\n", tTB, tCF, TPR.CA);
+            
+                if (tTB == TB6 && tCF > 5)
+                    // generate an illegal procedure, illegal modifier fault
+                    doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
+            
+                if (tTB == TB9 && tCF > 3)
+                    // generate an illegal procedure, illegal modifier fault
+                    doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
+            
+            
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(i, TPR.CA, DataRead, i->a);
+                    if (tTB == TB6)
+                        CY = GETCHAR(CY, tCF);
+                    else
+                        CY = GETBYTE(CY, tCF);
+                    if (adrTrace)
+                    {
+                        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
+                    }
+                }
+            
+                if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = TPR.CA;
+                    modCont->mod = IT_CI;
+                    modCont->i = i;
+                    modCont->tb = tTB;
+                    modCont->cf = tCF;
+                    
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): saving continuation '%s'\n", modContSTR(modCont));
+                }
+            
+                return SCPE_OK;
+            
+            case IT_SC: ///< Sequence character (Td = 12)
+                ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character/byte position counter, cf. Bits 31-32 of the TAG field must be zero.
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reading indirect word from %06o\n", TPR.CA);
+            
+                tmp18 = TPR.CA;
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): indword=%012llo\n", indword);
+            
+                tally = GET_TALLY(indword);    // 12-bits
+                idwtag = GET_TAG(indword);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally=%04o idwtag=%02o\n", tally, idwtag);
+            
+                //The computed address is the unmodified value of the ADDRESS field. The effective character/byte number is the unmodified value of the character position counter, cf, field of the indirect word.
+                tTB = GET_TB(idwtag);
+                tCF = GET_CF(idwtag);
+                Yi = GETHI(indword);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
+                
+                TPR.CA = Yi;
+            
+                // read data where chars/bytes live
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    Read(i, TPR.CA, &data, DataRead, i->a);
+                
+                    switch (tTB)
+                    {
+                        case TB6:
+                            CY = GETCHAR(data, tCF % 6);
+                            break;
+                        case TB9:
+                            CY = GETBYTE(data, tCF % 4);
+                            break;
+                        default:
+                            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+                            break;
+                    }
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+                }
+            
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = Yi;
+                    modCont->mod = IT_SC;
+                    modCont->i = i;
+                    modCont->tb = tTB;
+                    modCont->cf = tCF;
+                    modCont->indword = indword;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): saving continuation '%s'\n", modContSTR(modCont));
+                
+                }
+                if (operType == prepareCA)
+                {
+                    // prepareCA shouln't muck about with the tallys, But I don;t think it's ever hit this
+                    return SCPE_OK;
+                }
+            
+                // For each reference to the indirect word, the character counter, cf, is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, overflows to 6 for 6-bit characters or to 4 for 9-bit bytes, it is reset to 0 and ADDRESS is increased by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF.
+            
+                tCF += 1;
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tCF = %o\n", tCF);
+            
+                if(((tTB == TB6) && (tCF > 5)) || ((tTB == TB9) && (tCF > 3)))
+                {
+                    tCF = 0;
+                    Yi += 1;
+                    Yi &= MASK18;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reset tCF. Yi now %06o\n", Yi);
+                }
+            
+                tally -= 1;
+                tally &= 07777; // keep to 12-bits
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally now %o\n", tally);
+            
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
+                Write(i, tmp18, indword, i->a);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, tmp18);
+            
+                return SCPE_OK;
+            
+            case IT_SCR: ///< Sequence character reverse (Td = 5)
+                ///< Bit 30 of the TAG field of the indirect word is interpreted as a character size flag, tb, with the value 0 indicating 6-bit characters and the value 1 indicating 9-bit bytes. Bits 33-35 of the TAG field are interpreted as a 3-bit character position counter, cf. Bits 31-32 of the TAG field must be zero.
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
+            
+                tmp18 = TPR.CA;
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
+
+                tally = GET_TALLY(indword);    // 12-bits
+                idwtag = GET_TAG(indword);
+                Yi = GETHI(indword);           // where chars/bytes live
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tally=%04o idwtag=%02o\n", tally, idwtag);
+            
+                tTB = GET_TB(idwtag);   //GET_TAG(indword));
+                tCF = GET_CF(idwtag);   //GET_TAG(indword));
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): tTB=%o tCF=%o Yi=%06o\n", tTB, tCF, Yi);
+            
+                //For each reference to the indirect word, the character counter, cf, is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. Character count arithmetic is modulo 6 for 6-bit characters and modulo 4 for 9-bit bytes. If the character count, cf, underflows to -1, it is reset to 5 for 6-bit characters or to 3 for 9-bit bytes and ADDRESS is reduced by 1. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the (possibly) decremented value of the ADDRESS field of the indirect word. The effective character/byte number is the decremented value of the character position count, cf, field of the indirect word.
+            
+                if (tCF == 0)
+                {
+                    if (tTB == TB6)
+                        tCF = 5;
+                    else
+                        tCF = 3;
+                    Yi -= 1;
+                    Yi &= MASK18;
+                } else
+                    tCF -= 1;
+            
+                tally += 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                //if (operType != prepareCA)
+                {
+                    // Only update the tally and address if not prepareCA
+                    indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
+                    Write(i, tmp18, indword, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
+                }
+            
+                TPR.CA = Yi;
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    // read data where chars/bytes now live
+                
+                    Read(i, Yi, &data, DataRead, i->a);
+                
+                    switch (tTB)
+                    {
+                        case TB6:
+                            CY = GETCHAR(data, tCF);
+                            break;
+                        case TB9:
+                            CY = GETBYTE(data, tCF);
+                            break;
+                        default:
+                            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
+                            break;
+                    }
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read operand %012llo from %06o char/byte=%llo\n", data, TPR.CA, CY);
+                }
+            
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = Yi;
+                    modCont->mod = IT_SCR;
+                    modCont->i = i;
+                    modCont->tb = tTB;
+                    modCont->cf = tCF;
+                    modCont->indword = indword;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): saving instruction continuation '%s'\n", modContSTR(modCont));
+                }
+                return SCPE_OK;
+            
+            case IT_I: ///< Indirect (Td = 11)
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
+            
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): indword=%012llo\n", indword);
+            
+                TPR.CA = GET_ADDR(indword);
+            
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(i, TPR.CA, DataRead, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
+                }
+            
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = TPR.CA;
+                    modCont->mod = IT_I;
+                    modCont->i = i;
+                    modCont->indword = indword;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): saving continuation '%s'\n", modContSTR(modCont));
+                
+                }
+                return SCPE_OK;
+            
+            case IT_AD: ///< Add delta (Td = 13)
+                ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is increased by delta and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the unmodified ADDRESS field of the indirect word.
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
+            
+                tmp18 = TPR.CA;
+                //            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
+                Read(i, TPR.CA, &indword, DataRead, i->a);
+            
+                tally = GET_TALLY(indword); // 12-bits
+                delta = GET_DELTA(indword); // 6-bits
+                Yi = GETHI(indword);        // from where data live
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): indword=%012llo\n", indword);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+            
+                TPR.CA = Yi;
+                // read data
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(i, TPR.CA, DataRead, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
+                }
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = TPR.CA;
+                    modCont->mod = IT_AD;
+                    modCont->i = i;
+                    modCont->indword = indword;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): saving continuation '%s'\n", modContSTR(modCont));
+                
+                }
+            
+                //else if (operType == prepareCA)
+                //{
+                //    // prepareCA shouln't muck about with the tallys
+                //    return;
+                //}
+            
+                Yi += delta;
+                Yi &= MASK18;
+            
+                tally -= 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+                Write(i, tmp18, indword, i->a);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n", indword, tmp18);
+                return SCPE_OK;
+            
+            case IT_SD: ///< Subtract delta (Td = 4)
+                ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
+            
+                tmp18 = TPR.CA;
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
+                tally = GET_TALLY(indword); // 12-bits
+                delta = GET_DELTA(indword); // 6-bits
+                Yi    = GETHI(indword);     // from where data live
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): indword=%012llo\n", indword);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): address:%06o tally:%04o delta:%03o\n", Yi, tally, delta);
+            
+                Yi -= delta;
+                Yi &= MASK18;
+                //TPR.CA = Yi;
+            
+                tally += 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                //if (operType != prepareCA)
+                {
+                    // Only update the tally and address if not prepareCA
+                    // write back out indword
+                    indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
+                    Write(i, tmp18, indword, 0);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
+                }
+            
+                // read data
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    //Read(i, Yi, &CY, DataRead, TM_IT);
+                    ReadOP(i, Yi, DataRead, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
+                }
+            
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = Yi;
+                    modCont->mod = IT_SD;
+                    modCont->i = i;
+                    modCont->indword = indword;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): saving instruction continuation '%s'\n", modContSTR(modCont));
+                
+                }
+                if (operType == prepareCA)
+                    TPR.CA = Yi;
+            
+                return SCPE_OK;
+            
+            case IT_DI: ///< Decrement address, increment tally (Td = 14)
+            
+                ///< For each reference to the indirect word, the ADDRESS field is reduced by 1 and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the decremented ADDRESS field.
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
+            
+                tmp18 = TPR.CA;
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                Yi = GETHI(indword);
+                tally = GET_TALLY(indword); // 12-bits
+                word6 junk = GET_TAG(indword);    // get tag field, but ignore it
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): indword=%012llo\n", indword);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): address:%06o tally:%04o\n", Yi, tally);
+            
+                Yi -= 1;
+                Yi &= MASK18;
+                //TPR.CA = Yi;
+            
+                tally += 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                // if (operType != prepareCA)
+                {
+                    // Only update the tally and address if not prepareCA
+                    // write back out indword
+                
+                    indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                    
+                    Write(i, tmp18, indword, i->a);
+                }
+            
+                // read data
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
+                
+                    //Read(i, Yi, &CY, DataRead, TM_IT);
+                    ReadOP(i, Yi, DataRead, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
+                }
+            
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = Yi;
+                    modCont->mod = IT_DI;
+                    modCont->i = i;
+                    modCont->indword = indword;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): saving continuation '%s'\n", modContSTR(modCont));
+
+                }
+                if (operType == prepareCA)
+                    TPR.CA = Yi;
+            
+                return SCPE_OK;
+            
+            
+            case IT_ID: ///< Increment address, decrement tally (Td = 16)
+            
+                ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
+            
+                tmp18 = TPR.CA;
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
+            
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                Yi = GETHI(indword);
+                tally = GET_TALLY(indword); // 12-bits
+                junk = GET_TAG(indword);    // get tag field, but ignore it
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
+            
+                TPR.CA = Yi;
+                // read data
+                if (operType == readCY || operType == rmwCY) //READOP(i))
+                {
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): reading operand from %06o\n", TPR.CA);
+                
+                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(i, Yi, DataRead, i->a);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
+                
+                }
+                if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
+                {
+                    modCont->bActive = true;    // will continue the write operation after instruction implementation
+                    modCont->address = TPR.CA;
+                    modCont->mod = IT_DI;
+                    modCont->i = i;
+                    modCont->indword = indword;
+                    modCont->tmp18 = tmp18;
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): saving instruction continuation '%s'\n", modContSTR(modCont));
+                
+                }
+                //    else if (operType == prepareCA)
+                //    {
+                //        // prepareCA shouln't muck about with the tallys
+                //        return;
+                //    }
+            
+                Yi += 1;
+                Yi &= MASK18;
+            
+                tally -= 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                // write back out indword
+                indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
+            
+                Write(i, tmp18, indword, i->a);
+            
+                TPR.CA = Yi;
+            
+            return SCPE_OK;
+            
+            case IT_DIC: ///< Decrement address, increment tally, and continue (Td = 15)
+            
+                ///< The action for this variation is identical to that for the decrement address, increment tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed .
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
+            
+                tmp18 = TPR.CA;
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                Yi = GETHI(indword);
+                tally = GET_TALLY(indword); // 12-bits
+                idwtag = GET_TAG(indword);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+            
+                Yi -= 1;
+                Yi &= MASK18;
+            
+                word24 YiSafe2 = Yi; // save indirect address for later use
+            
+                TPR.CA = Yi;
+            
+                tally += 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                // if (operType != prepareCA)
+                {
+                    // Only update the tally and address if not prepareCA
+                    // write back out indword
+                    indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                    
+                    Write(i, tmp18, indword, i->a);
+                }
+            
+                // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+            
+                //TPR.CA = GETHI(CY);
+            
+                TPR.CA = YiSafe2;
+            
+                rTAG = idwtag & 0x70; // force R to 0
+                Td = GET_TD(rTAG);
+                Tm = GET_TM(rTAG);
+            
+                //TPR.CA = i->address;
+                //rY = TPR.CA;    //i->address;
+            
+                switch(Tm)
+                {
+                    case TM_R:
+                        goto R_MOD;
+                
+                    case TM_RI:
+                        goto RI_MOD;
+                
+                    case TM_IR:
+                        goto IR_MOD;
+                
+                    case TM_IT:
+                        rTAG = idwtag;
+                        Td = GET_TD(rTAG);
+                        Tm = GET_TM(rTAG);
+                
+                        goto IT_MOD;
+                }
+                sim_printf("IT_DIC: how'd we get here???\n");
+                return SCPE_OK;
+            
+            case IT_IDC: ///< Increment address, decrement tally, and continue (Td = 17)
+            
+                ///< The action for this variation is identical to that for the increment address, decrement tally variation except that the TAG field of the indirect word is interpreted and continuation of the indirect chain is possible. If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
+            
+                tmp18 = TPR.CA;
+                Read(i, TPR.CA, &indword, IndirectRead, i->a);
+            
+                Yi = GETHI(indword);
+                tally = GET_TALLY(indword); // 12-bits
+                idwtag = GET_TAG(indword);
+            
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): indword=%012llo Yi=%06o tally=%04o idwtag=%02o\n", indword, Yi, tally, idwtag);
+            
+                word24 YiSafe = Yi; // save indirect address for later use
+            
+                Yi += 1;
+                Yi &= MASK18;
+            
+                tally -= 1;
+                tally &= 07777; // keep to 12-bits
+                SCF(tally == 0, rIR, I_TALLY);
+            
+                //if (operType != prepareCA)
+                {
+                    // Only update the tally and address if not prepareCA
+                    // write back out indword
+                    indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | idwtag);
+                
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
+                
+                    Write(i, tmp18, indword, i->a);
+                }
+            
+                // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
+                // But for the dps88 you can use everything but ir/ri.
+            
+                // force R to 0 (except for IT)
+                TPR.CA = YiSafe;
+                //TPR.CA = GETHI(indword);
+            
+                rTAG = idwtag & 0x70; // force R to 0 (except for IT)
+                Td = GET_TD(rTAG);
+                Tm = GET_TM(rTAG);
+            
+                //TPR.CA = i->address;
+                rY = TPR.CA;    //i->address;
+            
+                switch(Tm)
+                {
+                    case TM_R:
+                        goto R_MOD;
+                
+                    case TM_RI:
+                        goto RI_MOD;
+                
+                    case TM_IR:
+                        goto IR_MOD;
+                
+                    case TM_IT:
+                        rTAG = GET_TAG(idwtag);
+                        Td = _TD(rTAG);
+                        Tm = _TM(rTAG);
+                
+                        goto IT_MOD;
+                }
+                sim_printf("IT_IDC: how'd we get here???\n");
+                return SCPE_OK;
+            }
+
+        return SCPE_OK;
+}
+

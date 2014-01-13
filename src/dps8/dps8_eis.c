@@ -24,9 +24,9 @@ static void EISWrite(EISaddr *p, word36 data)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Write(p->e->ins, p->address, data, APUDataWrite, 0); // write data
+        Write(p->e->ins, p->address, data, 0); // write data
     } else
-        Write(p->e->ins, p->address, data, OperandWrite, 0); // write data
+        Write(p->e->ins, p->address, data, 0); // write data
 }
 
 static word36 EISRead(EISaddr *p)

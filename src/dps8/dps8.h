@@ -607,6 +607,8 @@ extern word36 Ypair[2];        ///< 2-words
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
+#define YPAIRTO72(ypair)    (((word72)(ypair[0] << 36 | ypair[1])) & MASK72)
+
 void putByte(word36 *dst, word9 data, int posn);
 word9 getByte(int posn, word36 src);
 
@@ -2825,7 +2827,7 @@ char *strSDW0(_sdw0 *SDW);
 char *strSDW(_sdw *SDW);
 char *strDSBR(void);
 t_stat dumpSDWAM (void);
-bool doITSITP(DCDstruct *i, word36 indword, word6 Tag);
+bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag);
 word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tdes, word36 writeData, word36 *readData);
 
 /* dps8_bar.c */
@@ -2860,6 +2862,7 @@ t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
 
 // Memory ops that use the appending unit (as necessary) ...
+#if OLD
 t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag);
 t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag);
 t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag);
@@ -2869,9 +2872,15 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
 t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
 t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag); // needs testing
 t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag);
+#endif
 
-t_stat ReadOP (DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat WriteOP(DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, int32 Tag);
+// new
+t_stat Read (DCDstruct *i, word18 addr, word36 *dat, MemoryAccessType mat, bool b29);
+t_stat Write (DCDstruct *i, word18 addr, word36 dat, bool b29);
+
+
+t_stat ReadOP (DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, bool b29);
+t_stat WriteOP(DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, bool b29);
 
 // RAW, core stuff ...
 int core_read(word24 addr, word36 *data);
@@ -2916,6 +2925,8 @@ void check_events (void);
 
 void cu_safe_store(void);
 t_stat executeInstruction(DCDstruct *ci);
+t_stat prepareComputedAddress(DCDstruct *ci);   // new
+
 t_stat doXED(word36 *Ypair);
 void cu_safe_restore (void);
 void initializeTheMatrix (void);
