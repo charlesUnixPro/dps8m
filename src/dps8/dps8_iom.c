@@ -3616,6 +3616,10 @@ static config_value_list_t cfg_boot_list [] =
 static config_value_list_t cfg_base_list [] =
   {
     { "multics", 014 },
+    { "multics1", 014 }, // boot iom
+    { "multics2", 020 },
+    { "multics3", 024 },
+    { "multics4", 030 },
     { NULL }
   };
 
