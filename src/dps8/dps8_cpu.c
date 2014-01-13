@@ -94,7 +94,7 @@ const char *sim_stop_messages[] = {
  *
  * From AM81-04 Multics System Maintainance Procedures
  *
- * "A level 68 IOM system may containa maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
+ * "A level 68 IOM system may contain a maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
  * [CAC]: but AN87 says multics only supports two IOMs
  * 
  * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
