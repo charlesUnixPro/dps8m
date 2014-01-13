@@ -3119,7 +3119,9 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
             
             if (adrTrace)
             {
-                sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), CY, TPR.CA);
+                // XXX BUG CY is the written value iff OPSIZE==1, if 2 is Ypair, if 8 is block8
+                //sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), CY, TPR.CA);
+                sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote to %06o\n", opDescSTR(i), TPR.CA);
             }
             return;
 
