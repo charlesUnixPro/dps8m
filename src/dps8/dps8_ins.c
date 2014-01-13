@@ -3381,9 +3381,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[n].SNR &=             070000; // [CAC] added this
             PR[n].SNR |= GETHI(CY) & 007777;
             //C(Y)18,35 → C(PRn.WORDNO)
-            PAR[n].WORDNO = GETLO(CY);
+            PR[n].WORDNO = GETLO(CY);
 
-            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PAR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PAR[n].WORDNO);
+            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
             break;
          
         case 0251:  ///< spbp1
@@ -3563,7 +3563,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[6].SNR << 18;
             Ypair[0] |= (word36) PR[6].RNR << 15;
             
-            Ypair[1] = (word36) PAR[6].WORDNO << 18;
+            Ypair[1] = (word36) PR[6].WORDNO << 18;
             Ypair[1]|= (word36) PR[6].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -5993,7 +5993,7 @@ static int doABSA (DCDstruct * i, word36 * result)
 
     if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
       {
-        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+        doFault (i, acc_viol_fault, ACV15, "ABSA in boundary violation.\n");
         return CONT_FAULT;
       }
 
@@ -6015,7 +6015,7 @@ static int doABSA (DCDstruct * i, word36 * result)
     word14 BOUND = (SDWo >> (35 - 14)) & 037777;
     if (TPR . CA >= 16 * (BOUND + 1))
       {
-        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
+        doFault (i, acc_viol_fault, ACV15, "ABSA in mode boundary violation.\n");
         return CONT_FAULT;
       }
 
