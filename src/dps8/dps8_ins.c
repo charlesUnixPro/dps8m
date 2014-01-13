@@ -5981,78 +5981,94 @@ emCall(DCDstruct *i)
 
 static int doABSA (DCDstruct * i, word36 * result)
   {
+//sim_debug (DBG_TRACE, & cpu_dev, "absa %d %08o %08o\n", get_addr_mode(), i -> address, TPR.CA);
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
         sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
-        doFault (i, illproc_fault, 0, "ABSA in absolute mode.\n");
+        doFault (i, illproc_fault, 0, "ABSA in absolute mode.");
         return CONT_FAULT;
       }
 
-    // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
-    // violation, out of segment bounds, fault.
+    // XXX This mode logic should not be necessary, but something is still wrong
+    // in either my understanding or the implementation of address formation 
+    // and/or the ABSA instruction
 
-    if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
+    if (get_addr_mode () == ABSOLUTE_mode) // bit 29 mode?
       {
-        doFault (i, acc_viol_fault, ACV15, "ABSA in boundary violation.\n");
-        return CONT_FAULT;
-      }
+        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
+        // violation, out of segment bounds, fault.
 
-    // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+        if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
+          {
+            doFault (i, acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
+            return CONT_FAULT;
+          }
 
-    word36 SDWe, SDWo;
-    core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
-    core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
+        // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
 
-    // 3. If SDW.F = 0, then generate directed fault n where n is given in
-    // SDW.FC. The value of n used here is the value assigned to define a
-    // missing segment fault or, simply, a segment fault.
+        word36 SDWe, SDWo;
+        core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
+        core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
 
-    // ABSA doesn't care if the page isn't resident
+//sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n", DSBR . ADDR, TPR . TSR);
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  SDWaddr: %08o SDW: %012llo %012llo\n", DSBR . ADDR + 2 * TPR . TSR, SDWe, SDWo);
+        // 3. If SDW.F = 0, then generate directed fault n where n is given in
+        // SDW.FC. The value of n used here is the value assigned to define a
+        // missing segment fault or, simply, a segment fault.
 
-
-    // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
-
-    word14 BOUND = (SDWo >> (35 - 14)) & 037777;
-    if (TPR . CA >= 16 * (BOUND + 1))
-      {
-        doFault (i, acc_viol_fault, ACV15, "ABSA in mode boundary violation.\n");
-        return CONT_FAULT;
-      }
+        // ABSA doesn't care if the page isn't resident
 
 
-    // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
+        // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
 
-    // ABSA doesn't care
+        word14 BOUND = (SDWo >> (35 - 14)) & 037777;
+        if (TPR . CA >= 16 * (BOUND + 1))
+          {
+            doFault (i, acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+            return CONT_FAULT;
+          }
 
 
-    // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+        // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
 
-    word24 ADDR = (SDWe >> 12) & 077777760;
-    word36 res = (word36) ADDR + (word36) TPR.CA;
-    res &= 077777777; //24 bit math
-    res <<= 12; // 24:12 format
+        // t4d doesn't care
+        // XXX Don't know what the correct behavior is here for ABSA
+
+
+        // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+
+        word24 ADDR = (SDWe >> 12) & 077777760;
+        word36 res = (word36) ADDR + (word36) TPR.CA;
+        res &= 077777777; //24 bit math
+        res <<= 12; // 24:12 format
 
 #if 0
-      {
-        word36 dis = M [PPR . IC + 1];
-        if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
-          sim_printf ("we didn't fault\n");
-        else
           {
-            // Fetch the  LDA instruction
-            word36 lda = M [PPR . IC + 2];
-            //sim_printf ("lda %012llo\n",  lda);
-            // Extract the address
-            word18 ans_addr = GETHI (lda);
-            // Get the answer
-            word36 ans = M [ans_addr];
-           sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
-             SDWe, SDWo, ADDR, ans >> 12, res >> 12);
-         }
-      }
+            word36 dis = M [PPR . IC + 1];
+            if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
+              sim_printf ("we didn't fault\n");
+            else
+              {
+                // Fetch the  LDA instruction
+                word36 lda = M [PPR . IC + 2];
+                //sim_printf ("lda %012llo\n",  lda);
+                // Extract the address
+                word18 ans_addr = GETHI (lda);
+                // Get the answer
+                word36 ans = M [ans_addr];
+               sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
+                 SDWe, SDWo, ADDR, ans >> 12, res >> 12);
+             }
+          }
 #endif
 
-    * result = res;
+        * result = res;
+      }
+    else // APPEND_mode; XXX handle BAR mode someday
+      {
+        * result = TPR.CA;
+      }
     return SCPE_OK;
   }
 
