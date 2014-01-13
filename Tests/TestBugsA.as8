@@ -184,7 +184,7 @@ EPPtest:
 
 
 	epp2	l43170,n*
-    puls1
+    "puls1
 
 
     ldx2    saveX2      " restore x2

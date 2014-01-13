@@ -72,7 +72,7 @@ void doPtrReg(DCDstruct *i)
     TPR.CA = (PR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
     TPR.TBR = PR[n].BITNO;  // TPR.BITNO = PR[n].BITNO;
     //address = TPR.CA;
-    //rY = TPR.CA;     //address;    // is this right?
+    rY = TPR.CA;     //address;    // is this right?
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }

@@ -136,7 +136,7 @@ opDescSTR(DCDstruct *i)
     if (TRANSOP(i))
     {
         if (strlen(temp))
-        strcat(temp, "/");
+            strcat(temp, "/");
         
         strcat(temp, "prepareCA (TRA)");
     }
@@ -149,6 +149,30 @@ opDescSTR(DCDstruct *i)
         strcat(temp, "prepareCA");
     }
     return temp;    //"opDescSTR(???)";
+}
+
+PRIVATE
+char *
+operandSTR(DCDstruct *i)
+{
+    static char temp[1024];
+    
+    int n = OPSIZE(i);
+    switch (n)
+    {
+        case 1:
+            sprintf(temp, "CY=%012llo", CY);
+            break;
+        case 2:
+            sprintf(temp, "CYpair[0]=%012llo CYpair[1]=%012llo", Ypair[0], Ypair[1]);
+            break;
+        case 8:
+        case 16:
+        default:
+            sprintf(temp, "Unhandled size: %d", n);
+            break;
+    }
+    return temp;
 }
 
 modificationContinuation _modCont, *modCont = &_modCont;
@@ -3136,7 +3160,7 @@ R_MOD:;
             TPR.CA += Cr;
             TPR.CA &= MASK18;
             
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "TPR.CA(After)=%06o\n", TPR.CA);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: TPR.CA(After)=%06o\n", TPR.CA);
         }
         
         //    if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
@@ -3297,19 +3321,27 @@ R_MOD:;
                 if (!doITSITP(i, iCA, indword, iTAG))
                     return SCPE_UNK;    // some problem with ITS/ITP stuff
 
+                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP: TPR.TSR:%06o TPR.CA:%06o\n", TPR.TSR, TPR.CA);
+
                 if (operType == prepareCA)
                 {
                     return SCPE_OK;
                     
-                } else if (operType == readCY || operType == rmwCY)
+                }
+                if (operType == readCY || operType == rmwCY)
                 {
+                    sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP (%s):\n", opDescSTR(i));
+
                     ReadOP(i, TPR.CA, DataRead, i->a);
-                
-                } else if (operType == writeCY || operType == rmwCY)
+                    
+                    sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
+                }
+            
+                if (operType == writeCY || operType == rmwCY)
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
-                    modCont->mod = TM_R;
+                    modCont->mod = iTAG;    //TM_R;
                     modCont->i = i;
                     
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
@@ -3527,6 +3559,7 @@ R_MOD:;
                 //if (operType != prepareCA)
                 {
                     // Only update the tally and address if not prepareCA
+                    // XXX can this be moved to the continuation?
                     indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
                     Write(i, tmp18, indword, i->a);
                 

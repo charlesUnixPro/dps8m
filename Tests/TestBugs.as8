@@ -19,11 +19,11 @@
 main:
 
     epp2	l43170,n*
-    puls1
+    "  puls1
 
 
     tsx2    setupFXE
-    tra     call_main
+    "tra     call_main
     "push
 
     LDA     I
