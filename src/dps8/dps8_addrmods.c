@@ -3032,18 +3032,14 @@ doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     // this is probably sooo wrong, but it's a start ...
     itxPair[0] = indword;
     
-    //int safe = TPR.CA;
-    
     Read(i, address + 1, &itxPair[1], DataRead, i->a);
-    
-    //TPR.CA = safe;
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012llo %012llo\n", itxPair[0], itxPair[1]);
     
     if (ISITS(indTag))
-        doITS(Tag);
+        doITS(GET_TAG(itxPair[1]));   //Tag);
     else
-        doITP(Tag);
+        doITP(GET_TAG(itxPair[1]));  //Tag);
     
     didITSITP = true;
     return true;
@@ -3162,13 +3158,8 @@ R_MOD:;
             
             sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: TPR.CA(After)=%06o\n", TPR.CA);
         }
-        
-        //    if (operType == prepareCA && get_addr_mode () != APPEND_mode && !i -> a)
-        //    {
-        //        Read(i, TPR.CA, &indword, DataRead, rTAG);
-        //        TPR.CA = GETHI(indword);
-        //        return;
-        //    }
+    
+        // in case it turns out to be a ITS/ITP
         iCA = TPR.CA;
         iTAG = rTAG;
         
@@ -3201,8 +3192,17 @@ R_MOD:;
     
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: fetching indirect word from %06o\n", TPR.CA);
     
+    // in case it turns out to be a ITS/ITP
+    iCA = TPR.CA;
+    iTAG = rTAG;
+    
         Read(i, TPR.CA, &indword, IndirectRead, i->a);
-        
+    
+        if (ISITP(indword) || ISITS(indword))
+        {
+            goto IT_MOD;
+        }
+    
         TPR.CA = GETHI(indword);
         rY = TPR.CA;
         
