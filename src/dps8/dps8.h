@@ -764,20 +764,20 @@ void freeDCDstruct(DCDstruct *p);
 #define READ_OPERAND    (1 << 0)   ///< fetches/reads operand (CA) from memory
 #define STORE_OPERAND   (1 << 1)   ///< stores/writes operand to memory (its a STR-OP)
 #define RMW             (READ_OPERAND | STORE_OPERAND) ///< a Read-Modify-Write instruction
-#define READ_YPAIR      ((1 << 2))   ///< fetches/reads Y-pair operand (CA) from memory
-#define STORE_YPAIR     ((1 << 3))   ///< stores/writes Y-pair operand to memory
-#define READ_YBLOCK8    ((1 << 4))   ///< fetches/reads Y-block8 operand (CA) from memory
+#define READ_YPAIR      (1 << 2)   ///< fetches/reads Y-pair operand (CA) from memory
+#define STORE_YPAIR     (1 << 3)   ///< stores/writes Y-pair operand to memory
+#define READ_YBLOCK8    (1 << 4)   ///< fetches/reads Y-block8 operand (CA) from memory
 #define NO_RPT          (1 << 5)   ///< Repeat instructions not allowed
 //#define NO_RPD          (1 << 6)
 #define NO_RPL          (1 << 7)
 //#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
-#define READ_YBLOCK16   ((1 << 8))   ///< fetches/reads Y-block16 operands from memory
-#define STORE_YBLOCK16  ((1 << 9))   ///< fetches/reads Y-block16 operands from memory
+#define READ_YBLOCK16   (1 << 8)   ///< fetches/reads Y-block16 operands from memory
+#define STORE_YBLOCK16  (1 << 9)   ///< fetches/reads Y-block16 operands from memory
 #define TRANSFER_INS    (1 << 10)  ///< a transfer instruction
 #define TSPN_INS        (1 << 11)  ///< a TSPn instruction
 #define CALL6_INS       (1 << 12)  ///< a call6 instruction
 #define PREPARE_CA      (1 << 13)  ///< prepare TPR.CA for instruction
-#define STORE_YBLOCK8   ((1 << 14))  ///< stores/writes Y-block8 operand to memory
+#define STORE_YBLOCK8   (1 << 14)  ///< stores/writes Y-block8 operand to memory
 #define IGN_B29         (1 << 15)  ///< Bit-29 has an instruction specific meaning. Ignore.
 #define NO_TAG          (1 << 16)  ///< tag is interpreted differently and for addressing purposes is effectively 0
 #define PRIV_INS        (1 << 17)  ///< priveleged instruction

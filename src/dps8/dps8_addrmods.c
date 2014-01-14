@@ -3326,13 +3326,12 @@ R_MOD:;
                 if (operType == prepareCA)
                 {
                     return SCPE_OK;
-                    
                 }
                 if (operType == readCY || operType == rmwCY)
                 {
                     sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP (%s):\n", opDescSTR(i));
 
-                    ReadOP(i, TPR.CA, DataRead, i->a);
+                    ReadOP(i, TPR.CA, DataRead, true);
                     
                     sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
                 }
@@ -3344,7 +3343,7 @@ R_MOD:;
                     modCont->mod = iTAG;    //TM_R;
                     modCont->i = i;
                     
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
+                    sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
                 }
     
                 return SCPE_OK;
