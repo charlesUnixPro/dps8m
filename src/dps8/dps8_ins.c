@@ -3845,6 +3845,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         }
 
         case 0520:  ///< rpt
+#if 0
             {
                 //Execute the instruction at C(PPR.IC)+1 either a specified number of times
                 //or until a specified termination condition is met.
@@ -3982,7 +3983,27 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rIC += 1;   // bump instruction counter
             }
             break;
-            
+#endif
+            {
+              cu . rpts = 1;
+            // AL39, page 209
+#ifndef QUIET_UNUSED
+              uint tally = (i->address >> 10);
+#endif
+              uint c = (i->address >> 7) & 1;
+#ifndef QUIET_UNUSED
+              uint term = i->address & 0177;
+#endif
+              cu . delta = i->tag;
+              if (c)
+                rX[0] = i->address;    // Entire 18 bits
+              cu . rpt = 1;
+              cu . repeat_first = 1;
+              // Setting cu.rpt will cause the instruction to be executed
+              // until the termination is met.
+              // See cpu.c for the rest of the handling.
+            }
+            break;
             
         case 0550:  ///< sbar
             /// C(BAR) → C(Y) 0,17

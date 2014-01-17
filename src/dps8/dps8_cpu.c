@@ -1154,6 +1154,48 @@ t_stat sim_instr (void)
 
             case EXEC_cycle:
               {
+                static int Xn;
+                if (cu . repeat_first)
+                  {
+                    // check for illegal modifiers:
+                    //    only R & RI are allowed 
+                    //    XXX only X1..X7
+                    switch (GET_TM(ci->tag))
+                      {
+                        case TM_R:
+                        case TM_RI:
+                          break;
+                        default:
+                          // generate fault. Only R & RI allowed
+                          doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
+                      }
+                    word6 Td = GET_TD(ci->tag);
+                    switch (Td)
+                      {
+                        case TD_X0:
+                        case TD_X1:
+                        case TD_X2:
+                        case TD_X3:
+                        case TD_X4:
+                        case TD_X5:
+                        case TD_X6:
+                        case TD_X7:
+                          break;
+                        default:
+                          // generate fault. Only R & RI allowed
+                          doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
+                      }
+                    // repeat allowed for this instruction?
+                    if (ci->iwb->flags & NO_RPT)
+                      doFault(ci, FAULT_IPR, 0, "no rpt allowed for instruction");
+                    // For the first execution of the repeated instruction: 
+                    // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
+                    Xn = X(Td);  // Get Xn of next instruction
+                    TPR.CA = (rX[Xn] + ci->address) & AMASK;
+                    rX[Xn] = TPR.CA;
+
+                    cu . repeat_first = 0;
+                  }
                 t_stat ret = executeInstruction (ci);
                 if (ret > 0)
                   {
@@ -1173,6 +1215,86 @@ t_stat sim_instr (void)
                           break;
                       }
                   }
+                if (cu . rpt)
+                  {
+                    bool exit = false;
+                    // The repetition cycle consists of the following steps:
+                    //  a. Execute the repeated instruction
+
+                    //  b. C(X0)0,7 - 1 → C(X0)0,7
+                    int x = bitfieldExtract(rX[0], 10, 8);
+                    x -= 1;
+                    rX[0] = bitfieldInsert(rX[0], x, 10, 8);
+                    
+                    // Modify C(Xn) as described below
+                    //  The computed address, y, of the operand (in the case 
+                    //  of R modification) or indirect word (in the case of RI 
+                    //  modification) is determined as follows:
+                    
+                    TPR.CA = (rX[Xn] + cu . delta) & AMASK;
+                    rX[Xn] = TPR.CA;
+
+                    //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON and terminate
+                    if (x == 0)
+                      {
+                        SETF(rIR, I_TALLY);
+                        exit = true;
+                        // Note that the code in bootload_tape.alm expects that
+                        // the tally runout *not* be set when both the
+                        // termination condition is met and bits 0..7 of
+                        // reg X[0] hits zero.
+                      } 
+                    else
+                      {
+                        //  d. If a terminate condition has been met, then set 
+                        //     the tally runout indicator OFF and terminate
+                        if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          }
+                        else if (!TSTF(rIR, I_ZERO) && (rX[0] & 040))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          } 
+                        else if (TSTF(rIR, I_NEG) && (rX[0] & 020))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          } 
+                        else if (!TSTF(rIR, I_NEG) && (rX[0] & 010))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          } 
+                        else if (TSTF(rIR, I_CARRY) && (rX[0] & 04))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          } 
+                        else if (!TSTF(rIR, I_CARRY) && (rX[0] & 02))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          } 
+                        else if (TSTF(rIR, I_OFLOW) && (rX[0] & 01))
+                          {
+                            CLRF(rIR, I_TALLY);
+                            exit = true;
+                          }
+                      }
+                    //  e. Go to step a
+                    // If termination condition not met, stay in EXEC_cycle
+                    // and repeat the instruction
+                    if ( ! exit)
+                      break;
+
+                    cu . rpt = false;
+                    // cpuCycles += 1; // XXX remove later when/if we can get this into the main loop
+
+                  } // if (cu . rpt)
+
                 if (ret == 0)
                   rIC ++;
                 cpu . cycle = FETCH_cycle;
