@@ -359,7 +359,7 @@ extern word36 XECD2; /*!< XED instr#2 */
 #define rIR (cu.IR)
 extern word27	rTR;	/*!< timer [map: TR, 9 0's] */
 
-extern word18	ry;     /*!< address operand */
+//extern word18	ry;     /*!< address operand */
 extern word24	rY;     /*!< address operand */
 extern word8	rTAG;	/*!< instruction tag */
 
@@ -1471,6 +1471,7 @@ typedef enum _fault_subtype _fault_subtype;
 
 void fault_gen(int f);  // depreciate when ready
 void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, char *faultMsg); ///< fault handler
+void acvFault(DCDstruct *i, _fault_subtype acvfault);
 void doG7Faults();
 bool bG7Pending();
 
@@ -2167,6 +2168,8 @@ typedef struct {
     uint steady_clock; // If non-zero the clock is tied to the cycle counter
     uint degenerate_mode; // If non-zero use the experimental ABSOLUTE mode
     uint append_after; // 
+    uint super_user; // 
+    uint epp_hack; // 
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU

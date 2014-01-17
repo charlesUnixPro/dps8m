@@ -323,7 +323,7 @@ static _sdw0* fetchPSDW(word15 segno)
     
     word36 SDWeven, SDWodd;
     
-    core_read2(p->ADDR + y1, &SDWeven, &SDWodd);
+    core_read2((p->ADDR << 6) + y1, &SDWeven, &SDWodd);
     
     // even word
     SDW0.ADDR = (SDWeven >> 12) & 077777777;
@@ -344,6 +344,8 @@ static _sdw0* fetchPSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
+    PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, p->ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
     return &SDW0;
@@ -392,6 +394,8 @@ static _sdw0 *fetchNSDW(word15 segno)
     SDW0.G = TSTBIT(SDWodd, 15);
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
+    
+    PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
     
     if (apndTrace)
     {
@@ -547,10 +551,11 @@ static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
     
     PTW0.ADDR = GETHI(PTWx2);
     PTW0.U = TSTBIT(PTWx2, 9);
-    PTW0.M = TSTBIT(PTW2, 6);
-    PTW0.F = TSTBIT(PTW2,2);
+    PTW0.M = TSTBIT(PTWx2, 6);
+    PTW0.F = TSTBIT(PTWx2, 2);
     PTW0.FC = PTWx2 & 3;
     
+    sim_debug (DBG_APPENDING, & cpu_dev, "fetchPTW x2 0%o y2 0%o sdw->ADDR 0%o PTWx2 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x2, y2, sdw->ADDR, PTWx2, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
     return &PTW0;
 }
 
@@ -681,7 +686,7 @@ static char *strACV(_fault_subtype acv)
 
 static word36 acvFaults = 0;   ///< pending ACV faults
 
-static void acvFault(DCDstruct *i, _fault_subtype acvfault)
+void acvFault(DCDstruct *i, _fault_subtype acvfault)
 {
     
     char temp[256];
@@ -865,7 +870,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
             // initiate a directed fault
             doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
             // XXX what if they ignore the fault? Can it be ignored?
@@ -908,7 +913,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1117,7 +1123,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTWF0.F");
         
@@ -1159,7 +1165,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1331,7 +1338,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F != 0");
         // XXX what if they ignore the fault? Can it be ignored?
@@ -1380,7 +1387,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_write(finalAddress, writeData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1501,7 +1509,11 @@ doITSITP(DCDstruct *i, word36 indword, word6 Tag)
     processorCycle = INDIRECT_WORD_FETCH;
     itxPair[0] = indword;
     
+    int safe = TPR.CA;
+    
     Read(i, TPR.CA + 1, &itxPair[1], DataRead, Tag);
+    
+    //TPR.CA = safe;
     
     if (apndTrace)
     {
@@ -1670,7 +1682,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
         
@@ -1712,7 +1724,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_read(finalAddress, readData);  // I think now is the time to do it ...
     if (apndTrace)
@@ -1903,7 +1916,7 @@ G:;
     {
         appendingUnitCycleType = PTWfetch;
         fetchPTW(SDW, TPR.CA);
-        if (PTW0.F)
+        if (!PTW0.F)
         // initiate a directed fault
         doFault(i, dir_flt0_fault + PTW0.FC, 0, "!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA)");
         
@@ -1945,7 +1958,8 @@ I:;
     
     word24 y2 = TPR.CA % 1024;
     
-    finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    //finalAddress = ((PTW->ADDR << 6) & 037777) + y2;
+    finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     
     core_write(finalAddress, writeData);  // I think now is the time to do it ...
     if (apndTrace)

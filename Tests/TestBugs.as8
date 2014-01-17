@@ -18,6 +18,7 @@
 
 main:
     tsx2    setupFXE
+    tra     call_main
     "push
 
     LDA     I
@@ -38,6 +39,8 @@ main:
 
 "
 "
+call_main:
+
     call    _main_BBG_1(ap|0)
 
 allDone:

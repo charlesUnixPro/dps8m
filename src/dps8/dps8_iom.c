@@ -937,7 +937,9 @@ static void init_memory_iom (uint unit_num)
     // bootload_io.alm insists that pi_base match
     // template_slt_$iom_mailbox_absloc
 
-    uint pi_base = unit_data [unit_num] . config_sw_multiplex_base_address & ~3;
+    //uint pi_base = unit_data [unit_num] . config_sw_multiplex_base_address & ~3;
+    uint pi_base = (unit_data [unit_num] . config_sw_multiplex_base_address  << 3) |
+                   ((unit_data [unit_num] . config_sw_iom_base_address & 07700) << 6) ;
     uint iom_num = unit_data [unit_num] . config_sw_multiplex_base_address & 3; 
     t_uint64 cmd = 5;       // 6 bits; 05 for tape, 01 for cards
     uint dev = 0;            // 6 bits: drive number
@@ -1097,9 +1099,9 @@ static void init_memory_iom (uint unit_num)
 
    // word after PCW (used by program)
 
-    Mem [2] = ((t_uint64) base_addr << 18) | (pi_base << 3) | iom_num;
+    Mem [2] = ((t_uint64) base_addr << 18) | (pi_base) | iom_num;
     sim_debug (DBG_INFO, & iom_dev, "M [%08o] <= %012llo\n",
-      2,  ((t_uint64) base_addr << 18) | (pi_base << 3) | iom_num);
+      2,  ((t_uint64) base_addr << 18) | (pi_base) | iom_num);
     
 
     // 11
@@ -3613,6 +3615,10 @@ static config_value_list_t cfg_boot_list [] =
 static config_value_list_t cfg_base_list [] =
   {
     { "multics", 014 },
+    { "multics1", 014 }, // boot iom
+    { "multics2", 020 },
+    { "multics3", 024 },
+    { "multics4", 030 },
     { NULL }
   };
 

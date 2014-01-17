@@ -472,7 +472,7 @@ t_stat executeInstruction(DCDstruct *ci)
     addToTheMatrix (opcode, opcodeX, a, tag);
 
     TPR.CA = ci->address;                 // address from opcode
-    ry = ci->address;                     ///< 18-bit address field from instruction
+    //ry = ci->address;                     ///< 18-bit address field from instruction
     rY = ci->address;
     
     ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
@@ -497,7 +497,7 @@ t_stat executeInstruction(DCDstruct *ci)
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((iwb->flags & PRIV_INS) && !is_priv_mode())
-        doFault(ci, illproc_fault, 0, "Attempted execution of priveledged instruction.");
+        doFault(ci, illproc_fault, 0, "Attempted execution of privileged instruction.");
     
     // check for illegal addressing mode(s) ...
     
@@ -998,7 +998,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Yblock8[6] = SETHI(Yblock8[7], (word18)rE << 10);           // needs checking
             Yblock8[7] = ((rTR & 0777777777LL) << 9) | (rRALR & 07);    // needs checking
                     
-            WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
+            //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
             break;
 
@@ -1563,7 +1563,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 054:   ///< aos
             /// C(Y)+1→C(Y)
             
-            tmp36 = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            //tmp36 = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             break;
         
         case 055:   ///< asa
@@ -2880,10 +2881,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         /// TRANSFER INSTRUCTIONS
         case 0713:  ///< call6
-            /// XXX not fully implemented
             
-           // if (TPR.TRR > PPR.PRR)
-           //     return STOP_FAULT; // access violation fault (outward call)
+            if (TPR.TRR > PPR.PRR)
+            {
+                acvFault(i, OCALL);
+                return CONT_FAULT; // access violation fault (outward call)
+            }
             if (TPR.TRR < PPR.PRR)
                 PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & 077777; // keep to 15-bits
             if (TPR.TRR == PPR.PRR)
@@ -3388,9 +3391,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[n].SNR &=             070000; // [CAC] added this
             PR[n].SNR |= GETHI(CY) & 007777;
             //C(Y)18,35 → C(PRn.WORDNO)
-            PAR[n].WORDNO = GETLO(CY);
+            PR[n].WORDNO = GETLO(CY);
 
-            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PAR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PAR[n].WORDNO);
+            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
             break;
          
         case 0251:  ///< spbp1
@@ -3486,7 +3489,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 Yblock16[2 * n + 1] |= (word36) PR[n].BITNO << 9;
             }
             
-            WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
+            //WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
             break;
             
         case 0250:  ///< spri0
@@ -3570,7 +3573,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[6].SNR << 18;
             Ypair[0] |= (word36) PR[6].RNR << 15;
             
-            Ypair[1] = (word36) PAR[6].WORDNO << 18;
+            Ypair[1] = (word36) PR[6].WORDNO << 18;
             Ypair[1]|= (word36) PR[6].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
@@ -5224,7 +5227,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 Yblock8[n] = arx;
             }
             // XXX this will eventually be done automagically.....
-            WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
+            //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
             break;
             
@@ -6010,78 +6013,94 @@ emCall(DCDstruct *i)
 
 static int doABSA (DCDstruct * i, word36 * result)
   {
+//sim_debug (DBG_TRACE, & cpu_dev, "absa %d %08o %08o\n", get_addr_mode(), i -> address, TPR.CA);
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
         sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
-        doFault (i, illproc_fault, 0, "ABSA in absolute mode.\n");
+        doFault (i, illproc_fault, 0, "ABSA in absolute mode.");
         return CONT_FAULT;
       }
 
-    // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
-    // violation, out of segment bounds, fault.
+    // XXX This mode logic should not be necessary, but something is still wrong
+    // in either my understanding or the implementation of address formation 
+    // and/or the ABSA instruction
 
-    if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
+    if (get_addr_mode () == ABSOLUTE_mode) // bit 29 mode?
       {
-        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
-        return CONT_FAULT;
-      }
+        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
+        // violation, out of segment bounds, fault.
 
-    // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+        if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
+          {
+            doFault (i, acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
+            return CONT_FAULT;
+          }
 
-    word36 SDWe, SDWo;
-    core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
-    core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
+        // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
 
-    // 3. If SDW.F = 0, then generate directed fault n where n is given in
-    // SDW.FC. The value of n used here is the value assigned to define a
-    // missing segment fault or, simply, a segment fault.
+        word36 SDWe, SDWo;
+        core_read (DSBR . ADDR + 2 * TPR . TSR, & SDWe);
+        core_read (DSBR . ADDR + 2 * TPR . TSR  + 1, & SDWo);
 
-    // ABSA doesn't care if the page isn't resident
+//sim_debug (DBG_TRACE, & cpu_dev, "absa SDW0 %s\n", strSDW0 (& SDW0));
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  DSBR.ADDR %08o TPR.TSR %08o\n", DSBR . ADDR, TPR . TSR);
+//sim_debug (DBG_TRACE, & cpu_dev, "absa  SDWaddr: %08o SDW: %012llo %012llo\n", DSBR . ADDR + 2 * TPR . TSR, SDWe, SDWo);
+        // 3. If SDW.F = 0, then generate directed fault n where n is given in
+        // SDW.FC. The value of n used here is the value assigned to define a
+        // missing segment fault or, simply, a segment fault.
 
-
-    // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
-
-    word14 BOUND = (SDWo >> (35 - 14)) & 037777;
-    if (TPR . CA >= 16 * (BOUND + 1))
-      {
-        doFault (i, acc_viol_fault, ACV15, "ABSA in absolute mode boundary violation.\n");
-        return CONT_FAULT;
-      }
+        // ABSA doesn't care if the page isn't resident
 
 
-    // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
+        // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
 
-    // ABSA doesn't care
+        word14 BOUND = (SDWo >> (35 - 14)) & 037777;
+        if (TPR . CA >= 16 * (BOUND + 1))
+          {
+            doFault (i, acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+            return CONT_FAULT;
+          }
 
 
-    // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+        // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
 
-    word24 ADDR = (SDWe >> 12) & 077777760;
-    word36 res = (word36) ADDR + (word36) TPR.CA;
-    res &= 077777777; //24 bit math
-    res <<= 12; // 24:12 format
+        // t4d doesn't care
+        // XXX Don't know what the correct behavior is here for ABSA
+
+
+        // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+
+        word24 ADDR = (SDWe >> 12) & 077777760;
+        word36 res = (word36) ADDR + (word36) TPR.CA;
+        res &= 077777777; //24 bit math
+        res <<= 12; // 24:12 format
 
 #if 0
-      {
-        word36 dis = M [PPR . IC + 1];
-        if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
-          sim_printf ("we didn't fault\n");
-        else
           {
-            // Fetch the  LDA instruction
-            word36 lda = M [PPR . IC + 2];
-            //sim_printf ("lda %012llo\n",  lda);
-            // Extract the address
-            word18 ans_addr = GETHI (lda);
-            // Get the answer
-            word36 ans = M [ans_addr];
-           sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
-             SDWe, SDWo, ADDR, ans >> 12, res >> 12);
-         }
-      }
+            word36 dis = M [PPR . IC + 1];
+            if ((dis & 0000000777777) == 0616200 /* DIS w/inb */)
+              sim_printf ("we didn't fault\n");
+            else
+              {
+                // Fetch the  LDA instruction
+                word36 lda = M [PPR . IC + 2];
+                //sim_printf ("lda %012llo\n",  lda);
+                // Extract the address
+                word18 ans_addr = GETHI (lda);
+                // Get the answer
+                word36 ans = M [ans_addr];
+               sim_printf ("SDW %012llo %012llo ADDR: %08o ans %08llo res %08llo\n", 
+                 SDWe, SDWo, ADDR, ans >> 12, res >> 12);
+             }
+          }
 #endif
 
-    * result = res;
+        * result = res;
+      }
+    else // APPEND_mode; XXX handle BAR mode someday
+      {
+        * result = TPR.CA;
+      }
     return SCPE_OK;
   }
 

@@ -94,7 +94,7 @@ const char *sim_stop_messages[] = {
  *
  * From AM81-04 Multics System Maintainance Procedures
  *
- * "A level 68 IOM system may containa maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
+ * "A level 68 IOM system may contain a maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
  * [CAC]: but AN87 says multics only supports two IOMs
  * 
  * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
@@ -579,9 +579,9 @@ word36 XECD2; /*!< XED instr#2 */
 
 word27 rTR; /*!< timer [map: TR, 9 0's] */
 
-word18 ry;     /*!< address operand */
-word24 rY;     /*!< address operand */
-word8 rTAG; /*!< instruction tag */
+//word18	ry;     /*!< address operand */
+word24	rY;     /*!< address operand */
+word8	rTAG;	/*!< instruction tag */
 
 word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 word8 tCF; /*!< character position field [3b] */
@@ -1945,6 +1945,7 @@ t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessTy
  -- Olin
 
  */
+#if NO_LONGER_NEEDED
 t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
@@ -1967,6 +1968,7 @@ t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcce
     
     return SCPE_OK;
 }
+#endif
 
 //
 // read N words in a non-aligned fashion for EIS
@@ -1985,6 +1987,7 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     return SCPE_OK;
 }
 
+#ifdef NO_LONGER_NEEDED
 t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
@@ -2006,6 +2009,7 @@ t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAcc
     
     return SCPE_OK;
 }
+#endif
 
 int OPSIZE(DCDstruct *i)
 {
@@ -2328,21 +2332,36 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
      * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
      * and the execution ring is equal to zero.
      *
+     * PPR.P A flag controlling execution of privileged instructions.
+     *
+     * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
      */
     
     int is_priv_mode(void)
     {
         // TODO: fix this when time permits
         
+        // something has already set .P
+        if (PPR.P)
+            return 1;
+        
         switch (get_addr_mode())
         {
             case ABSOLUTE_mode:
+                PPR.P = 1;
                 return 1;
+            
             case APPEND_mode:
                 // XXX This is probably too simplistic, but it's a start
                 
-                if (SDW0.P && PPR.PRR == 0)
+                if (switches . super_user)
                     return 1;
+
+                if (SDW0.P && PPR.PRR == 0)
+                {
+                    PPR.P = 1;
+                    return 1;
+                }
                 break;
             default:
                 break;
@@ -2613,6 +2632,8 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Steady clock:             %01o(8)\n", switches . steady_clock);
     sim_printf("Degenerate mode:          %01o(8)\n", switches . degenerate_mode);
     sim_printf("Append after:             %01o(8)\n", switches . append_after);
+    sim_printf("Super user:               %01o(8)\n", switches . super_user);
+    sim_printf("EPP hack:                 %01o(8)\n", switches . epp_hack);
 
     return SCPE_OK;
 }
@@ -2638,6 +2659,8 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           steadyclock = on|off
 //           degenerate_mode = n // deprecated
 //           append_after = n
+//           super_user = n
+//           epp_hack = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2726,6 +2749,8 @@ static config_list_t cpu_config_list [] =
     /* 16 */ { "steady_clock", 0, 1, cfg_on_off },
     /* 17 */ { "degenerate_mode", 0, 1, cfg_on_off },
     /* 18 */ { "append_after", 0, 1, cfg_on_off },
+    /* 19 */ { "super_user", 0, 1, cfg_on_off },
+    /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2832,6 +2857,14 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 18: // APPEND_AFTER
               switches . append_after = v;
+              break;
+
+            case 19: // SUPER_USER
+              switches . super_user = v;
+              break;
+
+            case 20: // EPP_HACK
+              switches . epp_hack = v;
               break;
 
             default:
