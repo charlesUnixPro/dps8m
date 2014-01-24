@@ -118,8 +118,8 @@ jmpNext:;
     
     // is this a multiword EIS?
     // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
-    if (ci->iwb->ndes > 0)
-        rIC += ci->iwb->ndes;
+    if (ci->info->ndes > 0)
+        rIC += ci->info->ndes;
     
     return SCPE_OK;
 }
@@ -167,16 +167,12 @@ t_stat doIEFPLoop()
 
 // new Read/Write stuff ...
 
-word24 doAppendRead(DCDstruct *i, MemoryAccessType accessType, word18 address);
-
-t_stat Read(DCDstruct *i, word18 address, word36 *result, MemoryAccessType accessType, bool b29)
+t_stat Read(DCDstruct *i, word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
 {
     if (b29)
-    {
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
         goto B29;
-    }
     
     switch (get_addr_mode())
     {
@@ -196,7 +192,8 @@ t_stat Read(DCDstruct *i, word18 address, word36 *result, MemoryAccessType acces
         
         case APPEND_MODE:
             //    <generate address from procedure base registers>
-B29:        finalAddress = doAppendRead(i, accessType, address);
+B29:        //finalAddress = doAppendRead(i, accessType, address);
+            finalAddress = doAppendCycle(i, address, cyctyp);
             core_read(finalAddress, result);
         
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Actual) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *result);
@@ -207,17 +204,13 @@ B29:        finalAddress = doAppendRead(i, accessType, address);
     return SCPE_UNK;
 }
 
-
-word18 doAppendDataWrite(DCDstruct *i, word18 address);
-
-t_stat Write(DCDstruct *i, word18 address, word36 data, bool b29)
+t_stat Write(DCDstruct *i, word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
     if (b29)
-    {
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
         goto B29;
-    }
+    
     
     switch (get_addr_mode())
     {
@@ -235,8 +228,9 @@ t_stat Write(DCDstruct *i, word18 address, word36 data, bool b29)
             return SCPE_OK;
         
         case APPEND_MODE:
-        //    <generate address from procedure base registers>
-B29:        finalAddress = doAppendDataWrite(i, address);
+            //    <generate address from procedure base registers>
+B29:        //finalAddress = doAppendDataWrite(i, address);
+            finalAddress = doAppendCycle(i, address, cyctyp);
             core_write(finalAddress, data);
         
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Actual) Write: finalAddress=%08o data=%012llo\n", finalAddress, data);

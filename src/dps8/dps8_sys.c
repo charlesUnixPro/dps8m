@@ -382,17 +382,17 @@ t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
         DCDstruct *p = decodeInstruction(word1, NULL);
         
         // MW EIS?
-        if (p->iwb->ndes > 1)
+        if (p->info->ndes > 1)
         {
             // Yup, just output word values (for now)
             
             // XXX Need to complete MW EIS support in disAssemble()
             
-            for(int n = 0 ; n < p->iwb->ndes; n += 1)
+            for(int n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012llo", val[n + 1]);
           
             freeDCDstruct(p);
-            return -p->iwb->ndes;
+            return -p->info->ndes;
         }
         
         freeDCDstruct(p);

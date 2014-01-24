@@ -924,8 +924,8 @@ t_stat sim_instr (void)
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
-        case JMP_INTR:
-            goto jmpIntr;
+//        case JMP_INTR:
+//            goto jmpIntr;
         case JMP_STOP:
             return stop_reason;
 
@@ -955,8 +955,14 @@ jmpRetry:;
             break;
         }
 
+        // stop after a given number ot cpuCycles ...
+        if (sim_brk_summ && sim_brk_test (cpuCycles, SWMASK ('C'))) {    /* breakpoint? */
+            reason = STOP_BKPT;                        /* stop simulation */
+            break;
+        }
+
         //reason = doIEFPLoop();
-        
+#if 0
         if (cpu . cycle == DIS_cycle)
           {
             cpu . interrupt_flag = sample_interrupts ();
@@ -964,7 +970,7 @@ jmpRetry:;
               goto dis_entry;
             continue;
           }
-
+#endif
         // do group 7 fault processing
         if (G7Pending && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
             doG7Faults();
@@ -985,14 +991,16 @@ jmpRetry:;
 
         // XXX: what if sim stops during XEC/XED? if user wants to re-step
         // instruc, is this logic OK?
-        if(XECD == 1) {
-          ci->IWB = XECD1;
-        } else if(XECD == 2) {
-          ci->IWB = XECD2;
-        }
+    
+//        if(XECD == 1) {
+//          ci->IWB = XECD1;
+//        } else if(XECD == 2) {
+//          ci->IWB = XECD2;
+//        }
+//
         
         t_stat ret = executeInstruction(ci);
-        
+
         if (! ret)
          {
            if (cpu . interrupt_flag)
@@ -1073,6 +1081,7 @@ jmpIntr:;
                     ret = xrv;
                 } // int_pair != 1
             } // interrupt_flag
+             
         } // if (!ret)
 
         if (ret)
@@ -1119,8 +1128,8 @@ jmpNext:;
         
         // is this a multiword EIS?
         // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
-        if (ci->iwb->ndes > 0)
-          rIC += ci->iwb->ndes;
+        if (ci->info->ndes > 0)
+          rIC += ci->info->ndes;
         
     } while (reason == 0);
     
@@ -1155,269 +1164,28 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 //    return ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)));
 //}
 
-PRIVATE
-t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
-{
-    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
-    
-    rY = addr;
-    TPR.CA = addr;  //XXX for APU
-    
-    switch (accessType)
-    {
-        case InstructionFetch:
-            core_read(addr, dat);
-            break;
-        default:
-            //if (i->a)
-                doAppendCycle(i, accessType, Tag, -1, dat);
-            //else
-            //    core_read(addr, dat);
-            break;
-    }
-    return SCPE_OK;
-}
-
-#if NO_LONGER_USED
-/*!
- * the Read, Write functions access main memory, but optionally calls the appending unit to
- * determine the actual memory address
- */
-t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-         {
-        rY = addr;
-        TPR.CA = addr;  //XXX for APU
-
-
-        //switch (processorAddressingMode)
-        switch (get_addr_mode())
-        {
-            case APPEND_MODE:
-APPEND_MODE:;
-                doAppendCycle(i, acctyp, Tag, -1, dat);
-                break;
-            case ABSOLUTE_MODE:
-                
-#if 0
-                if (switches . degenerate_mode)
-                  {
-                    setDegenerate ();
-                    doAppendCycle(i, acctyp, Tag, -1, dat);
-                    if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                        goto APPEND_MODE;
-                    break;
-                  }
-#endif
-//#if OLDWAY
-                // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
-                // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
-                
-                if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
-                    doAppendCycle(i, acctyp, Tag, -1, dat);
-                else
-                    core_read(addr, dat);
-                //if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                //    goto APPEND_MODE;
-                
-//#endif
-                //doAppendCycle(i, acctyp, Tag, -1, dat);
-
-                break;
-            case BAR_MODE:
-                // XXX probably not right.
-                rY = getBARaddress(addr);
-                finalAddress = rY;
-                
-                core_read(rY, dat);
-                return SCPE_OK;
-            default:
-                sim_printf("Read(): acctyp\n");
-                break;
-        }
-        
-    }
-    cpu.read_addr = addr;
-    
-    return SCPE_OK;
-}
-
-PRIVATE
-t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType accessType, int32 Tag)
-{
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "doAbsoluteWrite (Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
-    
-    switch (accessType)
-    {
-        case DataWrite:
-        case OperandWrite:
-            //if (i->a)
-                doAppendCycle(i, accessType, Tag, -1, NULL);
-            //else
-            //    core_write(addr, dat);
-            //break;
-            
-        case APUDataWrite:      // append operations from absolute mode
-        case APUOperandWrite:
-            doAppendCycle(i, accessType, Tag, -1, NULL);
-            break;
-            
-        default:
-            sim_printf("doAbsoluteWrite(Entry): unsupported accessType=%d\n", accessType);
-            break;
-    }
-    doAppendCycle(i, accessType, Tag, -1, NULL);
-
-    return SCPE_OK;
-}
-
-
-t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {
-        rY = addr;
-        TPR.CA = addr;  //XXX for APU
-        
-       
-        //switch (processorAddressingMode)
-        switch (get_addr_mode())
-        {
-            case APPEND_MODE:
-#ifndef QUIET_UNUSED
-APPEND_MODE:;
-#endif
-                doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
-                break;
-            case ABSOLUTE_MODE:
-
-#if 0
-                if (switches . degenerate_mode)
-                  {
-                    setDegenerate ();
-                    doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
-                    // XXX what kind of dataop can put a write operation into appending mode?
-                    //if (DOITSITP(dat, Tag))
-                    //    goto APPEND_MODE;
-                    break;
-                  }
-#endif
-//#if OLD_WAY
-                // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
-                if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
-                    doAppendCycle(i, acctyp, Tag, dat, NULL);
-                else
-                    core_write(addr, dat);
-                //if (doITSITP(dat, GET_TD(Tag)))
-                // XXX what kind of dataop can put a write operation into appending mode?
-                //if (DOITSITP(dat, Tag))
-                //{
-                //   processorAddressingMode = APPEND_MODE;
-                //    goto APPEND_MODE;   // ???
-                //}
-//#endif
-                // doAppendCycle(i, acctyp, Tag, dat, NULL);
-                break;
-            case BAR_MODE:
-                // XXX probably not right.
-                rY = getBARaddress(addr);
-                core_write(rY, dat);
-                return SCPE_OK;
-            default:
-                sim_printf("Write(): acctyp\n");
-                break;
-        }
-        
-        
-    }
-    return SCPE_OK;
-}
-
-t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {        
-        // need to check for even/odd?
-        if (addr & 1)
-        {
-            addr &= ~1; /* make it an even address */
-            addr &= DMASK;
-        }
-        Read(i, addr + 0, datEven, acctyp, Tag);
-        Read(i, addr + 1, datOdd, acctyp, Tag);
-        
-        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
-        //printf("read2: addr=%06o\n", addr);
-    }
-    return SCPE_OK;
-}
-t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag)
-{
-    //return SCPE_OK;
-    
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {
-        // need to check for even/odd?
-        if (addr & 1)
-        {
-            addr &= ~1; /* make it an even address */
-            addr &= DMASK;
-        }
-        Write(i, addr + 0, datEven, acctyp, Tag);
-        Write(i, addr + 1, datOdd,  acctyp, Tag);
-        
-        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
-
-        //printf("write2: addr=%06o\n", addr);
-
-    }
-    return SCPE_OK;
-}
-
-t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag) // needs testing
-{
-    word36 even, odd;
-    t_stat res = Read2(i, addr, &even, &odd, acctyp, Tag);
-    if (res != SCPE_OK)
-        return res;
-    
-    *dst = ((word72)even << 36) | (word72)odd;
-    return SCPE_OK;
-}
-t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {
-        // need to check for even/odd?
-        if (addr & 1)
-            addr &= ~1; /* make it an even address */
-        Read(i, addr + 0, Ypair+0, acctyp, Tag);
-        Read(i, addr + 1, Ypair+1, acctyp, Tag);
-        
-    }
-    return SCPE_OK;
-}
+//PRIVATE
+//t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
+//{
+//    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
+//    
+//    rY = addr;
+//    TPR.CA = addr;  //XXX for APU
+//    
+//    switch (accessType)
+//    {
+//        case InstructionFetch:
+//            core_read(addr, dat);
+//            break;
+//        default:
+//            //if (i->a)
+//                doAppendCycle(i, accessType, Tag, -1, dat);
+//            //else
+//            //    core_read(addr, dat);
+//            break;
+//    }
+//    return SCPE_OK;
+//}
 
 /*!
  cd@libertyhaven.com - sez ....
@@ -1429,31 +1197,6 @@ t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessTy
  -- Olin
 
  */
-#if NO_LONGER_NEEDED
-t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-//    int slop = addr % n;
-//    if (slop)
-//    {
-//        addr -= slop;       // back to last n byte boundary;
-//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
-//            addr = 0;
-//    }
-    
-    for (int j = 0 ; j < n ; j ++)
-        Read(i, addr + j, Yblock + j, acctyp, Tag);
-    
-    TPR.CA = addr;  // restore address
-    
-    return SCPE_OK;
-}
-#endif
-#endif  // not used
 
 //
 // read N words in a non-aligned fashion for EIS
@@ -1467,49 +1210,26 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     else
 #endif
         for (int j = 0 ; j < n ; j ++)
-            Read(i, addr + j, Yblock + j, acctyp, Tag);
+            Read(i, addr + j, Yblock + j, OPERAND_READ, Tag);
     
     return SCPE_OK;
 }
-
-#ifdef NO_LONGER_NEEDED
-t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    
-//    int slop = addr % n;  
-//    if (slop)
-//    {
-//        addr -= slop;       // back to last n byte boundary;
-//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
-//            addr = 0;
-//    }
-//
-    for (int j = 0 ; j < n ; j ++)
-        Write(i, addr + j, Yblock[j], acctyp, Tag);
-    
-    return SCPE_OK;
-}
-#endif
 
 int OPSIZE(DCDstruct *i)
 {
-    if (i->iwb->flags & (READ_OPERAND | STORE_OPERAND))
+    if (i->info->flags & (READ_OPERAND | STORE_OPERAND))
         return 1;
-    else if (i->iwb->flags & (READ_YPAIR | STORE_YPAIR))
+    else if (i->info->flags & (READ_YPAIR | STORE_YPAIR))
         return 2;
-    else if (i->iwb->flags & (READ_YBLOCK8 | STORE_YBLOCK8))
+    else if (i->info->flags & (READ_YBLOCK8 | STORE_YBLOCK8))
         return 8;
-    else if (i->iwb->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
+    else if (i->info->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
         return 16;
     return 0;
 }
 
-t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
+// read instruction operands
+t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
 #if 0
         if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1520,22 +1240,22 @@ t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
     switch (OPSIZE(i))
     {
         case 1:
-            Read(i, addr, &CY, acctyp, b29);
+            Read(i, addr, &CY, cyctyp, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Read(i, addr + 0, Ypair + 0, acctyp, b29);
-            Read(i, addr + 1, Ypair + 1, acctyp, b29);
+            Read(i, addr + 0, Ypair + 0, cyctyp, b29);
+            Read(i, addr + 1, Ypair + 1, cyctyp, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Read(i, addr + j, Yblock8 + j, acctyp, b29);
+                Read(i, addr + j, Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Read(i, addr + j, Yblock16 + j, acctyp, b29);
+                Read(i, addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
     }
@@ -1545,7 +1265,8 @@ t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
 
 }
 
-t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
+// write instruction operands
+t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1556,22 +1277,22 @@ t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, bool b29)
     switch (OPSIZE(i))
     {
         case 1:
-            Write(i, addr, CY, b29);
+            Write(i, addr, CY, OPERAND_STORE, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Write(i, addr + 0, Ypair[0], b29);
-            Write(i, addr + 1, Ypair[1], b29);
+            Write(i, addr + 0, Ypair[0], OPERAND_STORE, b29);
+            Write(i, addr + 1, Ypair[1], OPERAND_STORE, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Write(i, addr + j, Yblock8[j], b29);
+                Write(i, addr + j, Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Write(i, addr + j, Yblock16[j], b29);
+                Write(i, addr + j, Yblock16[j], OPERAND_STORE, b29);
             break;
     }
     //TPR.CA = addr;  // restore address
@@ -1618,17 +1339,17 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
         return 0;
     }
 }
-
-//! for working with CY-pairs
-int core_read72(word24 addr, word72 *dst) // needs testing
-{
-    word36 even, odd;
-    if (core_read2(addr, &even, &odd) == -1)
-        return -1;
-    *dst = ((word72)even << 36) | (word72)odd;
-    return 0;
-}
-
+//
+////! for working with CY-pairs
+//int core_read72(word24 addr, word72 *dst) // needs testing
+//{
+//    word36 even, odd;
+//    if (core_read2(addr, &even, &odd) == -1)
+//        return -1;
+//    *dst = ((word72)even << 36) | (word72)odd;
+//    return 0;
+//}
+//
 int core_write2(word24 addr, word36 even, word36 odd) {
     if(addr >= MEMSIZE) {
         return -1;
@@ -1642,39 +1363,39 @@ int core_write2(word24 addr, word36 even, word36 odd) {
     }
     return 0;
 }
-//! for working with CY-pairs
-int core_write72(word24 addr, word72 src) // needs testing
-{
-    word36 even = (word36)(src >> 36) & DMASK;
-    word36 odd = ((word36)src) & DMASK;
-    
-    return core_write2(addr, even, odd);
-}
-
-int core_readN(word24 addr, word36 *data, int n)
-{
-    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
-    for(int i = 0 ; i < n ; i++)
-        if(addr >= MEMSIZE) {
-            *data = 0;
-            return -1;
-        } else {
-            *data++ = M[addr++];
-        }
-    return 0;
-}
-
-int core_writeN(a8 addr, d8 *data, int n)
-{
-    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
-    for(int i = 0 ; i < n ; i++)
-        if(addr >= MEMSIZE) {
-            return -1;
-        } else {
-            M[addr++] = *data++;
-        }
-    return 0;
-}
+////! for working with CY-pairs
+//int core_write72(word24 addr, word72 src) // needs testing
+//{
+//    word36 even = (word36)(src >> 36) & DMASK;
+//    word36 odd = ((word36)src) & DMASK;
+//    
+//    return core_write2(addr, even, odd);
+//}
+//
+//int core_readN(word24 addr, word36 *data, int n)
+//{
+//    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
+//    for(int i = 0 ; i < n ; i++)
+//        if(addr >= MEMSIZE) {
+//            *data = 0;
+//            return -1;
+//        } else {
+//            *data++ = M[addr++];
+//        }
+//    return 0;
+//}
+//
+//int core_writeN(a8 addr, d8 *data, int n)
+//{
+//    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
+//    for(int i = 0 ; i < n ; i++)
+//        if(addr >= MEMSIZE) {
+//            return -1;
+//        } else {
+//            M[addr++] = *data++;
+//        }
+//    return 0;
+//}
 
 //#define MM
 #if 1   //def MM
@@ -1737,7 +1458,7 @@ void freeDCDstruct(DCDstruct *p)
  * fetch + decode instruction at 18-bit address 'addr'
  */
 #ifdef OLD_WAY
-DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at address
+DCDstruct *fetchInstructionOLD(word18 addr, DCDstruct *i)  // fetch instrcution at address
 {
     DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
 
@@ -1782,21 +1503,21 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     p->i       = GET_I(inst);   // "I" - inhibit interrupt flag
     p->tag     = GET_TAG(inst); // instruction tag
     
-    p->iwb = getIWBInfo(p);     // get info for IWB instruction
+    p->info = getIWBInfo(p);     // get info for IWB instruction
     
     // HWR 18 June 2013 
-    p->iwb->opcode = p->opcode;
+    p->info->opcode = p->opcode;
     p->IWB = inst;
     
     // HWR 21 Dec 2013
-    if (p->iwb->flags & IGN_B29)
+    if (p->info->flags & IGN_B29)
         p->a = 0;   // make certain 'a' bit is valid always
 
-    if (p->iwb->ndes > 0)
+    if (p->info->ndes > 0)
     {
         p->a = 0;
         p->tag = 0;
-        if (p->iwb->ndes > 1)
+        if (p->info->ndes > 1)
         {
             memset(p->e, 0, sizeof(EISstruct)); // clear out e
             p->e->op0 = p->IWB;

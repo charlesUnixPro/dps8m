@@ -159,7 +159,7 @@ struct opCode NonEISopcodes[01000] = {
     {},
     {"cmk", READ_OPERAND, 0},
     {"absa", PRIV_INS | NO_RPT | PREPARE_CA, NO_DDCSS, 0},
-    {"epaq",   NO_BAR | NO_RPT, NO_DDCSS, 0},
+    {"epaq", PREPARE_CA | NO_BAR | NO_RPT, NO_DDCSS, 0},
     {"sznc", STORE_OPERAND, NO_DDCSS, 0},
     {"cnaa", READ_OPERAND, 0},
     {"cnaq", READ_OPERAND, 0},
