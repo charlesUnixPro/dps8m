@@ -155,6 +155,9 @@ PRIVATE
 char *
 operandSTR(DCDstruct *i)
 {
+    if (i->info->ndes > 0)
+        return "operandSTR(): MWEIS not handled yet";
+        
     static char temp[1024];
     
     int n = OPSIZE(i);
@@ -411,10 +414,28 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
             //Write(i, TPR.CA, CY, DataWrite, TM_IT);
             WriteOP(i, TPR.CA, OPERAND_STORE, i->a);    //modCont->mod);
         
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), CY, TPR.CA);
-            return;
-        
-        break;
+            
+            switch (OPSIZE(i))
+            {
+                case 1:
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), CY, TPR.CA);
+                    break;
+                case 2:
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), Ypair[0], TPR.CA + 0);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %06o\n", opDescSTR(i), Ypair[1], TPR.CA + 1);
+                    break;
+                case 8:
+                    sim_debug(DBG_ADDRMOD, &cpu_dev,     "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), Yblock8[0], TPR.CA + 0);
+                    for (int j = 1 ; j < 8 ; j += 1)
+                        sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %06o\n", opDescSTR(i), Yblock8[j], TPR.CA + j);
+                    break;
+                case 16:
+                    sim_debug(DBG_ADDRMOD, &cpu_dev,     "default: %s wrote operand %012llo to %06o\n", opDescSTR(i), Yblock16[0], TPR.CA + 0);
+                    for (int j = 1 ; j < 16 ; j += 1)
+                        sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %06o\n", opDescSTR(i), Yblock16[j], TPR.CA + j);
+                    break;
+            }
+            break;
     }
     
 }
@@ -3038,9 +3059,9 @@ doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012llo %012llo\n", itxPair[0], itxPair[1]);
     
     if (ISITS(indTag))
-        doITS(GET_TAG(itxPair[1]));   //Tag);
+        doITS(Tag);
     else
-        doITP(GET_TAG(itxPair[1]));  //Tag);
+        doITP(Tag); 
     
     didITSITP = true;
     return true;
@@ -3193,16 +3214,14 @@ R_MOD:;
     
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD: fetching indirect word from %06o\n", TPR.CA);
     
-    // in case it turns out to be a ITS/ITP
-    iCA = TPR.CA;
-    iTAG = rTAG;
+        // in case it turns out to be a ITS/ITP
+        iCA = TPR.CA;
+        iTAG = rTAG;
     
         Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
     
         if (ISITP(indword) || ISITS(indword))
-        {
             goto IT_MOD;
-        }
     
         TPR.CA = GETHI(indword);
         rY = TPR.CA;
@@ -3326,8 +3345,8 @@ R_MOD:;
 
                 if (operType == prepareCA)
                 {
-                    goto startCA;
-                    return SCPE_OK;
+                    goto startCA;       // interpret possibly more ITS/ITP -or-
+                    return SCPE_OK;     // end the indirection chain here?
                 }
                 if (operType == readCY || operType == rmwCY)
                 {
