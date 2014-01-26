@@ -3686,11 +3686,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= (word36) PR[4].SNR << 18;
-            Ypair[0] |= (word36) PR[4].RNR << 15;
+            Ypair[0] |= (word36) PAR[4].SNR << 18;
+            Ypair[0] |= (word36) PAR[4].RNR << 15;
             
-            Ypair[1] = (word36) PR[4].WORDNO << 18;
-            Ypair[1]|= (word36) PR[4].BITNO << 9;
+            Ypair[1] = (word36) PAR[4].WORDNO << 18;
+            Ypair[1]|= (word36) PAR[4].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             

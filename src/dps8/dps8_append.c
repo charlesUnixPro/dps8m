@@ -1062,7 +1062,7 @@ G:;
     // Yes. segment is paged ...
     // is PTW for C(TPR.CA) in PTWAM?
     
-    if (!fetchPTWfromPTWAM(SDW->POINTER, TPR.CA))
+    if (!fetchPTWfromPTWAM(SDW->POINTER, address))  //TPR.CA))
     {
         appendingUnitCycleType = PTWfetch;
         //fetchPTW(SDW, TPR.CA);
@@ -1093,13 +1093,13 @@ H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
     appendingUnitCycleType = FANP;
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, TPR.CA);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, address);
 
     //finalAddress = SDW->ADDR + TPR.CA;
     finalAddress = SDW->ADDR + address;
     finalAddress &= 0xffffff;
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP) Read: finalAddress=%08o\n", finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): finalAddress=%08o\n", finalAddress);
     
     goto HI;
     
@@ -1182,7 +1182,7 @@ KL:;
 //    PPR.PSR = TPR.TSR;
 //    PPR.IC = address;   //TPR.CA;
 
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KL): PPR is set to address %05o:%06o\n", TPR.TSR, TPR.CA);
+//    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KL): PPR is set to address %05o:%06o\n", TPR.TSR, TPR.CA);
 
 KLM:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");

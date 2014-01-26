@@ -719,16 +719,16 @@ t_stat snapLOT(bool bVerbose)
         }
     }
     //if (bVerbose) sim_printf("\n");
-    sim_printf("Dumping _lot ....\n");
-    for(int n = 0 ; n < 0777777 + 1; n += 1)
-    {
-        word36 c = M[lot->ldaddr + n]; // LOT is in-core
-        if (c)
-        {
-            sim_printf("%06o %012llo\n", n, c);
-        }
-
-    }
+//    sim_printf("Dumping _lot ....\n");
+//    for(int n = 0 ; n < 0777777 + 1; n += 1)
+//    {
+//        word36 c = M[lot->ldaddr + n]; // LOT is in-core
+//        if (c)
+//        {
+//            sim_printf("%06o %012llo\n", n, c);
+//        }
+//
+//    }
     return SCPE_OK;
 }
 

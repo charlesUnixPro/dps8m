@@ -196,7 +196,7 @@ B29:        //finalAddress = doAppendRead(i, accessType, address);
             finalAddress = doAppendCycle(i, address, cyctyp);
             core_read(finalAddress, result);
         
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataRead(Actual) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *result);
+            sim_debug(DBG_APPENDING, &cpu_dev, "Read(Actual) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *result);
         
             return SCPE_OK;
     }
@@ -233,7 +233,7 @@ B29:        //finalAddress = doAppendDataWrite(i, address);
             finalAddress = doAppendCycle(i, address, cyctyp);
             core_write(finalAddress, data);
         
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendDataWrite(Actual) Write: finalAddress=%08o data=%012llo\n", finalAddress, data);
+            sim_debug(DBG_APPENDING, &cpu_dev, "Write(Actual) Write: finalAddress=%08o data=%012llo\n", finalAddress, data);
         
             return SCPE_OK;
     }
