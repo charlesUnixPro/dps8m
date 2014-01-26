@@ -22,8 +22,8 @@ segments load deferred
 segments lot snap
 ;q
 ;load Play/Tests/TestEIS.oct
-set debug stderr
-set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
+;set debug stderr
+;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
 g 0
 q
 

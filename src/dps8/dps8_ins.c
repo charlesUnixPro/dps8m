@@ -734,11 +734,11 @@ t_stat executeInstruction(DCDstruct *ci)
         sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
         for(int n = 0 ; n < 8 ; n++)
         {
-            sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
+            sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
                       n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
         }
         for(int n = 0 ; n < 8 ; n++)
-        sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR[%d]: WORDNO=%06o CHAR:%o BITNO:%02o\n",
+            sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR%d: WORDNO=%06o CHAR:%o BITNO:%02o\n",
                   n, AR[n].WORDNO, AR[n].CHAR, AR[n].BITNO);
         sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
         sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
