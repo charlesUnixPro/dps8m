@@ -2114,7 +2114,7 @@ typedef struct {
     
     /* word 6 */
     //instr_t IR;     /* Working instr register; addr & tag are modified */
-    word36 IR;     /* Working instr register; addr & tag are modified */
+    word18 IR;     /* Working instr register; addr & tag are modified */
     uint tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it)
     
     /* word 7 */
