@@ -9,7 +9,8 @@ dpsinit SDWAM
 load Play/PlayA.oct segment 0 address  0
 load Play/UtilsA.oct segment 1 address  010000
 ;set debug stderr
-;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
+;set cpu debug=trace;appending;regdumpaqi;regdumppr;addrmod;regdumpidx
+;set cpu debug=trace;appending;regdumpaqi;addrmod;regdumpidx
 ;set cpu debug=trace
 dpsdump segment table
 g 0

@@ -572,15 +572,21 @@ int loadDeferredSegments(bool bVerbose)
         loadDeferredSegment(sg, ldaddr);
         int segno = sg->segno;
 
-        // set PR4 to point to LOT
+        // set PR4/7 to point to LOT
         if (strcmp(sg->name, LOT) == 0)
         {
             PR[4].BITNO = 0;
             PR[4].CHAR = 0;
             PR[4].SNR = segno;
             PR[4].WORDNO = 0;
+            
+            PR[5] = PR[4];
+            
             int n = 4;
             if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            n = 5;
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+
         }
         
         // bump next load address to a 16-word boundary
@@ -687,7 +693,7 @@ t_stat snapLOT(bool bVerbose)
         
     // Now go through each segment getting the linkage address and filling in the LOT table with the address (in sprn/lprn packed pointer format)
     
-    if (bVerbose) sim_printf("snapping %s links", LOT);
+    if (bVerbose) sim_printf("snapping %s links...\n", LOT);
     
     DL_FOREACH(segments, s)
     {
@@ -708,12 +714,21 @@ t_stat snapLOT(bool bVerbose)
             M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
 
             if (bVerbose)
-                //printf("%o %o %012llo.", lot->ldaddr, s->segno, pp);
-                sim_printf(".");
+                printf("\t%o + %o => %012llo\n", lot->ldaddr, s->segno, pp);
+                //sim_printf(".");
         }
     }
-    if (bVerbose) sim_printf("\n");
-    
+    //if (bVerbose) sim_printf("\n");
+//    sim_printf("Dumping _lot ....\n");
+//    for(int n = 0 ; n < 0777777 + 1; n += 1)
+//    {
+//        word36 c = M[lot->ldaddr + n]; // LOT is in-core
+//        if (c)
+//        {
+//            sim_printf("%06o %012llo\n", n, c);
+//        }
+//
+//    }
     return SCPE_OK;
 }
 

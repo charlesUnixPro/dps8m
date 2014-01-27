@@ -56,11 +56,19 @@ strupr(char *str)
 //extern struct opCode NonEISopcodes[0100], EISopcodes[01000];
 
 //! get instruction info for IWB ...
+
+opCode UnImp = {"(unimplemented)", 0, 0};
+
 struct opCode *getIWBInfo(DCDstruct *i)
 {
+    opCode *p;
+    
     if (i->opcodeX == false)
-        return &NonEISopcodes[i->opcode];
-    return &EISopcodes[i->opcode];
+        p = &NonEISopcodes[i->opcode];
+    else
+        p = &EISopcodes[i->opcode];
+    
+    return p->mne ? p : &UnImp;
 }
 
 char *disAssemble(word36 instruction)

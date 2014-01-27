@@ -19,7 +19,8 @@ C_SRCS = \
 ./dps8_sys.c \
 ./dps8_utils.c \
 ./dps8_decimal.c \
-./dps8_faults.c 
+./dps8_faults.c \
+./dps8_iefp.c
 
 
 OBJS = \
@@ -43,7 +44,8 @@ OBJS = \
 ./dps8_sys.o \
 ./dps8_utils.o \
 ./dps8_decimal.o \
-./dps8_faults.o 
+./dps8_faults.o \
+./dps8_iefp.o
 
 H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h
 

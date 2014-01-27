@@ -17,8 +17,13 @@
     link    D, <UtilsA>|[rd_clockA]
 
 main:
+
+    epp2	l43170,n*
+    "  puls1
+
+
     tsx2    setupFXE
-    tra     call_main
+    "tra     call_main
     "push
 
     LDA     I
@@ -55,6 +60,19 @@ allDone:
 even
 
 Date:   bss     2
+
+
+" If not fault, dis@1
+	dis	*
+
+    even
+
+l43170:	
+        ITS 9, 16
+
+        oct	000400000043
+        oct	000000000000
+        
 
 
     INCLUDE     setupFXE.as8

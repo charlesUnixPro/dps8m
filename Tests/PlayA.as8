@@ -16,12 +16,12 @@ Main:   tsp2    1|0
 
         tsp2    1|3         " rd_clockA call
         staq	Date        "MM/DD HH:MM
-        
+
         tsp2    1|2
         acc     /Date 0: '^g^g'\r\n/
         nop     Date
         nop     Date+1
-        
+
         tsp2    1|1
         nop     =3457623
         nop     =-42

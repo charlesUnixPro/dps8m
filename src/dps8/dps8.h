@@ -545,6 +545,47 @@ extern struct _ptw0 {
 typedef struct _ptw0 _ptw0;
 
 
+extern enum _processor_cycle_type {
+    UNKNOWN_CYCLE = 0,
+    APPEND_CYCLE,
+    CA_CYCLE,
+    OPERAND_STORE,
+    OPERAND_READ,
+    DIVIDE_EXECUTION,
+    FAULT,
+    INDIRECT_WORD_FETCH,
+    RTCD_OPERAND_FETCH,
+    SEQUENTIAL_INSTRUCTION_FETCH,
+    INSTRUCTION_FETCH,
+    APU_DATA_MOVEMENT,
+    ABORT_CYCLE,
+    FAULT_CYCLE,
+    EIS_OPERAND_DESCRIPTOR,  // change later for real MW EIS operand descriptors
+    EIS_OPERAND_STORE,
+    EIS_OPERAND_READ
+    
+} processorCycle;
+typedef enum _processor_cycle_type _processor_cycle_type;
+
+enum _processor_addressing_mode {
+    UNKNOWN_MODE = 0,
+    ABSOLUTE_MODE,
+    APPEND_MODE,
+    BAR_MODE,
+    TEMPORARY_ABSOLUTE_MODE
+};// processorAddressingMode;
+typedef enum _processor_addressing_mode _processor_addressing_mode;
+
+enum _processor_operating_mode {
+    UNKNOWN_OPERATING_MODE = 0,
+    NORMAL_MODE,
+    PRIVILEGED_MODE,
+} processorOperatingMode;
+typedef enum _processor_operating_mode _processor_operating_mode;
+
+extern bool bPuls2;
+
+
 
 // Abort codes, used to sort out longjmp's back to the main loop.
 // Codes > 0 are simulator stop codes
@@ -575,19 +616,19 @@ enum eMemoryAccessType {
     Unknown          = 0,
     InstructionFetch,
     IndirectRead,
-    IndirectWrite,
+    //IndirectWrite,
     DataRead,
     DataWrite,
     OperandRead,
     OperandWrite,
     
-    APUDataRead,        // append operations from absolute mode
-    APUDataWrite,
-    APUOperandRead,
-    APUOperandWrite,
+//    APUDataRead,        // append operations from absolute mode
+//    APUDataWrite,
+//    APUOperandRead,
+//    APUOperandWrite,
 
     Call6Operand,
-    RTCDOperand,
+    RTCDOperand = RTCD_OPERAND_FETCH,
     
     
     // for EIS read operations
@@ -606,6 +647,8 @@ extern word36 Ypair[2];        ///< 2-words
 
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
+
+#define YPAIRTO72(ypair)    (((word72)(ypair[0] << 36 | ypair[1])) & MASK72)
 
 void putByte(word36 *dst, word9 data, int posn);
 word9 getByte(int posn, word36 src);
@@ -737,7 +780,7 @@ typedef struct EISstruct EISstruct;
 struct DCDstruct
 {
     word36 IWB;         ///< instruction working buffer
-    opCode *iwb;        ///< opCode *
+    opCode *info;       ///< opCode *
     int32  opcode;      ///< opcode
     bool   opcodeX;     ///< opcode extension
     word18 address;     ///< bits 0-17 of instruction XXX replace with rY
@@ -762,20 +805,20 @@ void freeDCDstruct(DCDstruct *p);
 #define READ_OPERAND    (1 << 0)   ///< fetches/reads operand (CA) from memory
 #define STORE_OPERAND   (1 << 1)   ///< stores/writes operand to memory (its a STR-OP)
 #define RMW             (READ_OPERAND | STORE_OPERAND) ///< a Read-Modify-Write instruction
-#define READ_YPAIR      ((1 << 2))   ///< fetches/reads Y-pair operand (CA) from memory
-#define STORE_YPAIR     ((1 << 3))   ///< stores/writes Y-pair operand to memory
-#define READ_YBLOCK8    ((1 << 4))   ///< fetches/reads Y-block8 operand (CA) from memory
+#define READ_YPAIR      (1 << 2)   ///< fetches/reads Y-pair operand (CA) from memory
+#define STORE_YPAIR     (1 << 3)   ///< stores/writes Y-pair operand to memory
+#define READ_YBLOCK8    (1 << 4)   ///< fetches/reads Y-block8 operand (CA) from memory
 #define NO_RPT          (1 << 5)   ///< Repeat instructions not allowed
 //#define NO_RPD          (1 << 6)
 #define NO_RPL          (1 << 7)
 //#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
-#define READ_YBLOCK16   ((1 << 8))   ///< fetches/reads Y-block16 operands from memory
-#define STORE_YBLOCK16  ((1 << 9))   ///< fetches/reads Y-block16 operands from memory
+#define READ_YBLOCK16   (1 << 8)   ///< fetches/reads Y-block16 operands from memory
+#define STORE_YBLOCK16  (1 << 9)   ///< fetches/reads Y-block16 operands from memory
 #define TRANSFER_INS    (1 << 10)  ///< a transfer instruction
 #define TSPN_INS        (1 << 11)  ///< a TSPn instruction
 #define CALL6_INS       (1 << 12)  ///< a call6 instruction
 #define PREPARE_CA      (1 << 13)  ///< prepare TPR.CA for instruction
-#define STORE_YBLOCK8   ((1 << 14))  ///< stores/writes Y-block8 operand to memory
+#define STORE_YBLOCK8   (1 << 14)  ///< stores/writes Y-block8 operand to memory
 #define IGN_B29         (1 << 15)  ///< Bit-29 has an instruction specific meaning. Ignore.
 #define NO_TAG          (1 << 16)  ///< tag is interpreted differently and for addressing purposes is effectively 0
 #define PRIV_INS        (1 << 17)  ///< priveleged instruction
@@ -894,11 +937,11 @@ enum eCAFoper {
 };
 typedef enum eCAFoper eCAFoper;
 
-#define READOP(i)  ((bool) (i->iwb->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 |  READ_YBLOCK16)) )
-#define WRITEOP(i) ((bool) (i->iwb->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16)) )
+#define READOP(i)  ((bool) (i->info->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 |  READ_YBLOCK16)) )
+#define WRITEOP(i) ((bool) (i->info->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16)) )
 #define RMWOP(i)   ((bool) READOP(i) && WRITEOP(i)) // if it's both read and write it's a RMW
 
-#define TRANSOP(i) ((bool) (i->iwb->flags & (TRANSFER_INS) ))
+#define TRANSOP(i) ((bool) (i->info->flags & (TRANSFER_INS) ))
 
 word24 doFinalAddressCalculation(DCDstruct *i, MemoryAccessType accessType, word15 segno, word18 offset, word36 *ACVfaults);
 
@@ -1539,40 +1582,7 @@ bool G7Pending();
 
 
 
-extern enum _processor_cycle_type {
-    UNKNOWN_CYCLE = 0,
-    APPEND_CYCLE,
-    CA_CYCLE,
-    OPERAND_STORE,
-    DIVIDE_EXECUTION,
-    FAULT,
-    INDIRECT_WORD_FETCH,
-    RTCD_OPERAND_FETCH,
-    SEQUENTIAL_INSTRUCTION_FETCH,
-    INSTRUCTION_FETCH,
-    APU_DATA_MOVEMENT,
-    ABORT_CYCLE,
-    FAULT_CYCLE
-} processorCycle;
-
-enum _processor_addressing_mode {
-    UNKNOWN_MODE = 0,
-    ABSOLUTE_MODE,
-    APPEND_MODE,
-    BAR_MODE,
-    TEMPORARY_ABSOLUTE_MODE
-};// processorAddressingMode;
-
-enum _processor_operating_mode {
-    UNKNOWN_OPERATING_MODE = 0,
-    NORMAL_MODE,
-    PRIVILEGED_MODE,
-} processorOperatingMode;
-typedef enum _processor_addressing_mode _processor_addressing_mode;
-
-extern bool bPuls2;
-
-/* 
+/*
  * Cache Mode Regsiter
  *
  * (dont know where else to put this)
@@ -2792,13 +2802,14 @@ typedef enum {
 /* dps8_addrmods.c */
 
 word18 getCr(word4 Tdes);
-void doComputedAddressFormation(DCDstruct *, eCAFoper action);
+t_stat doComputedAddressFormation(DCDstruct *);
 
 // EXPERIMENTAL STUFF
 
 struct modificationContinuation
 {
     bool bActive;   // if true then continuation is active and needs to be considered
+    int segment;    // segment of whatever we want to write
     int address;    // address of whatever we'll need to write
     int tally;      // value of tally from dCAF()
     int delta;      // value of delta from sCAF()
@@ -2812,8 +2823,8 @@ struct modificationContinuation
 
 typedef struct modificationContinuation modificationContinuation;
 
-#define USE_CONTINUATIONS
-void doPreliminaryComputedAddressFormation(DCDstruct *i);  //, eCAFoper operType);
+//#define USE_CONTINUATIONS
+//t_stat doPreliminaryComputedAddressFormation(DCDstruct *i);  //, eCAFoper operType);
 void doComputedAddressContinuation(DCDstruct *i);    //, eCAFoper operType);
 
 
@@ -2825,8 +2836,7 @@ char *strSDW0(_sdw0 *SDW);
 char *strSDW(_sdw *SDW);
 char *strDSBR(void);
 t_stat dumpSDWAM (void);
-bool doITSITP(DCDstruct *i, word36 indword, word6 Tag);
-word36 doAppendCycle(DCDstruct *i, MemoryAccessType accessType, word6 Tdes, word36 writeData, word36 *readData);
+bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag);
 
 /* dps8_bar.c */
 
@@ -2860,18 +2870,28 @@ t_stat dpsCmd_Segment (int32 arg, char *buf);
 t_stat dpsCmd_Segments (int32 arg, char *buf);
 
 // Memory ops that use the appending unit (as necessary) ...
-t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag); // needs testing
-t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag);
+#if OLD
+//t_stat Read (DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag);
+//t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag); // needs testing
+//t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag);
+#endif
 
-t_stat ReadOP (DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, int32 Tag);
-t_stat WriteOP(DCDstruct *i, word18 addr, enum eMemoryAccessType acctyp, int32 Tag);
+// new
+
+word24 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle);
+
+t_stat Read (DCDstruct *i, word18 addr, word36 *dat, _processor_cycle_type cyctyp, bool b29);
+t_stat Write (DCDstruct *i, word18 addr, word36 dat, _processor_cycle_type cyctyp, bool b29);
+
+
+t_stat ReadOP (DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
+t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
 
 // RAW, core stuff ...
 int core_read(word24 addr, word36 *data);
@@ -2916,6 +2936,8 @@ void check_events (void);
 
 void cu_safe_store(void);
 t_stat executeInstruction(DCDstruct *ci);
+t_stat prepareComputedAddress(DCDstruct *ci);   // new
+
 t_stat doXED(word36 *Ypair);
 void cu_safe_restore (void);
 void initializeTheMatrix (void);

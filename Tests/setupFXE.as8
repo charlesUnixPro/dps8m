@@ -10,6 +10,7 @@
 setupFXE:
 
         lprplp  lot_            " set-up lp to point to this segments linkage section
+        "lprplp  PR4|0
         eppsp   stack_0         " set-up stack pointer
         eppsb   stack_0         " set-up stack base
 

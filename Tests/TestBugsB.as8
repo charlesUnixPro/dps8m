@@ -43,8 +43,11 @@ TRATest_fail:
     "tsp2    ioa
     "acc     /TRA test 1 ... Q=^d... (fail)\r\n/
     "nop     LQ
-
+    puls1
+    puls2
     epp0    Bug_B_Gone_1$TRA1
+    puls1
+    puls2
     tra     pr0|0   " Bug_B_Gone_1$TRA1
 
 TRATest_pass:
@@ -55,6 +58,11 @@ TRATest_pass:
     "acc     /TRA test 1 ... Q=^d... (pass)\r\n/
     "nop     LQ
 
+    "tra     Bug_B_Gone_1$TRA1
+    puls1
+    puls2
     epp0    Bug_B_Gone_1$TRA1
+    puls1
+"    puls2
     tra     pr0|0   "Bug_B_Gone_1$TRARet2,n*
 

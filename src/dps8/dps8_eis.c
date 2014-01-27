@@ -20,13 +20,23 @@ extern word18 rIC;
 
 static void EISWrite(EISaddr *p, word36 data)
 {
-    if (p->mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
+    if (p->mat == viaPR)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Write(p->e->ins, p->address, data, APUDataWrite, 0); // write data
-    } else
-        Write(p->e->ins, p->address, data, OperandWrite, 0); // write data
+        
+        Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, true); // write data
+    }
+    else
+    {
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
+        Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, false); // write data
+    }
 }
 
 static word36 EISRead(EISaddr *p)
@@ -36,11 +46,19 @@ static word36 EISRead(EISaddr *p)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Read(p->e->ins, p->address, &data, APUDataRead, 0);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+        
+        Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
     }
     else
-        Read(p->e->ins, p->address, &data, OperandRead, 0);  // read operand
-    
+    {
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
+        Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, false);  // read operand
+    }
     return data;
 }
 
@@ -170,7 +188,8 @@ void setupOperandDescriptor(int k, EISstruct *e)
                 e->addr[k-1].mat = viaPR;   // ARs involved
             }
         } else
-            e->addr[k-1].mat = IndirectRead;      // no ARs involved yet
+            //e->addr[k-1].mat = IndirectRead;      // no ARs involved yet
+            e->addr[k-1].mat = OperandRead;      // no ARs involved yet
 
         
         // Address modifier for ADDRESS. All register modifiers except du and dl may be used. If the ic modifier is used, then ADDRESS is an 18-bit offset relative to value of the instruction counter for the instruction word. C(REG) is always interpreted as a word offset. REG 
@@ -182,7 +201,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
         
         //Read(e->ins, address, &e->op[k-1], OperandRead, 0);  // read operand
         e->op[k-1] = EISRead(&e->addr[k-1]);  // read EIS operand .. this should be an indirectread
-        e->addr[k-1].mat = OperandRead; 
+        //e->addr[k-1].mat = OperandRead;
     }
 }
 
@@ -1336,8 +1355,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     // any room left in output string?
     if (N == 0)
     {
-        SETF(e->_flags, I_OFLOW);
-        
+        //SETF(e->_flags, I_OFLOW); // HWR 26 Jan 14 - Don't think we need to fault it here.
         return;
     }
     

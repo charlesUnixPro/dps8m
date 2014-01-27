@@ -1,0 +1,29 @@
+de dsbr.u 1
+de dsbr.addr 7000
+de ppr.ic 0
+de ppr.prr 0
+de ppr.psr 0
+de ppr.p 1
+dpsinit segment table
+dpsinit SDWAM
+load Play/TestCAF.oct segment 0 address  0
+load Play/TestCAF1.oct deffered
+
+load Play/simh_operators.oct deferred
+
+segments lot create
+segments create stack 0
+segments resolve
+segments load deferred
+segments lot snap
+
+;load Play/Testappend1.oct segment 1 address  1000
+;load Play/Testappend2.oct segment 2 address  2000
+;load Play/Testappend3.oct segment 3 address  3000
+  set debug stderr
+;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
+set cpu debug=trace;appending;regdumpaqi;regdumppr;addrmod;fault
+;dpsdump segment table
+
+g 0
+q

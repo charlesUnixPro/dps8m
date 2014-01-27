@@ -21,78 +21,11 @@ static t_stat doInstruction(DCDstruct *i);
 
 extern modificationContinuation _modCont, *modCont;
 
-/**
- * writeOperand() - write (a potentially modified) CY to memory at TPR.CA using whatever modifications are necessary ...
- */
-static void
-writeOperand(DCDstruct *i)
-{
-    if (adrTrace)
-    {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperand(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
-    }
-    
-    // TPR.CA may be different from instruction spec because of various addr mod operations.
-    // This is especially true in a R/M/W cycle such as stxn. So, restore it.
-    
-#ifdef USE_CONTINUATIONS
-    if (modCont->bActive)
-        doComputedAddressContinuation(i);
-    else
-        Write(i, TPR.CA, CY, OperandWrite, i->tag);
-#else
-    if (i->iwb->flags == RMW)  /// Is this always the right thing todo???? or only for R/M/W instructions
-    {
-        TPR.CA = i->address;   // address from opcode
-        rY = i->address;
-    }
-    doComputedAddressFormation(i, writeCY);
-#endif
-}
-
-/**
- * writeOperand2() - write (a potentially modified) YPair to memory at TPR.CA/TPR.CA+1 
- */
-static void
-writeOperand2(DCDstruct *i)//, word36 *YPair)
-{
-    if (adrTrace)
-    {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperand2(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
-    }
-    
-    // TPR.CA may be different from instruction spec because of various addr mod operations.
-    // This is especially true in a R/M/W cycle such as stxn. So, restore it.
-    
-    if (i->iwb->flags == RMW)  /// Is this always the right thing todo???? or only for R/M/W instructions
-    {
-        TPR.CA = i->address;   // address from opcode
-        rY = i->address;
-    }
-    
-    // XXX this may be way too simplistic ..... 
-    Write2(i, TPR.CA, Ypair[0], Ypair[1], DataWrite, i->tag);
-    
-    
-    // XXX may need to check for alignment restrictions/faults here ...
-    
-    //TPR.CA &= 0777776;  // make even address
-    
-    //CY = YPair[0];
-    //doComputedAddressFormation(i, writeCY);
-    
-    //CY = YPair[1];
-    //TPR.CA += 1;
-    //doComputedAddressFormation(i, writeCY);
-}
 
 static void
 writeOperands(DCDstruct *i)
 {
-    if (adrTrace)
-    {
-        sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->iwb->mne, i->iwb->flags);
-    }
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->info->mne, i->info->flags);
     
     // TPR.CA may be different from instruction spec because of various addr mod operations.
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
@@ -100,7 +33,7 @@ writeOperands(DCDstruct *i)
     if (modCont->bActive)
         doComputedAddressContinuation(i);    //, writeCY);
     else
-        WriteOP(i, TPR.CA, OperandWrite, i->tag);
+        WriteOP(i, TPR.CA, OPERAND_STORE, i->tag);
 }
 
 /**
@@ -445,6 +378,7 @@ t_stat displayTheMatrix (int32 arg, char * buf)
     return SCPE_OK;
 }
 
+#if OLD_WAY
 t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = ci->IWB;          ///< instruction working buffer
@@ -614,6 +548,201 @@ t_stat executeInstruction(DCDstruct *ci)
     
     return ret;
 }
+#endif
+
+/*
+ * Setup TPR registers prior to instruction execution ...
+ */
+
+t_stat prepareComputedAddress(DCDstruct *i)
+{
+    if (i->a)   // if A bit set up TPR stuff ...
+        doPtrReg(i);
+
+    return SCPE_OK;
+}
+
+static bool lastTRA = false;
+
+DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution at address
+{
+    DCDstruct *p = ins; //(ins == NULL) ? newDCDstruct() : ins;
+    
+    // XXX experimental code; there may be a better way to do this, especially
+    // if a pointer to a malloc is getting zapped
+    // Yep, I was right
+    // HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
+    
+    //memset (p, 0, sizeof (struct DCDstruct));
+    // Try the obvious ones
+    p->opcode  = 0;
+    p->opcodeX = 0;
+    p->address = 0;
+    p->a       = 0;
+    p->i       = 0;
+    p->tag     = 0;
+    
+    p->info = 0;
+    p->IWB = 0;
+    
+
+    Read(NULL, addr, &p->IWB, lastTRA ? INSTRUCTION_FETCH : SEQUENTIAL_INSTRUCTION_FETCH, 0);
+    
+    cpu.read_addr = addr;
+    
+    DCDstruct *i = decodeInstruction(p->IWB, p);
+
+    lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transger
+    
+    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
+    if ((i->info->flags & PRIV_INS) && !is_priv_mode())
+        doFault(i, illproc_fault, 0, "Attempted execution of privileged instruction.");
+    
+    // check for illegal addressing mode(s) ...
+    
+    // No CI/SC/SCR allowed
+    if (i->info->mods == NO_CSS)
+    {
+        if (_nocss[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal CI/SC/SCR modification");
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (i->info->mods == NO_DDCSS)
+    {
+        if (_noddcss[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (i->info->mods == NO_DLCSS)
+    {
+        if (_nodlcss[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+    }
+    // No DU/DL allowed
+    else if (i->info->mods == NO_DUDL)
+    {
+        if (_nodudl[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
+    }
+
+    return i;
+}
+
+// read operands (if any)
+//t_stat ReadOPs(DCDstruct *i)
+//{
+//    
+//    return SCPE_OK;
+//}
+
+t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
+
+DCDstruct *fetchOperands(DCDstruct *i)
+{
+    
+    if (i->info->ndes > 0)
+        for(int n = 0 ; n < i->info->ndes; n += 1)
+            Read(i, rIC + 1 + n, &i->e->op[n], READ_OPERAND, 0); 
+    else
+        if (READOP(i) || RMWOP(i))
+            ReadOP(i, TPR.CA, READ_OPERAND, 0);
+    
+    return i;
+}
+
+t_stat doCAF(DCDstruct *i);
+
+t_stat executeInstruction(DCDstruct *ci)
+{
+    const word36 IWB  = ci->IWB;          ///< instruction working buffer
+    const opCode *info = ci->info;          ///< opCode *
+    const int32  opcode = ci->opcode;     ///< opcode
+    const bool   opcodeX = ci->opcodeX;   ///< opcode extension
+    const word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
+    const bool   a = ci->a;               ///< bit-29 - addressing via pointer register
+    const bool   i = ci->i;               ///< interrupt inhibit bit.
+    const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
+    
+    addToTheMatrix (opcode, opcodeX, a, tag);
+    
+    TPR.CA = address;
+    rY = TPR.CA;
+    
+    if (!switches . append_after)
+    {
+        if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
+        {
+            set_addr_mode(APPEND_mode);
+        }
+    }
+
+    ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
+    
+    if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
+    {
+        if (get_addr_mode() == ABSOLUTE_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
+        if (get_addr_mode() == APPEND_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
+        if (get_addr_mode() == BAR_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+        }
+    }
+
+    if (info->ndes > 0)
+        for(int n = 0 ; n < info->ndes; n += 1)
+            Read(ci, rIC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
+    //else
+    {
+        if (ci->a)   // if A bit set set-up TPR stuff ...
+            doPtrReg(ci);
+        
+        doComputedAddressFormation(ci);
+    }
+
+    t_stat ret = doInstruction(ci);
+    
+    
+    if (switches . append_after)
+    {
+        if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
+        {
+            set_addr_mode(APPEND_mode);
+        }
+    }
+    
+    if (modCont->bActive)
+        writeOperands(ci);
+    
+    cpuCycles += 1; // bump cycle counter
+    
+    if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
+    {
+        sim_debug(DBG_REGDUMPAQI, &cpu_dev, "A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(rIR));
+        
+        sim_debug(DBG_REGDUMPFLT, &cpu_dev, "E=%03o A=%012llo Q=%012llo %.10Lg\n", rE, rA, rQ, EAQToIEEElongdouble());
+        
+        sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n", rX[0], rX[1], rX[2], rX[3]);
+        sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
+        for(int n = 0 ; n < 8 ; n++)
+        {
+            sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
+                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+        }
+        for(int n = 0 ; n < 8 ; n++)
+            sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR%d: WORDNO=%06o CHAR:%o BITNO:%02o\n",
+                  n, AR[n].WORDNO, AR[n].CHAR, AR[n].BITNO);
+        sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
+        sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
+    }
+    
+    return ret;
+}
 
 static t_stat DoBasicInstruction(DCDstruct *i), DoEISInstruction(DCDstruct *i);    //, DoInstructionPair(DCDstruct *i);
 
@@ -624,7 +753,7 @@ static t_stat doInstruction(DCDstruct *i)
     CLRF(rIR, I_MIIF);
     
     //if (i->e)
-    if (i->iwb->ndes > 0)
+    if (i->info->ndes > 0)
     {
         i->e->ins = i;
         i->e->addr[0].e = i->e;
@@ -654,7 +783,7 @@ static t_stat doInstruction(DCDstruct *i)
 //    return DoInstruction(i, Ypair[1]);
 //}
 
-static word72 CYpair = 0;
+//static word72 CYpair = 0;
 
 static word18 tmp18 = 0;
 
@@ -1483,8 +1612,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 077:   ///< adaq
             // C(AQ) + C(Y-pair) → C(AQ)
-            Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
+            tmp72 = YPAIRTO72(Ypair);
+        
             tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             convertToWord36(tmp72, &rA, &rQ);
             
@@ -1502,8 +1632,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 037:   ///< adlaq
             /// The adlaq instruction is identical to the adaq instruction with the exception that the overflow indicator is not affected by the adlaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
             /// C(AQ) + C(Y-pair) → C(AQ)
-            Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
+        
+            tmp72 = YPAIRTO72(Ypair);
+        
             tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &rIR);
             convertToWord36(tmp72, &rA, &rQ);
             
@@ -1609,8 +1741,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 0177:  ///< sbaq
             /// C(AQ) - C(Y-pair) → C(AQ)
-            Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
+            tmp72 = YPAIRTO72(Ypair);   //
+        
             tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             convertToWord36(tmp72, &rA, &rQ);
             break;
@@ -1623,8 +1756,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0137:  ///< sblaq
             /// The sblaq instruction is identical to the sbaq instruction with the exception that the overflow indicator is not affected by the sblaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
             /// \brief C(AQ) - C(Y-pair) → C(AQ)
-            Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
+            tmp72 = YPAIRTO72(Ypair);   //
+        
             tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &rIR);
             convertToWord36(tmp72, &rA, &rQ);
             break;
@@ -1928,11 +2062,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0117:  ///< cmpaq
             /// C(AQ) :: C(Y-pair)
             
-            Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+        
+            tmp72 = YPAIRTO72(Ypair);   //
+        
             trAQ = convertToWord72(rA, rQ);
             
-            cmp72(trAQ, CYpair, &rIR);
+            cmp72(trAQ, tmp72, &rIR);
             break;
             
         /// Fixed-Point Miscellaneous
@@ -1988,10 +2124,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0377:  ///< anaq
             /// C(AQ)i & C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
             
-            Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+            //!!!
+            tmp72 = YPAIRTO72(Ypair);   //
+        
+        
             trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ & CYpair;
+            trAQ = trAQ & tmp72;
             
             if (trAQ == 0)
                 SETF(rIR, I_ZERO);
@@ -2128,10 +2267,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 0277:  ///< oraq
             /// C(AQ)i | C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
-            Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+            //!!!
+            tmp72 = YPAIRTO72(Ypair);   //
+        
             trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ | CYpair;
+            trAQ = trAQ | tmp72;
             
             if (trAQ == 0)
                 SETF(rIR, I_ZERO);
@@ -2267,10 +2408,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0677:  ///< eraq
             /// C(AQ)i ⊕ C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
-            Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+            //!!!
+            tmp72 = YPAIRTO72(Ypair);   //
+        
             trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ ^ CYpair;
+            trAQ = trAQ ^ tmp72;
             
             if (trAQ == 0)
                 SETF(rIR, I_ZERO);
@@ -2315,7 +2458,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_NEG);
             
-            Write(i, TPR.CA, CY, DataWrite, rTAG);
+            //Write(i, TPR.CA, CY, DataWrite, rTAG);
 
             break;
 
@@ -2334,7 +2477,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_NEG);
             
-            Write(i, TPR.CA, CY, DataWrite, rTAG);
+            //Write(i, TPR.CA, CY, DataWrite, rTAG);
 
             break;
 
@@ -2365,7 +2508,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             SETHI(CY, tmp18);
             
-            Write(i, TPR.CA, CY, DataWrite, rTAG);
+            //Write(i, TPR.CA, CY, DataWrite, rTAG);
 
             break;
 
@@ -2416,10 +2559,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0317:  ///< canaq
             /// C(Z)i = C(AQ)i & C(Y-pair)i for i = (0, 1, ..., 71)
             
-            Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+            //!!!
+            tmp72 = YPAIRTO72(Ypair);   //
+        
+        
             trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ & CYpair;
+            trAQ = trAQ & tmp72;
             
             if (trAQ == 0)
                 SETF(rIR, I_ZERO);
@@ -2493,10 +2639,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0217:  ///< cnaaq
             /// C(Z)i = C (AQ)i & ~C(Y-pair)i for i = (0, 1, ..., 71)
-            Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            
+            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+        
+            tmp72 = YPAIRTO72(Ypair);   //
+        
             trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ & ~CYpair;
+            trAQ = trAQ & ~tmp72;
             
             if (trAQ == 0)
                 SETF(rIR, I_ZERO);
@@ -3535,11 +3683,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
             Ypair[0] = 043;
-            Ypair[0] |= (word36) PR[4].SNR << 18;
-            Ypair[0] |= (word36) PR[4].RNR << 15;
+            Ypair[0] |= (word36) PAR[4].SNR << 18;
+            Ypair[0] |= (word36) PAR[4].RNR << 15;
             
-            Ypair[1] = (word36) PR[4].WORDNO << 18;
-            Ypair[1]|= (word36) PR[4].BITNO << 9;
+            Ypair[1] = (word36) PAR[4].WORDNO << 18;
+            Ypair[1]|= (word36) PAR[4].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3644,10 +3792,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(TPR.TBR) → C(AQ)66,71
             
             rA = TPR.TRR & 7;
-            rA |= (word36) TPR.TSR << 18;
+            rA |= (word36) (TPR.TSR & 077777) << 18LL;
             
             rQ = TPR.TBR & 077;
-            rQ |= (word36) TPR.CA << 18;
+            rQ |= (word36) (TPR.CA & 0777777) << 18LL;
             
             break;
         
@@ -3859,7 +4007,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 
                 int Xn = nxt->tag - 8;          // Get Xn of next instruction
     
-                if (nxt->iwb->flags & NO_RPT)   // repeat allowed for this instruction?
+                if (nxt->info->flags & NO_RPT)   // repeat allowed for this instruction?
                     doFault(i, FAULT_IPR, 0, "no rpt allowed for instruction");
                                 
                 //If C = 1, then C(rpt instruction word)0,17 → C(X0); otherwise, C(X0) unchanged prior to execution.
@@ -3878,19 +4026,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                     
                     // XXX This is probably soooo wrong, but let's see what happens ......
                     // what about instructions that need more that 1 word?????
-                    if (nxt->iwb->flags & READ_OPERAND)
+                    if (nxt->info->flags & READ_OPERAND)
                     {
                         switch (GET_TM(nxt->tag))
                         {
                             case TM_R:
-                                Read(nxt, TPR.CA, &CY, OperandRead, 0);
+                                Read(nxt, TPR.CA, &CY, OPERAND_READ, 0);
                                 break;
                             case TM_RI:
                             {
                                 //In the case of RI modification, only one indirect reference is made per repeated execution. The TAG field of the indirect word is not interpreted. The indirect word is treated as though it had R modification with R = N.
                                 word36 tmp;
-                                Read(nxt, TPR.CA, &tmp, OperandRead, 0);     // XXX can append mode be invoked here?
-                                Read(nxt, GETHI(tmp), &CY, OperandRead, 0);  // XXX ""
+                                Read(nxt, TPR.CA, &tmp, OPERAND_READ, 0);     // XXX can append mode be invoked here?
+                                Read(nxt, GETHI(tmp), &CY, OPERAND_READ, 0);  // XXX ""
                                 break;
                             }
                             default:
@@ -4131,22 +4279,22 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             // XXX this may be way too simplistic ..... 
             // XXX Write sets TPR.CA to the address passed in.... Gahh
             word18 tprca = TPR.CA;
-            Write (i, tprca + 0, scu_data [0], DataWrite, i->tag);
-            Write (i, tprca + 1, scu_data [1], DataWrite, i->tag);
-            Write (i, tprca + 2, scu_data [2], DataWrite, i->tag);
-            Write (i, tprca + 3, scu_data [3], DataWrite, i->tag);
+            Write (i, tprca + 0, scu_data [0], STORE_OPERAND, i->tag);
+            Write (i, tprca + 1, scu_data [1], STORE_OPERAND, i->tag);
+            Write (i, tprca + 2, scu_data [2], STORE_OPERAND, i->tag);
+            Write (i, tprca + 3, scu_data [3], STORE_OPERAND, i->tag);
 // Bug DIS@0013060 31184718 blk10 absolute mode bit inverted in SCU instruction
 #if 1
             word36 tmp = scu_data [4];
             if (switches . invert_absolute)
               tmp ^= I_ABS;
-            Write (i, tprca + 4, tmp, DataWrite, i->tag);
+            Write (i, tprca + 4, tmp, STORE_OPERAND, i->tag);
 #else
-            Write (i, tprca + 4, scu_data [4], DataWrite, i->tag);
+            Write (i, tprca + 4, scu_data [4], STORE_OPERAND, i->tag);
 #endif
-            Write (i, tprca + 5, scu_data [5], DataWrite, i->tag);
-            Write (i, tprca + 6, scu_data [6], DataWrite, i->tag);
-            Write (i, tprca + 7, scu_data [7], DataWrite, i->tag);
+            Write (i, tprca + 5, scu_data [5], STORE_OPERAND, i->tag);
+            Write (i, tprca + 6, scu_data [6], STORE_OPERAND, i->tag);
+            Write (i, tprca + 7, scu_data [7], STORE_OPERAND, i->tag);
             TPR.CA = tprca;
 #else
             scu2words (Yblock8);
@@ -4552,13 +4700,13 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             
     }
     
-#ifndef USE_CONTINUATIONS
-    if (i->iwb->flags & STORE_YPAIR)
-        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
-    else
-    if (i->iwb->flags & STORE_OPERAND)
-        writeOperand(i);  // write C(Y) to TPR.CA for any instructions that needs it .....
-#endif
+//#ifndef USE_CONTINUATIONS
+//    if (i->iwb->flags & STORE_YPAIR)
+//        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
+//    else
+//    if (i->iwb->flags & STORE_OPERAND)
+//        writeOperand(i);  // write C(Y) to TPR.CA for any instructions that needs it .....
+//#endif
     
     return 0;
 }
@@ -5806,12 +5954,12 @@ static t_stat DoEISInstruction(DCDstruct *i)
             //return STOP_UNIMP;
     }
 
-#ifndef USE_CONTINUATIONS
-    if (i->iwb->flags & STORE_OPERAND)
-        writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
-    else if (i->iwb->flags & STORE_YPAIR)
-        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
-#endif
+//#ifndef USE_CONTINUATIONS
+//    if (i->iwb->flags & STORE_OPERAND)
+//        writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
+//    else if (i->iwb->flags & STORE_YPAIR)
+//        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
+//#endif
     
     return 0;
 
