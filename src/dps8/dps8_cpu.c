@@ -962,7 +962,7 @@ jmpRetry:;
         }
 
         //reason = doIEFPLoop();
-#if 0
+#if 1
         if (cpu . cycle == DIS_cycle)
           {
             cpu . interrupt_flag = sample_interrupts ();
@@ -1562,11 +1562,12 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
                 if (switches . super_user)
                     return 1;
 
-                if (SDW0.P && PPR.PRR == 0)
+                if (SDW->P && PPR.PRR == 0)
                 {
                     PPR.P = 1;
                     return 1;
                 }
+                sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
                 break;
             default:
                 break;
