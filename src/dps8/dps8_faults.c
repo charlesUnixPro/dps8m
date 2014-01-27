@@ -367,7 +367,9 @@ t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
 
 static bool bFaultCycle = false;       // when true then in FAULT CYCLE
 static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
+#ifndef QUIET_UNUSED
 static int nFaultNumber = -1;
+#endif
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 static int g7Faults = 0;

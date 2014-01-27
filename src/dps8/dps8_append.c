@@ -626,6 +626,7 @@ static bool isAPUDataMovement(word36 inst)
 }
 #endif
 
+#ifndef QUIET_UNUSED
 static char *strAccessType(MemoryAccessType accessType)
 {
     switch (accessType)
@@ -642,6 +643,7 @@ static char *strAccessType(MemoryAccessType accessType)
         default:                return "???";
     }
 }
+#endif
 
 static char *strACV(_fault_subtype acv)
 {
@@ -681,14 +683,14 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault)
     char temp[256];
     sprintf(temp, "group 6 ACV fault %s(%d)\n", strACV(acvfault), acvfault);
 
-    sim_printf(temp);
+    sim_printf("%s", temp);
     
     //acvFaults |= (1 << acvfault);   // or 'em all together
     acvFaults |= acvfault;   // or 'em all together
 
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%d) acvFaults=%llu\n", strACV(acvfault), (int)acvFault, acvFaults);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%d) acvFaults=%d\n", strACV(acvfault), (int)acvFault, acvFaults);
     }
     
     doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
@@ -1280,7 +1282,10 @@ O:;
     
     goto Exit;    // or 0 or -1???
     
+#ifndef QUIET_UNUSED
 P:;
+#endif
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(P): ITP\n");
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(P): RSDWH_R1 = %0o", RSDWH_R1);
