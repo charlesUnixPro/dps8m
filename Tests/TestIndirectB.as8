@@ -39,8 +39,8 @@ _main_2:
 
         "tra     trymmM
 
-"        tsp2    ioa
-"        acc     /Hallooooo from TIND$_main...\r\n/
+        tsp2    ioa
+        acc     /Hallooooo from TIND$_main...\r\n/
 
         "
         " Access something from the main segment ...
@@ -49,15 +49,15 @@ _main_2:
         lda     main$Data_1 ",*
         emcall  4
 
-"        sta     LA
+        sta     LA
 
-"        tsp2    ioa
-"        acc     /main$Data_1 a: ^n (Should be 12345654321)\r\n/
-"        nop     LA
+        tsp2    ioa
+        acc     /main$Data_1 a: ^n (Should be 12345654321)\r\n/
+        nop     LA
         
-lpri    PRSave
+"lpri    PRSave
 
-return
+"return
 
         
 

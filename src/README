@@ -1,3 +1,11 @@
+Sun Jan 26 21:28:37 PST 2014
+Fixed reimplemented address preparation code. Previously I was under the
+delusion that absolute mode never made use of the APU functions. Oh, how wrong
+and blind I was. ABSOLUTE mode now has the same access to APU functions as does 
+APPEND mode.
+
+
+
 Mon Jan  6 21:27:51 PST 2014
 Rewrote/reimplemented address preparation code to handle R/M/W cycles and
 operand sizes > 1 much better. Fixed undetected bug in ORSQ instruction.

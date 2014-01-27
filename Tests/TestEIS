@@ -1,6 +1,6 @@
 load Play/TestEIS.oct
 ;load Tests/TestEIS.oct
-set debug stderr
+;set debug stderr
 ;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
 ;set cpu debug=unit
 g 0

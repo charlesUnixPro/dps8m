@@ -31,7 +31,7 @@ cc: bss     1
 
 main:
     tsx2    setupFXE
-tra tm0
+"tra tm0
 
     "push
 
@@ -113,7 +113,7 @@ TAMmA:
 
     link    TIND_main, <TIND>|[_main_2]
 tm0:    call    TIND_main (ap|0)
-dis
+"dis
     "
     " for C ...
     "
