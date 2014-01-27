@@ -785,9 +785,7 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
     
     if (thisCycle == EIS_OPERAND_READ || thisCycle == EIS_OPERAND_STORE)
     {
-        //TPR.TRR = PPR.PRR;
-        //TPR.TSR = PPR.PSR;
-        
+        // TPR already setup properly
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(EIS) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
         goto A;
     }
@@ -798,7 +796,7 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
     if (lastCycle == RTCD_OPERAND_FETCH)
         goto A;
     
-    //if (lastCycle == SEQUENTIAL_INSTRUCTION_FETCH || instructionFetch)
+    if (lastCycle == SEQUENTIAL_INSTRUCTION_FETCH || instructionFetch)
     {
         if (i && i->a)   // bit 29 on?
         {
@@ -1099,7 +1097,7 @@ H:;
     finalAddress = SDW->ADDR + address;
     finalAddress &= 0xffffff;
     
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): finalAddress=%08o\n", finalAddress);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FANP): (%05o:%06o) finalAddress=%08o\n",TPR.TSR, address, finalAddress);
     
     goto HI;
     
@@ -1124,6 +1122,7 @@ I:;
     finalAddress = ((PTW->ADDR & 0777777) << 6) + y2;
     finalAddress &= 0xffffff;
     
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",TPR.TSR, address, finalAddress);
 
 HI:
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI)\n");

@@ -29,8 +29,11 @@ static void EISWrite(EISaddr *p, word36 data)
     }
     else
     {
-        TPR.TRR = PPR.PRR;
-        TPR.TSR = PPR.PSR;
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
         
         Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, false); // write data
     }
@@ -48,9 +51,12 @@ static word36 EISRead(EISaddr *p)
     }
     else
     {
-        TPR.TRR = PPR.PRR;
-        TPR.TSR = PPR.PSR;
-
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
         Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, false);  // read operand
     }
     return data;

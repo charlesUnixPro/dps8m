@@ -2809,6 +2809,7 @@ t_stat doComputedAddressFormation(DCDstruct *);
 struct modificationContinuation
 {
     bool bActive;   // if true then continuation is active and needs to be considered
+    int segment;    // segment of whatever we want to write
     int address;    // address of whatever we'll need to write
     int tally;      // value of tally from dCAF()
     int delta;      // value of delta from sCAF()
