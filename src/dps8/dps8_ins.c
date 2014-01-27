@@ -6134,7 +6134,8 @@ emCall(DCDstruct *i)
 static int doABSA (DCDstruct * i, word36 * result)
   {
     word36 res;
-//sim_debug (DBG_TRACE, & cpu_dev, "absa %d %08o %08o\n", get_addr_mode(), i -> address, TPR.CA);
+    sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", TPR.CA);
+
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
         sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
@@ -6152,10 +6153,17 @@ static int doABSA (DCDstruct * i, word36 * result)
       {
         if (DSBR.U == 1) // Unpaged
           {
+            sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is unpaged\n");
             // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access
             // violation, out of segment bounds, fault.
 
-            if (2 * TPR . TSR >= 16 * (DSBR.BND + 1))
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa Boundary check: TSR: %05o f(TSR): %06o "
+              "BND: %05o f(BND): %06o\n", 
+              TPR . TSR, 2 * (uint) TPR . TSR, 
+              DSBR . BND, 16 * ((uint) DSBR . BND + 1));
+
+            if (2 * (uint) TPR . TSR >= 16 * ((uint) DSBR . BND + 1))
               {
                 doFault (i, acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
                 return CONT_FAULT;
@@ -6196,12 +6204,13 @@ static int doABSA (DCDstruct * i, word36 * result)
 
             word24 ADDR = (SDWe >> 12) & 077777760;
             res = (word36) ADDR + (word36) TPR.CA;
-            res &= 077777777; //24 bit math
+            res &= PAMASK; //24 bit math
             res <<= 12; // 24:12 format
 
           }
         else
           {
+            sim_debug (DBG_APPENDING, & cpu_dev, "absa DSBR is paged\n");
             // paged
             word15 segno = TPR . TSR;
             word18 offset = TPR . CA;
@@ -6209,7 +6218,13 @@ static int doABSA (DCDstruct * i, word36 * result)
             // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access 
             // violation, out of segment bounds, fault.
 
-            if (2 * segno >= 16 * (DSBR.BND + 1))
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa Segment boundary check: segno: %05o f(segno): %06o "
+              "BND: %05o f(BND): %06o\n", 
+              segno, 2 * (uint) segno, 
+              DSBR . BND, 16 * ((uint) DSBR . BND + 1));
+
+            if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
               {
                 doFault (i, acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
                 return CONT_FAULT;
@@ -6222,10 +6237,17 @@ static int doABSA (DCDstruct * i, word36 * result)
             word24 y1 = (2 * segno) % 1024;
             word24 x1 = (2 * segno - y1) / 1024;
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa y1:%08o x1:%08o\n", y1, x1);
+
             // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa read PTW1@%08o+%08o %08o\n",
+              DSBR . ADDR, x1, (DSBR . ADDR + x1) & PAMASK);
+
             word36 PTWx1;
-            core_read (DSBR . ADDR + x1, & PTWx1);
+            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
 
             struct _ptw0 PTW1;
             PTW1.ADDR = GETHI(PTWx1);
@@ -6234,6 +6256,10 @@ static int doABSA (DCDstruct * i, word36 * result)
             PTW1.F = TSTBIT(PTWx1, 2);
             PTW1.FC = PTWx1 & 3;
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa PTW1 ADDR %08o U %o M %o F %o FC %o\n", 
+              PTW1 . ADDR, PTW1 . U, PTW1 . M, PTW1 . F, PTW1 . FC);
+
             // 4. If PTW(x1).F = 0, then generate directed fault n where n is 
             // given in PTW(x1).FC. The value of n used here is the value 
             // assigned to define a missing page fault or, simply, a
@@ -6241,6 +6267,7 @@ static int doABSA (DCDstruct * i, word36 * result)
 
             if (!PTW1.F)
               {
+                sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW1.F\n");
                 // initiate a directed fault
                 doFault(i, dir_flt0_fault + PTW1.FC, 0, "ABSA !PTW1.F");
               }
@@ -6248,12 +6275,16 @@ static int doABSA (DCDstruct * i, word36 * result)
             // 5. Fetch the target segment SDW, SDW(segno), from the 
             // descriptor segment page at PTW(x1).ADDR + y1.
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa read SDW@%08o<<6+%08o %08o\n",
+              PTW1 . ADDR, y1, ((PTW1 . ADDR << 6) + y1) & PAMASK);
+
             word36 SDWeven, SDWodd;
-            core_read2((PTW1 . ADDR << 6) + y1, & SDWeven, & SDWodd);
+            core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd);
 
             struct _sdw0 SDW0; 
             // even word
-            SDW0.ADDR = (SDWeven >> 12) & 077777777;
+            SDW0.ADDR = (SDWeven >> 12) & PAMASK;
             SDW0.R1 = (SDWeven >> 9) & 7;
             SDW0.R2 = (SDWeven >> 6) & 7;
             SDW0.R3 = (SDWeven >> 3) & 7;
@@ -6271,19 +6302,41 @@ static int doABSA (DCDstruct * i, word36 * result)
             SDW0.C = TSTBIT(SDWodd, 14);
             SDW0.EB = SDWodd & 037777;
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa SDW0 ADDR %08o R1 %o R1 %o R3 %o F %o FC %o\n", 
+              SDW0 . ADDR, SDW0 . R1, SDW0 . R2, SDW0 . R3, SDW0 . F, 
+              SDW0 . FC);
+
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa SDW0 BOUND %06o R %o E %o W %o P %o U %o G %o C %o "
+              "EB %05o\n", 
+              SDW0 . BOUND, SDW0 . R, SDW0 . E, SDW0 . W, SDW0 . P, SDW0 . U,
+              SDW0 . G, SDW0 . C, SDW0 . EB);
+
 
             // 6. If SDW(segno).F = 0, then generate directed fault n where 
             // n is given in SDW(segno).FC.
             // This is a segment fault as discussed earlier in this section.
 
             if (!SDW0.F)
-              doFault(i, dir_flt0_fault + SDW0.FC, 0, "ABSA !SDW0.F");
+              {
+                sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
+                doFault(i, dir_flt0_fault + SDW0.FC, 0, "ABSA !SDW0.F");
+              }
 
             // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an 
             // access violation, out of segment bounds, fault.
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa SDW boundary check: offset: %06o f(offset): %06o "
+              "BOUND: %06o\n", 
+              offset, offset >> 4, SDW0 . BOUND);
+
             if (((offset >> 4) & 037777) > SDW0 . BOUND)
-              doFault (i, acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+              {
+                sim_debug (DBG_APPENDING, & cpu_dev, "absa SDW boundary violation\n");
+                doFault (i, acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+              }
 
             // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the 
             // segment are incompatible with the reference, generate the 
@@ -6298,10 +6351,17 @@ static int doABSA (DCDstruct * i, word36 * result)
             word24 y2 = offset % 1024;
             word24 x2 = (offset - y2) / 1024;
     
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa y2:%08o x2:%08o\n", y2, x2);
+
             // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa read PTWx2@%08o+%08o %08o\n",
+              SDW0 . ADDR, x2, (SDW0 . ADDR + x2) & PAMASK);
+
             word36 PTWx2;
-            core_read (SDW0 . ADDR + x2, & PTWx2);
+            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
     
             struct _ptw0 PTW2;
             PTW2.ADDR = GETHI(PTWx2);
@@ -6310,20 +6370,28 @@ static int doABSA (DCDstruct * i, word36 * result)
             PTW2.F = TSTBIT(PTWx2, 2);
             PTW2.FC = PTWx2 & 3;
 
+            sim_debug (DBG_APPENDING, & cpu_dev, 
+              "absa PTW2 ADDR %08o U %o M %o F %o FC %o\n", 
+              PTW2 . ADDR, PTW2 . U, PTW2 . M, PTW2 . F, PTW2 . FC);
+
             // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
             // given in PTW(x2).FC. This is a page fault as in Step 4 above.
 
-            if (!PTW2.F)
-              {
-                // initiate a directed fault
-                doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
-              }
+            // ABSA only wants the address; it doesn't care if the page is
+            // resident
+
+            // if (!PTW2.F)
+            //   {
+            //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
+            //     // initiate a directed fault
+            //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+            //   }
 
             // 12. Generate the 24-bit absolute main memory address 
             // PTW(x2).ADDR + y2.
 
             res = (((word36) PTW2 . ADDR) << 6)  + (word36) y2;
-            res &= 077777777; //24 bit math
+            res &= PAMASK; //24 bit math
             res <<= 12; // 24:12 format
           }
 
