@@ -1349,8 +1349,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     // any room left in output string?
     if (N == 0)
     {
-        SETF(e->_flags, I_OFLOW);
-        
+        //SETF(e->_flags, I_OFLOW); // HWR 26 Jan 14 - Don't think we need to fault it here.
         return;
     }
     
