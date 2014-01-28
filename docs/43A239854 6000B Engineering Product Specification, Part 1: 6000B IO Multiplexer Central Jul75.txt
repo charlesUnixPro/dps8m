@@ -234,7 +234,7 @@ Honeywell   Rev.A                                                  Page  5
         The data channels are "payload" channels; they are responsible for
         information transfer with all external peripheral devices and adapters.
         The other seven types of channels are "overhead" channels; they per-
-        perform specialized internal functions necessary for successful opera-
+        form specialized internal functions necessary for successful opera-
         tion of the IOM.
 
         The IOM Central includes a scratchpad storage to hold various 
@@ -386,7 +386,7 @@ Honeywell   Rev.A                                                  Page  8
 
 	EPS-1,6000B IOM Direct Channel (43A239853)
 
-	EPS-1, IOM Peripheral1 Subsystem Interface Adapter (43A177880)
+	EPS-1, IOM Peripherial Subsystem Interface Adapter (43A177880)
 
 	EPS-1, Conso1e Channel Adapter (43A232500)
 
@@ -424,7 +424,7 @@ Honeywell   Rev.A                                                  Page  9
 	words, either DCW's or PCW's. NOTE: Only an LPW for a Connect
 	Channel may legally point to a PCW.
 
-1.5.4	Data Control Word gnaw;
+1.5.4	Data Control Word (DCW)
 
 	A word containing an address indicating the first or current
 	word of data in a list of data. IDCW, TDCW, IOTP, IONTP, and
@@ -462,7 +462,7 @@ Honeywell   Rev.A                                                  Page 10
 
 	The 6000B IOM will have the following characteristics:
 
-	-  The ability to operate in a GCOS III mode with 33 Operating
+	-  The ability to operate in a GCOS III mode with no Operating
 	   System or Slave software programming interface difference
 	   over the 6000 IOM design.
 
@@ -634,7 +634,7 @@ Honeywell   Rev. A                                                 Page 13
 	data transfer rates (total data throughput) are required of the
 	IOM Central:
 
-	1) Using.a6000B System Controller and store, and indirect data
+	1) Using a 6000B System Controller and store, and indirect data
 	   channels operating without a scratchpad: one data access
 	   every 4.5 microseconds, or 440,000 words per second when using
 	   a 0.5 microsecond store and one data access every 9.3 micro-
@@ -682,7 +682,7 @@ Honeywell   Rev. A                                                 Page 14
 	Common Peripheral Channel will perform its own packing and unpacking.
 
 	Evolving system configurations and peripheral data transfer rates
-	emphasize the need to fully utilize the available 60003 system con-
+	emphasize the need to fully utilize the available 6000B system con-
 	troller interface, not only to maximize IOM thruput but to minimize
 	I/O interference with storage access by system processors. The use
 	of a 72 bit interface can result in a thruput increase when operat-
@@ -817,7 +817,7 @@ Honeywell   Rev. A                                                 Page 17
 	absolutizing the address when specified, and placed in either* the
 	core or scratchpad mailbox for channel 020. This particular DCW
 	should be either an IOTP or an IOTD (I/O Transfer and Proceed or
-	1/0 Transfer and Disconnect). The LPW is updated and placed in
+	I/O Transfer and Disconnect). The LPW is updated and placed in
 	both core and scratchpad mailboxes for channel 020. The channel
 	now requests a data service of IOM, specifying an indirect data
 	load. The IOM.uses the DCW                             for chan-
@@ -871,7 +871,7 @@ Honeywell   Rev. B                                                 Page 18
 
 3.1.1	Connects
 
-	The software: initiates a new activity in the IOM by executing a
+	The software initiates a new activity in the IOM by executing a
 	CIOC (Connect) instruction directed to a System Controller port
 	that is attached to the IOM. When a processor executes such an
 	instruction, the System Controller sends a $CON signal to the
@@ -910,7 +910,7 @@ Honeywell   Rev. B                                                 Page 18
 	rupt cells in the maximum set of 32 cells. The selection of the
 	interrupt level, and the cell associated with the level, is de-
 	termined by the channel. This is further described in paragraph
-	3I2.7.
+	3.2.7.
 - - -
 *The marker interrupt indicates the normal completion of a PCW or an
 IDCW in a DCW list. This interrupt is under control of the Marker
@@ -940,7 +940,7 @@ Honeywell   Rev. A                                                 Page 19
 	for making these words available to the software by placing them
 	in appropriate locations in core storage. These may also be re-
 	garded as control words, since the correct operation of the IOM
-	can only occur when there is appropriate interaction between-the
+	can only occur when there is appropriate interaction between the
 	IOM hardware and the software. The response words that the IOM
 	Central Hardware is responsible for are:
 
@@ -975,8 +975,6 @@ Honeywell   Rev. A                                                 Page 19
 
 
 Honeywell   Rev. B                                                 Page 20
-
-I"
 
 3.2.1
 
@@ -1041,7 +1039,7 @@ Honeywell   Rev. D                                                 Page 21
 	one (two if the channel is the connect channel) during each list
 	service.
 
-	Restricted Bit (LPW l8) - Provides the software with a way to restrict
+	Restricted Bit (LPW 18) - Provides the software with a way to restrict
 	the use of Instruction DCW's by users without having to scan all DCW
 	lists. If this bit is one and an Instruction DCW is encountered by the
 	IOM Central, it will abort the I/O transaction and indicate a User
@@ -1106,7 +1104,7 @@ Honeywell   Rev. B                                                 Page 22
 	for boundary errors (see description of lower bound and size fields
 	of LPW). Bit 23 of the LPW for the connect channel will be ignored
 	by the IOM Central. When the IOM Central encounters a TDCW during a
-	list service it will logically Q3 TDCW bit 35 into LPW bit 23 to pro-
+	list service it will logically OR TDCW bit 35 into LPW bit 23 to pro-
 	vide software with a way to switch immediately from absolute to rela-
 	tive operation dynamically. On a reverse list service bit 19 of the
 	LPW will replace bit 23. There will be no way to switch from relative
@@ -1270,7 +1268,7 @@ Honeywell   Rev. A                                                 Page 25
 	Bits 18-20 of the Even Word must be 111(2)2 or 7(8) to identify the
 	word as a PCW.
 
-	Bits 12-l7 contain the address extension which is maintained by
+	Bits 12-17 contain the address extension which is maintained by
 	the channel for subsequent use by the IOM in generating a 24-bit
 	for the extended address modes.
 
@@ -1355,8 +1353,8 @@ Honeywell   Rev. D                                                 Page 27
 	is bits 18-20, which must be coded 111(2) or 7(8), to identify the
 	DCW as an IDCW. When the IDCW is encountered during a list service,
 	all 36 bits of the IDCW are sent to the data channel. If EC - Bit
-	21 = I, the channel will replace the present address extension with
-	the new address extension in bits l2-l7. The address extension
+	21 = 1, the channel will replace the present address extension with
+	the new address extension in bits 12-17. The address extension
 	will be unaltered if EC - Bit 21 = 0. In Multics and NSA systems,
 	EC - Bit 21 is inhibited from the payload channel if LPW bit 23 = 1.
 	The interpretation of the remainder of the IDCW by the data channel
@@ -1386,7 +1384,7 @@ Honeywell   Rev. B                                                 Page 28
 -------------------------------------------------------------------------
 |                                   | Not   |   |      |       | E| R| R|
 |    DCW POINTER                    | 111   | 0 |  10  |   MBZ | C| E| E|
-|                                   |       |   |      |       |  |  |  |
+|                                   |       |   |      |       |  | S| L|
 -------------------------------------------------------------------------
                                                                  |  |  |
                               OR'd with LPW 20 into LPW 20--------  |  |
@@ -1413,6 +1411,7 @@ Honeywell   Rev. B                                                 Page 28
 	Bit 21 - Must be zero.
 
 	Bits 22-23 - Must coded 10(2) to identify the DCW as a TDCW.
+
 	Bits 24-32 - Must be zero.
 
 	Bit 33 - In All but STD GCOS Mode may be used to conditionally
@@ -1504,14 +1503,14 @@ Honeywell   Rev. A                                                 Page 30
 	dicated to the channel, if a character position value greater
 	than those indicated above for that channel size is detected by
 	 OM Central during list service.                          A CP
-	value of 7(8)8 indicates an IDCW, and is valid for all channel sizes
+	value of 7(8) indicates an IDCW, and is valid for all channel sizes
 	during a list service. It will cause a system fault during a
 	data service.
 
 	NOTE: A character position value of 110(2) will be passed to the
 	channel if the channel indicates that it is a word chan-
 	nel, (e.g., the IOM Central does not detect this as a
-	fault). It is the responsibility of the channel to-in-
+	fault). It is the responsibility of the channel to in-
 	dicate a fault and the EPS-1 for the specific channel
 	should be referenced.
 
@@ -1560,11 +1559,11 @@ Honeywell   Rev. B                                                 Page 31
 Honeywell   Rev. A                                                 Page 32
 
 3.2.3.3	I/O Non-Transfer and Proceed (IONTP)
-	1/0 Transfer and Disconnect (IOTD)
+	I/O Transfer and Disconnect (IOTD)
 	I/O Transfer and Proceed (IOTP)    (continued)
 
 	Tally (24 - 35) - Defines the number of words in the data block.
-	An initial tally of 00008 will be interpreted as 100008 or 409610
+	An initial tally of 0000(8) will be interpreted as 10000(8) or 4096(10)
 	by the IOM Central. When a 72 bit transfer takes place, the IOM
 	Central must decrement the Word Tally by 2 each data service.
 
@@ -1600,7 +1599,7 @@ Honeywell   Rev. A                                                 Page 32
 	a)  SCW (18 - 19) = 00 will result in the generation of a
 	    status list.
 
-	b)  SCW (l8 - 19) = 01 will result in the generation of a 4
+	b)  SCW (18 - 19) = 01 will result in the generation of a 4
 	    entry (8 word) circular queue. .
 
 	c)  SCW (18 - 19) - 10 will result in the generation of a 16
@@ -1624,7 +1623,7 @@ Honeywell   Rev. A                                                 Page 33
 	queue.
 
 	The tally of the SCW will be decremented for each status entry
-	*in either list or queue mode, but the suppression of address
+	in either list or queue mode, but the suppression of address
 	changes will not occur when the tally has been decremented to
 	zero if circular status is called for.
 
@@ -1634,7 +1633,7 @@ Honeywell   Rev. A                                                 Page 33
 	Tally (24 - 35) defines the number of unoccupied y-pairs (72-
 	bits) in the status queue. The IOM Central will decrement the
 	tally by one each time that status is stored in the queue, ex-
-	cept when the telly is zero (before updating). As a result, if
+	cept when the tally is zero (before updating). As a result, if
 	tally = N, the status queue actually consists of N + 1 y-pairs.
 	The (N + 1)th y-pair corresponds to a tally of zero, and is
 	therefore subject to being overlaid by subsequent status. SCW
@@ -1697,7 +1696,7 @@ Honeywell   Rev. A                                                 Page 34
                                                       ---V---
                                           "0R"ed into Status Word by IOM
    
-*SS =~Software Status
+*SS = Software Status
 
 	ODD WORD:
 
@@ -1724,7 +1723,7 @@ Honeywell   Rev. A                                                 Page 35
 	Character Position (18 - 20) is the character number into which
 	or from which the next character of data would have been trans-
 	mitted if the transaction had continued. (Word channels will
-	always fill out_a word with zeros and store a whole word if the
+	always fill out a word with zeros and store a whole word if the
 	transaction stops while reading at a character count other than
 	zero, but the last actual character position + 1 will be indi-
 	cated in this field.) The IOM Central will obtain the character
@@ -1822,7 +1821,7 @@ Honeywell   Rev. A                                                 Page 36
 	Store Fault Code (26 - 29) indicates the particular type of store
 	fault. (Codes defined in paragraph 4.5.)
 
-	1/0 Fault Code (30 - 35) indicates the particular type of I/O
+	I/O Fault Code (30 - 35) indicates the particular type of I/O
 	fault. (Codes defined in paragraph 4.5.)
 
 
@@ -1848,7 +1847,6 @@ Honeywell   Rev. A                                                 Page 37
 	The IOM Central pulls the IMW from the core location having the
 	address determined as follows:
 
-0" 56 112 1192 23
           0         5 6        11 12         18 19 212223
           -----------------------------------------------
 	  0 0 0 0 0 0 X X X X X X X X X X X X X X X X X X
@@ -1923,7 +1921,7 @@ Honeywell   Rev. A                                                 Page 38
 
 	Upon interruption, the supervisory program may examine the core
 	location corresponding to the interrupt cell causing the inter-
-	rupt to determine which of the channels caused the interrupt-
+	rupt to determine which of the channels caused the interrupt.
 	The floating normalize instruction may be used effectively for
 	this purpose.
 
@@ -2008,7 +2006,7 @@ DEC.  OCT.  NO.  LEVEL
 14     16    2     3     Terminate Interrupts for Data channels in IOM No. 2
 15     17    3     3     Terminate Interrupts for Data channels in IOM No. 3
 16     20    0     4 
-17     21    1     A
+17     21    1     4
 18     22    2     4
 19     23    3     4
 20     24    0     5     Marker Interrupts for Data channels in IOM Number 0
@@ -2330,7 +2328,7 @@ Honeywell   Rev. A                                                 Page 46
 
 	The channel mailbox base address switches are 0Red with the chan-
 	nel number. Therefore to avoid ambiguity when channel numbers
-	greater than 15 are used, some of the low order bits of the chan~
+	greater than 15 are used, some of the low order bits of the chan-
 	nel mailbox base address may be required to be zero.
 
 3.5.2	Interrupt Multiplex Base Address Switches
@@ -2430,6 +2428,7 @@ Honeywell   Rev. A                          Cont. on Page          Page 48
 	interrupt or store status.
 
 	The channel number of the connect channel will be wired as 002(8).
+
 	The DCW and SCW mailboxes for the connect channel are not used
 	by the IOM.
 
@@ -2579,7 +2578,7 @@ Honeywell   Rev. A                                                 Page 51
 
 	1001         Data. bus to store (DT bus 00-35)
 
-	1010         Data. bus to store (DT bus 36-71)-
+	1010         Data. bus to store (DT bus 36-71)
 
 	1011         Zone, address, and command (ZAC)
 
@@ -2634,7 +2633,7 @@ Honeywell   Rev. A                                                 Page 52
 	After performing the action specified by the PCW, the wraparound
 	channel de-activates itself, waiting for another PCW. There is no
 	automatic storage of status and no automatic program interrupt
-	associated with the operation of the-wraparound channel.
+	associated with the operation of the wraparound channel.
 
 	At the end of each service by the Wraparound Channel, I/O bus con-
 	trol and flag lines are loaded into the wraparound status register.
@@ -2728,7 +2727,7 @@ Honeywell   Rev. A                                                 Page 54
 
 	                      000 = single precision action PCW for data
 	                            register #1 (Note 1)
-	                      001 - single precision action PCW for data
+	                      001 = single precision action PCW for data
 	                            register #2 (Note 1)
 	                      010 = double precision action PCW (Note 1)
 	                      011 = force an I/O bus parity error on an
@@ -2843,7 +2842,7 @@ Honeywell   Rev. A                                                 Page 56
 	The following configuration switches from the IOM configuration panel
 	will be accessible to the bootload channel so that the settings of
 	these switches can be stored by the bootload channel as part of the
-	bootload program (see Figure 3.103):
+	bootload program (see Figure 3.10a):
 
 	o  Port (the number of the system controller port to which the IOM is
 	   connected)
@@ -3316,8 +3315,8 @@ Honeywell   Rev. B                             Cont. on Page       Page 66
 
 	a) Fault Channel (highest priority)
 	b) Snapshot Channel (second highest priority)
-	c) 1/0 Bus #1 (Up to 17 Device Channels or 8 Common Peripheral Channels)
-	d) 1/0 Bus #2 (Up to 19 Device Channels or 9 Common Peripheral Channels)
+	c) I/O Bus #1 (Up to 17 Device Channels or 8 Common Peripheral Channels)
+	d) I/O Bus #2 (Up to 19 Device Channels or 9 Common Peripheral Channels)
 	e) I/O Bus #3 (Up to 19 Device channels or 9 Common Peripheral Channels)
 	f) Maintenance Panel
 	g) Connect Channel (Lowest Priority)
@@ -3856,7 +3855,7 @@ Honeywell   Rev. A                             Cont. on Page       Page 82
 
 	The IOM status field will be divided into 2 independent 3-bit seg-
 	ments; bits 21-23 represent "central" status as it was received
-	from the central, and bits 18-20 represent "channel" status as deter-"
+	from the central, and bits 18-20 represent "channel" status as deter-
 	mined by the channel.
 
 4.5.2.1	Central Status
@@ -4343,7 +4342,7 @@ A.1	SCOPE
 A.2	IOM CENTRAL BUS INTERFACE
 
 	The IOM Central/Channel interface is implemented as a common, time-
-	shared bus. All signals on the bus are in complement form. The 1/0
+	shared bus. All signals on the bus are in complement form. The I/O
 	bus is organized as follows:
 
 	o  The 37-bit (36 information plus parity) "D" bus carries service
@@ -4745,7 +4744,7 @@ Honeywell   Rev. D                                                 Page B3
 	    The Page Table Pointer is used to assist in determining the
 	    location of the Page Table Word in the Page Table as follows:
 
-	    Bits 45 ~ 62 - An 18 bit address, mod 64, which points to the
+	    Bits 45 - 62 - An 18 bit address, mod 64, which points to the
 	    beginning of the payload channels page table.
 
 	    Bit 63 - The PTP flag (PCW-63) must be Set if PTW fetch is
@@ -4785,7 +4784,7 @@ Honeywell   Rev. D                                                 Page B4
 	list when the IOM is in sub mode 3B or 4 (see paragraph B4(D)).
 	Any TDCW encountered while the IOM is in sub-mode 4 will cause
 	the DCW list to be immediately referenced to the normal page
-	table and the IOM to enter sub -mode 5. IDCW' s are 1_1_gt_ allowed
+	table and the IOM to enter sub-mode 5. IDCW's are not allowed
 	in the DCW list stored in the page referenced by the auxiliary
 	PTW. Format for the auxiliary PTW is identical to that for
 	the standard PTW shown in paragraph B2(B). LPW 23 is also
@@ -5791,7 +5790,7 @@ B5.	THEORY OF OPERATION - INDIRECT CHANNEL (Except Channels 0 to 7)
 	The IOM-B paging operation will be enabled only after a connect has
 	been sent to the IOM channel with PCW WD2 bits 63 and 64 = 1, and the
 	mode switch is in the page position. Typical operation using present
-	operating software 1/O routines for a PSIA disk channel is shown in
+	operating software I/O routines for a PSIA disk channel is shown in
 	Figure B1, description of which follows.
 
 	The PCW received for the channel contains a Page Table Pointer which
