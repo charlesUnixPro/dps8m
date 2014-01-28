@@ -507,6 +507,38 @@ circa 1987.
 
 \end{verbatim}
 
+\paragraph{Addressing model notes}
+
+RJ78A00, pg 6-42:
+
+Interrupts are not received when the instruction is executed by the XEC or XED
+instructions, but only when no fault is present.
+
+RJ78A00, pg 6-44:
+
+6.5.3 Instruction Counter Value Stored At Interrupt
+
+The values of the Instruction Counter (IC) stored at interrupt are listed below: 
+
+• Single-word Instructions
+
+The address of the instruction to which processing is to be returned is stored.
+
+When an interrupt is received with the DIS instruction, the DIS instruction
+address + 1 is stored.
+
+• Multiword Instructions (excluding CLIMB Instructions)
+
+The address of the instruction to which processing is to be returned is stored. If
+interrupt occurs during execution of an interruptible multiword instruction, IC +
+
+0 is stored, and the IR bit 30 is stored as a one.
+
+• CLIMB Instruction
+
+Except when the data stack area is cleared with an OCLIMB, interrupt is not
+received during execution of a CLIMB instruction. If an interrupt occurs
+during the execution of an OCLIMB, IC + 0 is stored.
 \part {Unresolved questions}
 
 \section {Actual H/W behavior}
@@ -882,5 +914,39 @@ The file `20184.ini' is will set up the base system and boot the '20184.tap' tap
 \begin{lstlisting}
 	./dps8 20184.ini
 \end{lstlisting}
+
+\part{AL-39 errata}
+
+Page 289: 
+
+\paragraph{\texttt{SDW} vs. \texttt{DSBR}}
+
+"A bit in the \texttt{SDW} for a segment (\texttt{SDW.U}) specifies whether the segment is paged or
+unpaged."
+
+This makes no sense; the procedure for looking up an \texttt{SDW} is different for paged and unpaged
+configurations. I believe the sentence should read:
+
+"A bit in the \texttt{DSBR} for a segment (\texttt{DSBR.U}) specifies whether the segment is paged or
+unpaged."
+
+The same error appears on page 390.
+
+\paragraph{\textbf{tss} instruction}
+
+Page 169, the \textbf{tss} instruction:
+
+"SUMMARY: \texttt{C(TPR.CA) + (BAR base) $\rightarrow$ C(PPR.IC)}"
+
+The \textbf{tss}instruction should not add the \texttt{BAR} base to the \texttt{CA}; that is done during \texttt{CA} formation in the instruction fetch cycle. The line should read:
+
+"SUMMARY: \texttt{C(TPR.CA) $\rightarrow$ C(PPR.IC)}"
+
+\paragraph{\textbf{tsp\textit{n}} instruction}
+
+Page 340, Figure 8-1 "Complete Appending Unit Operation Flowchart", step L, shows that if the opcode
+is \textbf{tsp\emph{n}} then set up the \texttt{PR\emph{n}} register.
+
+Page 168-169 \textbf{tsp\textit{n}} instruction shows the same \texttt{PR\emph{n}} register setup, but the value in \texttt{PPR.PSR} will have been changed by the Append Unit.
 
 \end{document}
