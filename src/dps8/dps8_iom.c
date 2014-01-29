@@ -1558,6 +1558,61 @@ void iom_interrupt (int iom_unit_num)
 
 // ============================================================================
 
+#if 0
+static void debug_connect_channel (int iom_unit_num)
+  {
+    sim_printf ("\n");
+
+#if 0
+    sim_printf ("debug_connect_channel\n");
+    sim_printf ("IOM unit number %d\n", iom_unit_num);
+    uint mbxloc = mbx_loc (iom_unit_num, IOM_CONNECT_CHAN);
+    sim_printf ("MBX location %08o\n", mbxloc);
+    word36 LPW = M [mbxloc];
+    sim_printf ("Connect LPW %012llo\n", LPW);
+    word18 DCWptr = LPW >> 18;
+    word1 ires =    getbits36 (LPW, 18, 1);
+    word1 hrel =    getbits36 (LPW, 19, 1);
+    word1 ae =      getbits36 (LPW, 20, 1);
+    word1 nc =      getbits36 (LPW, 21, 1);
+    word1 trunout = getbits36 (LPW, 22, 1);
+    word1 srel =    getbits36 (LPW, 23, 1);
+    word12 tally =  getbits36 (LPW, 24, 12);  
+    
+    sim_printf ("  DCW ptr %06o\n", DCWptr);
+    sim_printf ("  ires    %6o\n", ires);
+    sim_printf ("  hrel    %6o\n", hrel);
+    sim_printf ("  ae      %6o\n", ae);
+    sim_printf ("  nc      %6o\n", nc);
+    sim_printf ("  trunout %6o\n", trunout);
+    sim_printf ("  srel    %6o\n", srel);
+    sim_printf ("  tally   %06o\n", tally);
+
+
+    word36 DCW = M [DCWptr];
+    int cp = getbits36 (DCW, 18, 3);
+    if (cp == 7)
+      {
+        sim_printf ("IDCW\n");
+      }
+    else
+      {
+        int type = getbits36 (DCW, 22, 2);
+        if (type == 2)
+          {
+            sim_printf ("TDCW\n");
+          }
+        else
+          {
+            sim_printf ("DDCW\n");
+          }
+      }
+#endif
+iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
+    sim_printf ("\n");
+  }
+#endif
+
 /*
  * do_connect_chan()
  *
@@ -1575,6 +1630,8 @@ static int do_connect_chan (int iom_unit_num)
     // TODO: We don't allow a condition where it is possible to generate
     // channel status #1 "unexpected PCW (connect while busy)"
     
+    // debug_connect_channel (iom_unit_num);
+
     int ptro = 0;   // pre-tally-run-out, e.g. end of list
     int addr;
     int ret = 0;
@@ -2522,7 +2579,7 @@ static int dev_send_idcw(int iom_unit_num, int chan, int dev_code, pcw_t *p)
         chanp->status.power_off = 1;
         sim_debug (DBG_WARN, &iom_dev, "dev_send_idcw: No device connected to channel %#o(%d); Auto breakpoint.\n", chan, chan);
         iom_fault(iom_unit_num, chan, "list-service", 0, 0);
-        cancel_run(STOP_BKPT /* STOP_IBKPT */);
+        //cancel_run(STOP_BKPT /* STOP_IBKPT */);
         return 1;
     }
     chanp->status.power_off = 0;
@@ -3094,7 +3151,10 @@ static int send_chan_flags()
  * BUG: Only partially implemented.
  * WARNING: The diag tape will crash because we don't write a non-zero
  * value to the low 4 bits of the first status word.  See comments
- * at the top of mt.c.
+ * at the top of mt.c. [CAC] Not true. The IIOC writes those bits to
+ * tell the bootloader code whether the boot came from an IOM or IIOC.
+ * The connect channel does not write status bits. The disg tape crash
+ * was due so some other issue.
  *
  */
 
