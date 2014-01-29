@@ -1,0 +1,77 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"
+"	This version of sc test does a rpd before going into sc mode. It
+"	Takes page faults on the data and on the indirect word
+"
+"
+	name	test_sc2
+	entry	test_sc2
+test_sc2:
+	push
+	eppbp	ap|2,*
+	eppbp	bp|0,*
+	eax1	FILED
+	odd
+	rpd	4,1,tnz,tze
+	lda	0,1
+	ldq	0,2
+	tra	skip_FILED
+FILED:	oct	1,0,1,1
+skip_FILED:
+	lda	tally_word_model
+	sta	bp|10195
+	stz	bp|0
+loop:	lda	bp|0
+	ana	=o77,dl
+	aos	bp|0
+	sta	bp|10195,sc
+	nop
+	nop
+	ttf 	loop
+	lda	tally_word_model
+	sta	bp|10195
+	stz	bp|0
+loop1:
+	lda	bp|10195,sc
+	ttf	test
+	return
+test:
+	cmpa	bp|0
+	tze	*+2
+	oct	0		"ZOP
+	aos	bp|0
+	lda	bp|0
+	ana	=o77,dl
+	sta	bp|0
+	tra	loop1
+tally_word_model:
+	vfd	18/field,o12/7777,6/0
+	even
+	org	2000
+field:	oct
+	bss	x,4096
+	oct	525252525252
+	bss	y,4096
+	oct	252525252525
+
+"force fill to page bound for next test
+	bss	,42
+
+	end

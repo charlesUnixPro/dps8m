@@ -1,0 +1,48 @@
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+" *                                                         *
+" ***********************************************************
+
+	temp 	otherp
+	name 	rpt_test_odd
+	entry	rpt_test_odd
+	
+rpt_test_odd:	push
+	ldq	0,dl
+	eppbp	ap|2,*
+	eppbp	bp|0,*	"ptr to temp seg
+	tra	loop
+
+	org	1036
+loop:
+	call	test_cpu$deactivate_tempseg
+	lda	place
+	sta	otherp
+	sta	otherp
+	sta	otherp
+	ada	1,du
+	sta	otherp
+	ada	1,du
+	sta	otherp
+	ldx1	special
+	call	test_cpu$deactivate_tempseg
+	odd
+	oct	634200520201
+	stz	bp|0,x1
+	ldx3	-2,du
+	ldx1	206,du
+	ldx2	0,du
+	ldx0	8,du
+	adx3	3,du
+	adq	1,dl
+special:  oct	053601235011
+	tra	quit
+quit:	return
+
+
+	org	2000
+place:	oct	033335000000
+
+	end
+

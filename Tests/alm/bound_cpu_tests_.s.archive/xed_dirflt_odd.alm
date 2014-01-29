@@ -1,0 +1,37 @@
+" ************************************************************
+" *                                                          *
+" * Copyright, (C) Honeywell Information Systems Inc., 1982  *
+" *                                                          *
+" * Copyright, (C) Honeywell Information Systems Inc., 1980. *
+" *                                                          *
+" ************************************************************
+
+	name	xed_dirflt_odd
+	entry	xed_dirflt_odd
+xed_dirflt_odd:
+	push
+	lda	=o212121,dl
+	ldq	=o505050,dl
+	eppap	ap|2,*	"get ptr to temp seg
+	eppap	ap|0,*
+	nop
+	odd		" align xed instruction
+	xed	oddd
+	lda	ap|0
+	cmpa	=o212121,dl
+	tze	*+2
+	oct	0
+	ldq	ap|4000
+	cmpq	=o505050,dl
+	tze	*+2
+	oct	0
+	lda	0,dl
+	ldq	0,dl
+	sta	ap|0
+	stq	ap|4000
+	return
+	even
+oddd:	asa	ap|0
+	asq	ap|4000
+
+	end

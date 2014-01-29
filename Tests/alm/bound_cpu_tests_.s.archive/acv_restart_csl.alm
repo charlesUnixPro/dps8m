@@ -1,0 +1,32 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	acv_restart_csl
+	entry	acv_restart_csl
+
+acv_restart_csl:
+	push
+	eppbp	ap|2,*
+	eppbp	bp|0,*
+	eax0	10
+	csl	(rl),(pr,rl)
+	descb	foo,x0
+	descb	bp|0,x0
+	return
+foo:	oct	123456701234
+	end

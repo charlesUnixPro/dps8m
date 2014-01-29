@@ -1,0 +1,74 @@
+/* ******************************************************
+   *                                                    *
+   *                                                    *
+   * Copyright (c) 1972 by Massachusetts Institute of   *
+   * Technology and Honeywell Information Systems, Inc. *
+   *                                                    *
+   *                                                    *
+   ****************************************************** */
+
+/* ******************************************************
+   *                                                    *
+   *                                                    *
+   *    Copyright, (C) Honeywell Information Systems    *
+   *    Inc., 1980.                                     *
+   *                                                    *
+   *                                                    *
+   ****************************************************** */
+
+cmpb_with_sixbit_offset: proc (testcpu_tempsegp);
+
+dcl  test_pattern char (57) aligned static initial
+    ("ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿP"),
+     testcpu_tempsegp pointer,
+     from_ptr pointer,
+     to_ptr pointer,
+     len fixed bin (35),
+     out_of_bounds condition,
+     debug entry,
+     cmpbtest_alm ext entry (pointer, pointer, fixed bin (35));
+
+dcl  mme1 condition,
+     ioa_ ext entry options (variable),
+     dump_seg_ ext entry (pointer, pointer, fixed bin, fixed bin, bit (6)),
+     iox_$user_output ext pointer,
+     hcs_$truncate_seg ext entry (pointer, fixed bin, fixed bin (35));
+
+dcl  based_bits (1000) bit (1) unaligned based,
+     based_word fixed bin (35) aligned based;
+
+dcl  i fixed bin,
+     lowerbound fixed bin;
+
+dcl  based_pattern bit (510) based unaligned,
+     pattern_copy char (57) aligned;
+
+	lowerbound = binary (rel (testcpu_tempsegp)); /* in case it is a uniquenames seg in pdir */
+	call hcs_$truncate_seg (testcpu_tempsegp, lowerbound, 0);
+
+	from_ptr = addr (test_pattern);
+	to_ptr = testcpu_tempsegp;
+	to_ptr -> based_word = 0;			/* makes dump easier to read if we clean up this way */
+	to_ptr = addr (to_ptr -> based_bits (7));
+
+	on mme1 begin;
+	     call ioa_ ("FAILURE on ^dth trial, at ^p.", i, to_ptr);
+	     call dump_seg_ (iox_$user_output, to_ptr, 0, 16, "100001"b);
+	     call ioa_ ("");
+	     goto pass_test;
+	end;
+
+	on out_of_bounds begin;
+	     call ioa_ ("oosb type $all for regs and .q to return");
+	     call debug ();
+	end;
+	do i = 1 to 10000;
+
+	     call cmpbtest_alm (from_ptr, to_ptr, 510);
+pass_test:
+	end;
+
+	call hcs_$truncate_seg (testcpu_tempsegp, lowerbound, 0);
+
+
+     end;

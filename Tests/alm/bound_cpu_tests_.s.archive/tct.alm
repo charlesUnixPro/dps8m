@@ -1,0 +1,44 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	tct
+	entry	tct
+
+
+tct:	push
+	eppab	string
+	eppbp	ap|2,*
+	eppbp	bp|0,*
+
+	tct	(pr),()
+	desc9a	ab|0,168
+	arg	table-*,ic
+	arg	bp|2048
+
+	return
+
+string:	aci	"when in the course of human events it becomes necessary"
+	aci	"when in the course of human events it becomes necessary"
+	aci	"when in the course of human events it becomes necessary"
+
+	bss	,1515	"was an org	1561+5
+table:	oct	000001002003
+	oct	000001002003
+	bss	,476
+
+	end

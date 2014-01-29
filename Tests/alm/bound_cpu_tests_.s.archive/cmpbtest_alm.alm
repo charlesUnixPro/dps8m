@@ -1,0 +1,50 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	cmpbtest_alm
+	entry	cmpbtest_alm
+
+	include	eis_bits
+
+cmpbtest_alm:
+	lda	1,dl	"bit offset of source
+	ldq	ap|6,*	"length of source in bits
+	eax7	0,ql
+
+	epp5	ap|2,*
+	epp5	pr5|0,*	"source string
+	epp7	ap|4,*
+	epp7	pr7|0,*	"target string
+
+	csl	(pr,rl,al),(pr,rl),fill(0),bool(move)
+	descb	pr5|-1(35),ql
+	descb	pr7|0,x7
+
+	cmpb	(pr,rl),(pr,rl),fill(000)
+	descb	pr5|0,ql	"try simpler descriptors
+	descb	pr7|0,ql	"idea is to kill csl, not cmpb
+
+	tnz	myzop	"fail
+	epbp7	pr6|0
+	short_return
+
+myzop:	oct	0
+	epbp7	pr6|0
+	short_return
+
+	end

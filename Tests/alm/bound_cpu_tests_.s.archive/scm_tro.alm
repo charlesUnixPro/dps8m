@@ -1,0 +1,76 @@
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+" *                                                         *
+" ***********************************************************
+	name	scm_tro
+	entry	scm_tro
+	tempd	temp1,temp2,temp3,temp4
+scm_tro:	push
+	eppab	ap|2,*
+	eppab	ab|0,*
+	adwpab	1,du
+	stz	temp1
+	eax1	0
+	aos	temp1
+loop:	call	test_cpu$deactivate_tempseg
+	ldq	temp1
+	tra	inst
+
+
+	org	323
+	oct	000001002003
+	oct	004005006007
+	oct	010011012013
+	oct	014015016017
+	oct	020021022023
+	oct	024025026027
+	oct	030031032033
+	oct	034035036037
+	oct	040041042043
+	oct	044045046047
+	oct	050051052053
+	oct	054055056057
+	oct	060061062063
+	oct	064065066067
+	oct	070071072073
+	oct	074075076077
+	oct	100101102103
+	oct	104105106107
+	oct	110111112113
+	oct	114115116117
+	oct	120121122123
+	oct	124125126127
+	oct	130131132133
+	oct	134135136137
+	oct	140141142143
+	oct	144145146147
+	oct	150151152153
+	oct	154155156157
+	oct	160161162163
+	oct	164165166167
+	oct	170171172173
+	oct	174175176177
+
+
+
+	org	444
+inst:
+	scm	(ic),(pr,ql),mask(000)
+	desc9a	-121,128
+	desc9a	ab|-1(3),1
+	arg	temp4
+	ttf	2,ic
+	oct 	0
+	ldaq	temp1
+	ada	1,dl
+	cmpa	54,dl
+	tnz	2,ic
+	lda	1,dl
+	adlx1	1,du
+	cmpx1	=o1000,du
+	tze	3,ic
+	staq	temp1
+	tra	loop
+	return
+	end

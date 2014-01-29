@@ -1,0 +1,37 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	scm_tally
+	entry	scm_tally
+	temp	temp
+
+scm_tally: push
+	stz	temp
+	eppbp	ap|2,*	"get ptr to temp seg
+	eppbp	bp|0,*
+	ldq	=1024473
+	scm	(pr,rl),(du),mask(000)
+	desc9a	bp|0,ql
+	zero	16384,1
+	arg	temp
+	ttf	fail
+	return
+
+fail:	oct	0		"ZOP
+
+	end

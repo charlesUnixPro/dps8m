@@ -1,0 +1,75 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	cmpc
+	entry	cmpc
+	temp	loop_cnt
+
+cmpc:
+	push
+	stz	loop_cnt
+again:
+	lda	=o20,dl
+	ldq	=o400,dl
+	cmpc	(rl),(rl),fill(040)
+	desc9a	lookup,ql
+	desc9a	data,al
+	tnz	bad
+	aos	loop_cnt
+	lda	loop_cnt
+	cmpa	=o400000,dl
+	tnz	again
+	return
+bad:
+	oct	0		"ZOP
+	even
+data:
+	aci	"objectname      "
+	aci	"retain          "
+	aci	"indirect        "
+	aci	"delete          "
+	aci	"no_link         "
+	aci	"synonym         "
+	aci	"global          "
+	aci	"table           "
+	aci	"Objectname      "
+	aci	"Addname         "
+	aci	"Global          "
+	aci	"Order           "
+	aci	"Force_Order     "
+	aci	"No_Old_Alm      "
+	aci	"No_Table        "
+	even
+lookup:
+	aci	"objectname      "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	aci	"                "
+	end

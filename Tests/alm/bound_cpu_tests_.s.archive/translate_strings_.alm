@@ -1,0 +1,122 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	translate_strings_
+
+	equ	p1,1
+	equ	p2,2
+	equ	p3,3
+	equ	p4,4
+
+	temp	temp,temp1,temp2
+
+	include eis_bits
+
+	entry	nine_to_six			" a ninebit string to a sixbit string
+nine_to_six: save
+	tsx0	get_args				" get args in convenient regs
+	sta	temp				" change length of sixbit string from
+	div	6,dl				" length in bits to length in
+	lda	temp				" sixbit chars and put back
+	mvt	(ar+rl),(ar+rl),(ar),fill(000)	" Do the magic
+	desc9a	p2|0,a
+	desc6a	p3|0,q
+	arg	p1|0
+	return
+
+	entry	six_to_nine			" The other way
+six_to_nine: save
+	tsx0	get_args
+	stq	temp				" change length of sixbit string from
+	lrl	36
+	div	6,dl				" length in bits to length in
+	lls	36
+	ldq	temp				" sixbit chars and put back
+	mvt	(ar+rl),(ar+rl),(ar),fill(000)	" wham.
+	desc6a	p2|0,a
+	desc9a	p3|0,q
+	arg	p1|0
+	return
+
+	entry	nine_to_nine
+nine_to_nine: save
+	tsx0	get_args
+	mvt 	(ar+rl),(ar+rl),(ar),fill(000)	" faster than speeding bit
+	desc9a	p2|0,a
+	desc9a	p3|0,q
+	arg	p1|0
+	return
+
+	entry	nine_to_four_			" a ninebit string to a fourbit string
+nine_to_four_: save
+	tsx0	get_args				" get args in convenient regs
+	sta	temp				" change length of fourbit string from
+	div	36,dl				"get number of words
+	sta	temp1				"store remainder
+	mpy	8,dl				"q contains number of 4bit chars
+						"per number of words - remainder
+	stq	temp2
+	ldq	temp1				"now lets take care of remainderr
+	div	9,dl
+	mpy	2,dl				"q now contains the number of 4 bit chars
+						"in the remainder
+	adq	temp2				"add in even chars
+	lda	temp				" fourbit chars and put back
+	mvt	(ar+rl),(ar+rl),(ar),fill(000)	" Do the magic
+	desc9a	p2|0,a
+	desc4a	p3|0,q
+	arg	p1|0
+	return
+
+	entry	four_to_nine_			" The other way
+four_to_nine_: save
+	tsx0	get_args
+	stq	temp				" change length of fourbit string from
+	lrl	36
+	div	36,dl				"get number of words
+	sta	temp1				"store remainder
+	mpy	8,dl				"q contains number of 4bit chars
+						"per number of words - remainder
+	stq	temp2
+	ldq	temp1				"now lets take care of remainderr
+	div	9,dl
+	mpy	2,dl				"q now contains the number of 4 bit chars
+						"in the remainder
+	adq	temp2				"add in even chars
+	lls	36
+	ldq	temp				" fourbit chars and put back
+	mvt	(ar+rl),(ar+rl),(ar),fill(000)	" wham.
+	desc4a	p2|0,a
+	desc9a	p3|0,q
+	arg	p1|0
+	return
+
+get_args:						" subr to get args into convenient regs
+	epp2	ap|2,*				" get ptr to first arg
+	epp4	ap|8,*				" get ptr to descriptor for first arg
+	lda	p4|0				" pick out length element into a
+	ana	=o000077777777			" get rid of description bits
+	epp3	ap|4,*				" get ptr to second arg
+	epp4	ap|10,*				" get ptr to descriptor for second arg
+	ldq	p4|0				" pick out length element into q
+	anq	=o000077777777			" get rid of description bits
+	epp4	ap|6,*				" get ptr to table ptr
+	epp1	p4|0,*				" get table ptr into p1
+	tra	0,x0				" and return
+
+	end
