@@ -47,7 +47,7 @@ CTAB dps8_cmds[] =
     {"CABLE",    sys_cable,       0, "cable String a cable\n" },
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
-    {"LOAD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
+    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
     {"LSB", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
     { NULL, NULL, 0, NULL}
