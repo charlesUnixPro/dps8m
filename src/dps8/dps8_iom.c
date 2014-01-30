@@ -137,9 +137,9 @@
 // storage access. When the indrect method of data transfer is used, the
 // IOM Central relieves the data channel of the task of addressing at
 // the price of additional accesses by the IOM to: (a) core. of (b)
-// scratchpad stroage. The indirect channel must, however, specify its
+// scratchpad storage. The indirect channel must, however, specify its
 // channel number, which determines the address for the data transfer
-// and a tally speciying the amount of data to be trasferred.
+// and a tally specifying the amount of data to be transferred.
 //
 // Each type of interface to a peripheral control unit requires a 
 // particular type of data channel.
@@ -147,12 +147,12 @@
 // Data can be transferred between the IOM Central and either core
 // storage or an indirect channel in byte sizes of 9. 36, and 72 bits.
 //
-// The connect channel contrils the distribution of instructions which
+// The connect channel controls the distribution of instructions which
 // initiate the operation of any addressable channel.
 //
 // Definitions
 //
-// Tally Runout (TRO): A TRO is a fualt, defined as an exhausted LPW
+// Tally Runout (TRO): A TRO is a fault, defined as an exhausted LPW
 // tally field (the contents of LPW bits 24-35 equal to zero), and
 // LPW bits 21 and 22 set to 0, 1. respectively, at the time the
 // LPW it taken from its mailbox in core or in scratchpad.
@@ -162,7 +162,7 @@
 // (DCW during data service, LPW during list service).
 //
 // List Pointer Word (LPW): A  word containing an address "pointing" to
-// a list of control words, eitch DCW's or PCW's. NOTE: Only a LPW for a
+// a list of control words, either DCW's or PCW's. NOTE: Only a LPW for a
 // Connect Channel may legally point to a PCW>
 //
 // Data Control Word (DCW): A word contains an address indicating the
@@ -2838,6 +2838,12 @@ static int do_ddcw(int iom_unit_num, int chan, int dev_code, int addr, dcw_t *dc
         *control = 2;
 #endif
     }
+    enum dev_type dev_type = iom [iom_unit_num] .channels[chan][dev_code] .type;
+    if (dev_type == DEVT_CON)
+      {
+        //sim_printf ("DEVT_CON\n");
+        con_iom_fault (chan, false);
+      }
     // update dcw
 #if 0
     // Assume that DCW is only in scratchpad (bootload_tape_label.alm rd_tape reuses same DCW on each call)

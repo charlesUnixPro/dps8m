@@ -112,6 +112,11 @@ static struct
     int chan_num;
   } cables_from_ioms [N_OPCON_UNITS];
 
+// Buffer to accumulate Write ASCII
+#define writeBufSize 4096
+static word36 writeBuf [writeBufSize];
+static int writeBufCnt;
+
 static void check_keyboard(int chan);
 
 // ============================================================================
@@ -344,6 +349,8 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
             return 0;
         case 033:               // Write ASCII
             con_statep->io_mode = write_mode;
+            writeBufCnt = 0;
+
             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Write ASCII cmd received\n");
             if (con_statep->tailp != con_statep->buf)
               {
@@ -478,6 +485,7 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
             
         case write_mode: {
             
+#if 0
             char buf[40];   // max four "\###" sequences
             *buf = 0;
             t_uint64 word = *wordp;
@@ -507,7 +515,17 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Error writing to CONSOLE\n");
               }
             sim_printf("CONSOLE: %s\n", buf);
-            
+#else
+            if (writeBufCnt >= writeBufSize)
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: writeBufOverflow; discarding word\n");
+              }
+            else
+              {
+                writeBuf [writeBufCnt ++] =  *wordp;
+              }
+#endif
+
             *majorp = 0;
             *subp = 0;
             
@@ -521,6 +539,22 @@ int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp)
             return 1;
     }
 }
+
+// The IOM will send a fault to the device for TRO and/or PTRO
+// pre ? PTRO : TRO
+int con_iom_fault(int chan, bool pre)
+  {
+    sim_printf ("con_iom_fault %s\n", pre ? "PTRO" : "TRO");
+
+    sim_printf ("writeBufCnt %d\n", writeBufCnt);
+
+    for (int i = 0; i < writeBufCnt; i ++)
+      {
+        sim_printf ("  %012llo\n", writeBuf [i]);
+      }
+
+    return 0;
+  }
 
 // ============================================================================
 

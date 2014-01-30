@@ -2853,6 +2853,8 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
 int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
 int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
+int con_iom_fault(int chan, bool pre);
+
 void console_init(void);
 t_stat cable_opcon (int iom_unit_num, int chan_num);
 extern DEVICE opcon_dev;
@@ -2983,6 +2985,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num);
 /* dps8_sys.c */
 
 extern word36 *M;
+char * lookupSystemBookAddress (word18 segno, word18 offset);
 
 /* dps8_utils.c */
 

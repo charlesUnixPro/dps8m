@@ -35,6 +35,8 @@ stats_t sys_stats;
 
 static t_stat sys_cable (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
+static t_stat loadSystemBook (int32 arg, char * buf);
+static t_stat lookupSystemBook (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -45,6 +47,9 @@ CTAB dps8_cmds[] =
     {"CABLE",    sys_cable,       0, "cable String a cable\n" },
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
+    {"LOAD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
+    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
+    {"LSB", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -191,6 +196,237 @@ static t_stat dps_debug_start (int32 arg, char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
+    return SCPE_OK;
+  }
+
+// LOAD_SYSTEM_BOOK <filename>
+#define bookSegmentsMax 1024
+#define bookComponentsMax 4096
+#define bookSegmentNameLen 33
+struct bookSegment
+  {
+    char * segname;
+    int segno;
+  } bookSegments [bookSegmentsMax];
+
+static int nBookSegments = 0;
+
+struct bookComponent
+  {
+    char * compname;
+    int bookSegmentNum;
+    int txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length;
+  } bookComponents [bookComponentsMax];
+
+static int nBookComponents = 0;
+
+static int lookupBookSegment (char * name)
+  {
+    for (int i = 0; i < nBookSegments; i ++)
+      if (strcmp (name, bookSegments [i] . segname) == 0)
+        return i;
+    return -1;
+  }
+
+static int addBookSegment (char * name, int segno)
+  {
+    int n = lookupBookSegment (name);
+    if (n >= 0)
+      return n;
+    if (nBookSegments >= bookSegmentsMax)
+      return -1;
+    bookSegments [nBookSegments] . segname = strdup (name);
+    bookSegments [nBookSegments] . segno = segno;
+    n = nBookSegments;
+    nBookSegments ++;
+    return n;
+  }
+ 
+static int addBookComponent (int segnum, char * name, int txt_start, int txt_length, int intstat_start, int intstat_length, int symbol_start, int symbol_length)
+  {
+    if (nBookComponents >= bookComponentsMax)
+      return -1;
+    bookComponents [nBookComponents] . compname = strdup (name);
+    bookComponents [nBookComponents] . bookSegmentNum = segnum;
+    bookComponents [nBookComponents] . txt_start = txt_start;
+    bookComponents [nBookComponents] . txt_length = txt_length;
+    bookComponents [nBookComponents] . intstat_start = intstat_start;
+    bookComponents [nBookComponents] . intstat_length = intstat_length;
+    bookComponents [nBookComponents] . symbol_start = symbol_start;
+    bookComponents [nBookComponents] . symbol_length = symbol_length;
+    int n = nBookComponents;
+    nBookComponents ++;
+    return n;
+  }
+ 
+
+
+// Warning: returns ptr to static buffer
+char * lookupSystemBookAddress (word18 segno, word18 offset)
+  {
+    static char buf [129];
+    int i;
+    for (i = 0; i < nBookSegments; i ++)
+      if (bookSegments [i] . segno == segno)
+        break;
+    if (i >= nBookSegments)
+      return NULL;
+
+    int best = -1;
+    int bestoffset = 0;
+
+    for (int j = 0; j < nBookComponents; j ++)
+      {
+        if (bookComponents [j] . bookSegmentNum != i)
+          continue;
+        if (bookComponents [j] . txt_start <= offset &&
+            bookComponents [j] . txt_start + bookComponents [j] . txt_length > offset)
+          {
+            sprintf (buf, "%s:%s+0%0o", bookSegments [i] . segname,
+              bookComponents [j].compname,
+              offset - bookComponents [j] . txt_start);
+            return buf;
+          }
+        if (bookComponents [j] . txt_start <= offset &&
+            bookComponents [j] . txt_start > bestoffset)
+          {
+            best = j;
+            bestoffset = bookComponents [j] . txt_start;
+          }
+      }
+
+    if (best != -1)
+      {
+        sprintf (buf, "%s:%s+0%0o", bookSegments [i] . segname,
+          bookComponents [best].compname,
+          offset - bookComponents [best] . txt_start);
+        return buf;
+      }
+
+   sprintf (buf, "%s:0%0o", bookSegments [i] . segname,
+              offset);
+   return buf;
+ }
+
+// LSB n:n
+
+static t_stat lookupSystemBook (int32 arg, char * buf)
+  {
+    int segno, offset;
+    if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
+      return SCPE_ARG;
+    char * ans = lookupSystemBookAddress (segno, offset);
+    sim_printf ("%s\n", ans ? ans : "not found");
+    return SCPE_OK;
+  }
+
+static t_stat loadSystemBook (int32 arg, char * buf)
+  {
+  
+#define bufSz 257
+    char filebuf [bufSz];
+    int current = -1;
+
+    FILE * fp = fopen (buf, "r");
+    if (! fp)
+      {
+        sim_printf ("error opening file %s\n", buf);
+        return SCPE_ARG;
+      }
+    for (;;)
+      {
+        char * bufp = fgets (filebuf, bufSz, fp);
+        if (! bufp)
+          break;
+        //sim_printf ("<%s\n>", filebuf);
+        char name [bookSegmentNameLen];
+        int segno, p0, p1, p2;
+
+        // 32 is bookSegmentNameLen - 1
+        int cnt = sscanf (filebuf, "%32s %o  (%o, %o, %o)", name, & segno, 
+          & p0, & p1, & p2);
+        if (filebuf [0] != '\t' && cnt == 5)
+          {
+            //sim_printf ("A: %s %d\n", name, segno);
+            int rc = addBookSegment (name, segno);
+            if (rc < 0)
+              {
+                sim_printf ("error adding segment name\n");
+                return SCPE_ARG;
+              }
+            continue;
+          }
+
+        cnt = sscanf (filebuf, "Bindmap for >ldd>h>e>%32s", name);
+        if (cnt == 1)
+          {
+            //sim_printf ("B: %s\n", name);
+            //int rc = addBookSegment (name);
+            int rc = lookupBookSegment (name);
+            if (rc < 0)
+              {
+                // The collection 3.0 segments do not have segment numbers,
+                // and the 1st digit of the 3-tuple is 1, not 0. Ignore
+                // them for now.
+                current = -1;
+                continue;
+                //sim_printf ("error adding segment name\n");
+                //return SCPE_ARG;
+              }
+            current = rc;
+            continue;
+          }
+
+        int txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length;
+        cnt = sscanf (filebuf, "%32s %o %o %o %o %o %o", name, & txt_start, & txt_length, & intstat_start, & intstat_length, & symbol_start, & symbol_length);
+
+        if (cnt == 7)
+          {
+            //sim_printf ("C: %s\n", name);
+            if (current >= 0)
+              {
+                addBookComponent (current, name, txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length);
+              }
+            continue;
+          }
+
+        cnt = sscanf (filebuf, "%32s %o  (%o, %o, %o)", name, & segno, 
+          & p0, & p1, & p2);
+        if (filebuf [0] == '\t' && cnt == 5)
+          {
+            //sim_printf ("D: %s %d\n", name, segno);
+            int rc = addBookSegment (name, segno);
+            if (rc < 0)
+              {
+                sim_printf ("error adding segment name\n");
+                return SCPE_ARG;
+              }
+            continue;
+          }
+
+      }
+
+#if 0
+    for (int i = 0; i < nBookSegments; i ++)
+      { 
+        sim_printf ("  %-32s %6o\n", bookSegments [i] . segname, bookSegments [i] . segno);
+        for (int j = 0; j < nBookComponents; j ++)
+          {
+            if (bookComponents [j] . bookSegmentNum == i)
+              {
+                printf ("    %-32s %6o %6o %6o %6o %6o %6o\n",
+                  bookComponents [j] . compname, 
+                  bookComponents [j] . txt_start, 
+                  bookComponents [j] . txt_length, 
+                  bookComponents [j] . intstat_start, 
+                  bookComponents [j] . intstat_length, 
+                  bookComponents [j] . symbol_start, 
+                  bookComponents [j] . symbol_length);
+              }
+          }
+      }
+#endif
+
     return SCPE_OK;
   }
 
