@@ -3021,7 +3021,7 @@ static char* print_dcw(t_addr addr)
 static char* lpw2text(const lpw_t *p, int conn)
 {
     // WARNING: returns single static buffer
-    static char buf[80];
+    static char buf[180];
     sprintf(buf, "[dcw=0%o ires=%d hrel=%d ae=%d nc=%d trun=%d srel=%d tally=0%o]",
             p->dcw, p->ires, p->hrel, p->ae, p->nc, p->trunout, p->srel, p->tally);
     if (!conn)
