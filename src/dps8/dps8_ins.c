@@ -5371,7 +5371,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
 
                 int r = getCrAR(reg);
 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
@@ -5411,7 +5413,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
                 //   ((9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
                 //   (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     AR[ARn].WORDNO = address + r / 6;
                     AR[ARn].CHAR = ((6 * r) % 36) / 9;
@@ -5437,7 +5441,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
@@ -5470,7 +5476,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   ADDRESS + C(REG) / 36 → C(ARn.WORDNO)
@@ -5511,7 +5519,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 // 00 → C(ARn.CHAR)
                 // 0000 → C(ARn.BITNO)
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                     AR[ARn].WORDNO = (address + getCrAR(reg));
                 else
                     AR[ARn].WORDNO += (address + getCrAR(reg));
@@ -5530,7 +5540,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
@@ -5562,7 +5574,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 6) → C(ARn.WORDNO)
@@ -5596,7 +5610,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
@@ -5631,7 +5647,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 36) → C(ARn.WORDNO)
@@ -5665,7 +5683,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int r = getCrAR(reg);
                 
-                if (!i->a)
+                // The a bit is zero if IGN_B29 is set;
+                //if (!i->a)
+                if (! GET_A (i -> IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG)) → C(ARn.WORDNO)
