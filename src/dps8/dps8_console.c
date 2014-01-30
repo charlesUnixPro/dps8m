@@ -375,10 +375,15 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
             return 0;
         case 057:               // Read ID (according to AN70-1)
             // FIXME: No support for Read ID; appropriate values are not known
-            sim_debug (DBG_ERR, & opcon_dev, "con_iom_cmd: Read ID unimplemented\n");
-            *majorp = 05;
-            *subp = 1;
-            return 1;
+            // [CAC] Looking at the bootload console code, it seems more 
+            // concerned about the device responding, rather then the actual
+            // returned value. Make some thing up.
+            sim_debug (DBG_ERR, & opcon_dev, "con_iom_cmd: Read ID received\n");
+            //*majorp = 05;
+            //*subp = 1;
+            *majorp = 0;
+            *subp = 0;
+            return 0;
         default: {
             *majorp = 05;   // command reject
             *subp = 1;      // invalid instruction code
