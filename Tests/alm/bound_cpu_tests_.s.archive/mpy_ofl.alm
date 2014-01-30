@@ -1,0 +1,28 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	mpy_ofl
+	entry	mpy_ofl
+
+mpy_ofl:	push
+	ldq	number
+	mpy	number
+	return
+
+number:	oct	400000000000
+	end

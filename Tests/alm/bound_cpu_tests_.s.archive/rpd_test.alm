@@ -1,0 +1,48 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"
+"	T&D to find RPD with page-fault problem on MIT CPU B on 1/2/74.
+"	The cpu has failed if you get a ZOP fault. If no fault, it worked.
+"
+	name	rpd_test
+	entry	rpd_test
+
+rpd_test:
+	push
+	eppbp	name
+	epplb	table
+	even
+	eax2	0
+	rpda	8,1,tnz
+	lda	bp|0,2
+	cmpa	lb|0,2
+	ttf	failure
+	return
+failure:
+	oct	0
+	even
+name:	aci	"abcdefghijklmn                  "
+
+	org	1024-3
+table:	aci	"abcdefghijklmn                  "
+
+"force fill to page bound for next test 'cmpc7'
+
+	bss	,1016
+	end

@@ -1,0 +1,37 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	mvn_ofl
+	entry	mvn_ofl
+
+mvn_ofl:	push
+	eppbp	ap|2,*
+	eppbp	bp|0,*
+	adwpbp	1024,du
+	eppbb	x
+	mvn	(pr),(pr)
+	desc9fl	bb|0,14
+	desc9ls	bp|0,6
+
+	return
+
+x:	aci	"+000000000000"
+	end
+
+
+
