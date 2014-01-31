@@ -378,7 +378,7 @@ int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp)
             // [CAC] Looking at the bootload console code, it seems more 
             // concerned about the device responding, rather then the actual
             // returned value. Make some thing up.
-            sim_debug (DBG_ERR, & opcon_dev, "con_iom_cmd: Read ID received\n");
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Read ID received\n");
             //*majorp = 05;
             //*subp = 1;
             *majorp = 0;
