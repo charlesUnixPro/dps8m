@@ -1,0 +1,99 @@
+	bool	connect_channel, 2
+	bool	console_channel, 36
+
+        bool	mailbox_base_address, 01400
+        bool	connect_mbx, 01410	" base + 4 * chan_num
+	bool	console_mbx, 01570
+
+	bool	CONSOLE.write_ASCII, 033
+	bool	CONSOLE.write_alert, 051
+	bool	console_dev_code, 0
+
+	org	0
+	tra	test
+
+	org	connect_mbx
+connect_lpw:
+	oct	0		" LPW
+	oct	0		" LPWE
+	oct	0		" SCW
+	oct	0		" DCW
+
+
+
+	org	010000
+test:
+
+" Print "Console test"
+
+	emcall	8
+	"absa	msg1
+	eaa	msg1
+	emcall	16
+	emcall	8
+
+" Print "Expect ALERT"
+
+	eaa	msg2
+	emcall	16
+	emcall	8
+
+" Send an ALERT
+
+	lda	lpw1
+	sta	connect_lpw
+	cioc	cioc_port
+
+" Print 'Expect "Hello, world"'
+
+"	emcall	8
+"	eaa	msg3
+"	emcall	16
+"	emcall	8
+"
+"	lda	lpw2
+"	sta	connect_lpw
+"	cioc	cioc_port
+
+
+
+	dis
+
+" Data
+
+cioc_port:
+	dec	0
+
+	even
+
+	bool	non_data,2
+	bool	terminate,0
+
+" ALERT
+
+lpw1:	vfd	18/pwc1,6/2,12/1
+
+	even
+pwc1:
+	vfd	6/CONSOLE.write_alert,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	vfd	9/console_channel,27/0
+
+" write.ASCII
+
+
+lpw2:	vfd	18/pcw2,6/2,12/1
+
+	even
+pcw2:
+	vfd	6/CONSOLE.write_ASCII,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	vfd	9/console_channel,27/0
+
+msg1:	dec	12
+	aci	'Console test'
+
+msg2:	dec	12
+	aci	'Expect ALERT'
+
+msg3:	dec	20
+	aci	'Expect "Hello, word"'
+

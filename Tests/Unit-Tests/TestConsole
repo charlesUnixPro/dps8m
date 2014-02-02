@@ -1,0 +1,10 @@
+set debug stdout
+do base_system.ini
+reset scu
+;set iom debug=all
+;set opcon debug=all
+;set cpu debug=trace
+load TestConsole.oct
+
+g 0
+
