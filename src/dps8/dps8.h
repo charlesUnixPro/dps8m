@@ -603,6 +603,7 @@ extern bool bPuls2;
 #define STOP_BUG    6
 #define STOP_WARN   7
 #define STOP_FLT_CASCADE   8
+#define STOP_HALT   9
 extern const char *sim_stop_messages[];
 
 
@@ -1742,7 +1743,7 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags);
 void cmp18(word18 op1, word18 op2, word18 *flags);
 void cmp72(word72 op1, word72 op2, word18 *flags);
 
-void emCall(DCDstruct *);  ///< execute locally defined "emulator call" instruction (emcall)
+int emCall(DCDstruct *);  ///< execute locally defined "emulator call" instruction (emcall)
 char *getModString(int32 tag);
 
 int strmask(char *str, char *mask);

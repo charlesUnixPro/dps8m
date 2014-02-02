@@ -84,8 +84,9 @@ const char *sim_stop_messages[] = {
     "Invalid Opcode",          // STOP_INVOP
     "Stop code - 5",           // STOP_5
     "BUG",                     // STOP_BUG
-    "WARNING"                  // STOP_WARN
+    "WARNING",                  // STOP_WARN
     "Fault cascade",           // STOP_FLT_CASCADE
+    "Halt",                    // STOP_HALT
 };
 
 /* End of simh interface */

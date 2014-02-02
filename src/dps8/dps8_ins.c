@@ -5823,8 +5823,12 @@ static t_stat DoEISInstruction(DCDstruct *i)
 #ifdef EMULATOR_ONLY
             
         case 0420:  ///< emcall instruction Custom, for an emulator call for simh stuff ...
-            emCall(i);
+        {
+            int ret = emCall(i);
+            if (ret)
+              return ret;
             break;
+        }
 
 #ifdef DEPRECIATED
             /*
@@ -6060,7 +6064,7 @@ t_stat doXED(word36 *Ypair)
 /**
  * emulator call instruction. Do whatever address field sez' ....
  */
-void
+int
 emCall(DCDstruct *i)
 {
     //fprintf(stderr, "emCall()... %d\n", TPR.CA);
@@ -6155,26 +6159,63 @@ emCall(DCDstruct *i)
             break;
         }
 
-       case 16:     ///< puts - A points to strlen in bytes, followed by an aci string; print it.
+       case 16:     ///< puts - A points to by an aci string; print it.
+                    // The string includes C-sytle escapes: \0 for end
+                    // of string, \n for newline, \\ for a backslash
        {
+            const int maxlen = 256;
+            char buf [maxlen + 1];
+
             word36 addr = rA >> 18;
-            word36 len = M [addr ++];
             word36 chunk;
-            char buf [len];
             int i;
-            for (i = 0; i < len; i ++)
+            bool is_escape = false;
+            int cnt = 0;
+
+            for (i = 0; cnt < maxlen; i ++)
               {
+                // fetch char
                 if (i % 4 == 0)
                   chunk = M [addr ++];
-                word36 ch = chunk >> (9 * 3);    
+                word36 wch = chunk >> (9 * 3);    
                 chunk = (chunk << 9) & DMASK;
-                buf [i] = (char) (ch & 0x7f);
+                char ch = (char) (wch & 0x7f);
+
+                if (is_escape)
+                  {
+                    if (ch == '0')
+                      ch = '\0';
+                    else if (ch == 'n')
+                      ch = '\n';
+                    else
+                      /* ch = ch */;
+                    is_escape = false;
+                  }
+                else
+                  {
+                    if (ch == '\\')
+                      is_escape = true;
+                    else
+                      {
+                        buf [cnt ++] = ch;
+                        if (ch == '\0')
+                          break;
+                      }
+                  }
               }
-            buf [i] = 0;
+            // Safety; if filled buffer before finding eos, put an eos
+            // in the extra space that was allocated
+            buf [maxlen] = '\0';
             sim_printf ("%s", buf);
+            break;
        }
             
+      // case 17 used above
+
+      case 18:     ///< halt
+        return STOP_HALT;
     }
+    return 0;
 }
 
 static int doABSA (DCDstruct * i, word36 * result)
