@@ -7,10 +7,21 @@
 
 	bool	CONSOLE.write_ASCII, 033
 	bool	CONSOLE.write_alert, 051
+	bool	CONSOLE.request_status, 00
 	bool	console_dev_code, 0
+
+" Entry vector
 
 	org	0
 	tra	test
+
+" Interrupt pair
+
+	org	24
+	nop
+	nop
+
+" Connect Channel Mailbox
 
 	org	connect_mbx
 connect_lpw:
@@ -19,7 +30,7 @@ connect_lpw:
 	oct	0		" SCW
 	oct	0		" DCW
 
-
+" Main procedure
 
 	org	010000
 test:
@@ -30,13 +41,11 @@ test:
 	"absa	msg1
 	eaa	msg1
 	emcall	16
-	emcall	8
 
 " Print "Expect ALERT"
 
 	eaa	msg2
 	emcall	16
-	emcall	8
 
 " Send an ALERT
 
@@ -46,18 +55,15 @@ test:
 
 " Print 'Expect "Hello, world"'
 
-"	emcall	8
-"	eaa	msg3
-"	emcall	16
-"	emcall	8
-"
-"	lda	lpw2
-"	sta	connect_lpw
-"	cioc	cioc_port
+	emcall	8
+	eaa	msg3
+	emcall	16
 
+	lda	lpw2
+	sta	connect_lpw
+	cioc	cioc_port
 
-
-	dis
+	emcall	18
 
 " Data
 
@@ -85,15 +91,14 @@ lpw2:	vfd	18/pcw2,6/2,12/1
 
 	even
 pcw2:
-	vfd	6/CONSOLE.write_ASCII,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	vfd	6/CONSOLE.request_status,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
 	vfd	9/console_channel,27/0
+	"vfd	6/CONSOLE.write_ASCII,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	"vfd	9/console_channel,27/0
 
-msg1:	dec	12
-	aci	'Console test'
+msg1:	aci	'Console test\n\0'
 
-msg2:	dec	12
-	aci	'Expect ALERT'
+msg2:	aci	'Expect ALERT\n\0'
 
-msg3:	dec	20
-	aci	'Expect "Hello, word"'
+msg3:	aci	'Expect "Hello, world"\n\0'
 
