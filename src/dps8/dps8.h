@@ -2959,7 +2959,9 @@ t_stat iom_reset(DEVICE *dptr);
 t_stat iom_boot(int32 unit_num, DEVICE *dptr);
 t_stat channel_svc(UNIT *up);
 int get_iom_numunits (void);
-t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, int dev_unit_num);
+enum chan_type { chan_type_CPI, chan_type_PSI };
+typedef enum chan_type chan_type;
+t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, enum chan_type ctype, int dev_unit_num);
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
 
 /* dps8_mpc.c */

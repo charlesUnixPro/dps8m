@@ -1,54 +1,3 @@
-C_SRCS = \
-./dps8_addrmods.c \
-./dps8_append.c \
-./dps8_bar.c \
-./dps8_console.c \
-./dps8_clk.c \
-./dps8_cpu.c \
-./dps8_disk.c \
-./dps8_eis.c \
-./dps8_ins.c \
-./dps8_iom.c \
-./dps8_loader.c \
-./dps8_lp.c \
-./dps8_math.c \
-./dps8_mt.c \
-./dps8_opcodetable.c \
-./dps8_scu.c \
-./dps8_stddev.c \
-./dps8_sys.c \
-./dps8_utils.c \
-./dps8_decimal.c \
-./dps8_faults.c \
-./dps8_iefp.c
-
-
-OBJS = \
-./dps8_addrmods.o \
-./dps8_append.o \
-./dps8_bar.o \
-./dps8_console.o \
-./dps8_clk.o \
-./dps8_cpu.o \
-./dps8_disk.o \
-./dps8_eis.o \
-./dps8_ins.o \
-./dps8_iom.o \
-./dps8_loader.o \
-./dps8_lp.o \
-./dps8_math.o \
-./dps8_mt.o \
-./dps8_opcodetable.o \
-./dps8_scu.o \
-./dps8_stddev.o \
-./dps8_sys.o \
-./dps8_utils.o \
-./dps8_decimal.o \
-./dps8_faults.o \
-./dps8_iefp.o
-
-H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h
-
 #CC = gcc
 #LD = gcc
 CC = clang
@@ -88,6 +37,33 @@ LOCALLIBS = ../simh/simh.a ../decNumber/decNumber.a
 
 LIBS = $(LOCALLIBS)  -lm -lrt -lpthread -ldl -lefence 
 
+C_SRCS  = ./dps8_addrmods.c 
+C_SRCS += ./dps8_append.c
+C_SRCS += ./dps8_bar.c
+C_SRCS += ./dps8_console.c
+C_SRCS += ./dps8_clk.c
+C_SRCS += ./dps8_cpu.c
+C_SRCS += ./dps8_disk.c
+C_SRCS += ./dps8_eis.c
+C_SRCS += ./dps8_ins.c
+C_SRCS += ./dps8_iom.c
+C_SRCS += ./dps8_loader.c
+C_SRCS += ./dps8_lp.c
+C_SRCS += ./dps8_math.c
+C_SRCS += ./dps8_mt.c
+C_SRCS += ./dps8_opcodetable.c
+C_SRCS += ./dps8_scu.c
+C_SRCS += ./dps8_stddev.c
+C_SRCS += ./dps8_sys.c
+C_SRCS += ./dps8_utils.c
+C_SRCS += ./dps8_decimal.c
+C_SRCS += ./dps8_faults.c
+C_SRCS += ./dps8_iefp.c
+
+OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
+
+H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h dps8_console.h dps8_disk.h dps8_iom.h dps8_mt.h dps8_utils.h 
+
 all: locallibs_then_dps8 tags
 
 dps8 : $(OBJS) $(LOCALLIBS) 
@@ -112,9 +88,17 @@ cleaner: clean
 	(cd ../simh; $(MAKE) clean)
 	(cd ../decNumber; $(MAKE) clean)
 
-dps8.h :  ../simh/sim_defs.h ../simh/sim_tape.h
-dps8_utils.o :  ../simh/sim_defs.h
-dps8_decimal.o : ../decNumber/decNumber.h ../decNumber/decNumberLocal.h
-dps8_loader.o : utlist.h
-$(OBJS) : dps8.h
+#dps8.h :  ../simh/sim_defs.h ../simh/sim_tape.h
 
+dps8_console.o : dps8_iom.h
+dps8_cpu.o : dps8_utils.h
+dps8_decimal.o : ../decNumber/decNumber.h ../decNumber/decNumberLocal.h
+dps8_disk.o : dps8_iom.h dps8_disk.h 
+dps8_iom.o : dps8_utils.h dps8_iom.h dps8_mt.h dps8_disk.h
+dps8_loader.o : utlist.h
+dps8_mt.o : dps8_iom.h dps8_mt.h
+dps8_scu.o : dps8_utils.h 
+dps8_sys.c : dps8_iom.h dps8_mt.h dps8_disk.h dps8_utils.h
+dps8_utils.o :  ../simh/sim_defs.h dps8_utils.h
+
+$(OBJS) : dps8.h ../simh/sim_defs.h ../simh/sim_tape.h

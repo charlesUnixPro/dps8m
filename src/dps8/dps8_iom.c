@@ -632,7 +632,7 @@ typedef struct {
     int n_list;     // could be flag for first_list, but counter aids debug
     //flag_t need_indir_svc;  // Note: Currently equivalent to forcing control=2
     flag_t xfer_running;    // Set to true if an IDCW has chn cmd other than 2; causes same behavior as control=2
-
+    bool payload; // False if PCW
 
     flag_t have_status;         // from device
     chan_status_t status;
@@ -659,6 +659,7 @@ typedef struct
     int scu_port; // which port on the SCU(s) are we connected to?
     struct channels {
         enum dev_type type;
+        enum chan_type ctype;
         DEVICE* dev; // attached device; points into sim_devices[]
         int dev_unit_num; // Which unit of the attached device
         // (tape_dev, disk_dev, etc.)
@@ -799,7 +800,7 @@ t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_
 //
 // Verify that the post is unused; attach this end of the cable
 
-t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, int dev_unit_num)
+t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num)
   {
     if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
       {
@@ -850,6 +851,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
       }
 
     iom [iom_unit_num] . channels [chan_num] [dev_code] . type = dev_type;
+    iom [iom_unit_num] . channels [chan_num] [dev_code] . ctype = ctype;
     iom [iom_unit_num] . channels [chan_num] [dev_code] . dev_unit_num = dev_unit_num;
 
     iom [iom_unit_num] . channels [chan_num] [dev_code] . dev = devp;
@@ -1796,7 +1798,7 @@ static int activate_chan (int iom_unit_num, int chan, int dev_code, pcw_t* pcwp)
     chanp -> err = 0;
     chanp -> state = chn_pcw_rcvd;
     chanp -> xfer_running = 0;
-
+    chanp -> payload = false; // Track if PCW or DCW
     // Receive the PCW
     chanp -> dcw . type = idcw;
     chanp -> dcw . fields . instr = * pcwp;
@@ -2123,6 +2125,16 @@ static int run_channel(int iom_unit_num, int chan, int dev_code)
     
     
     if (chanp->state == chn_cmd_sent) {
+        // 3. The connect channel PCW is treated differently by the CPI channel
+        // and the PSI channel. The CPI channel does a store status. The.
+        // PSI channel goes into startup.
+
+        // XXX chan here is wrong; I can't tell if it is from the PCW or the conect channel
+        if (! chanp -> payload && iom [iom_unit_num] . channels [chan] [dev_code] . ctype == chan_type_CPI)
+          {
+            chanp->state = chn_need_status;
+            return 0;
+          }
         sim_debug (DBG_DEBUG, &iom_dev, "run_channel: In channel loop for state %s\n", chn_state_text(chanp->state));
         int ret = 0;
         
@@ -2482,13 +2494,13 @@ static int list_service(int iom_unit_num, int chan, int dev_code, int first_list
 static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *controlp/*, flag_t *need_indir_svc */)
 {
     sim_debug (DBG_DEBUG, &iom_dev, "do_dcw: IOM %c, chan %d, dev_code %d, addr 0%o\n", 'A' + iom_unit_num, chan, dev_code, addr);
+    channel_t* chanp = get_chan(iom_unit_num, chan, dev_code);
     t_uint64 word;
     (void) fetch_abs_word(addr, &word);
     if (word == 0) {
         sim_debug (DBG_ERR, &iom_dev, "do_dcw: DCW of all zeros is legal but useless (unless you want to dump first 4K of memory).\n");
         sim_debug (DBG_ERR, &iom_dev, "do_dcw: Disallowing legal but useless all zeros DCW at address %08o.\n", addr);
         cancel_run(STOP_BUG);
-        channel_t* chanp = get_chan(iom_unit_num, chan, dev_code);
         if (chanp != NULL)
             chanp->state = chn_err;
         return 1;
@@ -2499,6 +2511,7 @@ static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *contr
     if (dcw.type == idcw) {
         // instr dcw
         dcw.fields.instr.chan = chan;   // Real HW would not populate
+        chanp -> payload = true;
         // Payload (non connect?) channels don't look at the tally; whether
         // to continue doing list services or not is given by the control
         // words.  However, lists sometimes have an I-DCW with a control
@@ -2511,7 +2524,6 @@ static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *contr
             sim_debug (DBG_DEBUG, &iom_dev, "do_dcw: dev-send-pcw returns %d.\n", ret);
           }
         if (dcw.fields.instr.chan_cmd != 02) {
-            channel_t* chanp = get_chan(iom_unit_num, chan, dev_code);
             if (chanp != NULL && dcw.fields.instr.control == 0 && chanp->have_status && M[addr+1] == 0) {
                 // This is no longer seen
                 sim_debug (DBG_WARN, &iom_dev, "do_dcw: Ignoring need to set xfer-running flag because next dcw is zero.\n");
@@ -2527,6 +2539,7 @@ static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *contr
         return 1;
     } else  if (dcw.type == ddcw) {
         // IOTD, IOTP, or IONTP -- i/o (non) transfer
+        chanp -> payload = true;
         int ret = do_ddcw(iom_unit_num, chan, dev_code, addr, &dcw, controlp);
         return ret;
     } else {

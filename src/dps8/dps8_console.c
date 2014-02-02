@@ -137,7 +137,7 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, OPCON_UNIT_NUM);
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, chan_type_CPI, OPCON_UNIT_NUM);
     if (rc)
       return rc;
 
