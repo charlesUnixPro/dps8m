@@ -6155,6 +6155,24 @@ emCall(DCDstruct *i)
             break;
         }
 
+       case 16:     ///< puts - A points to strlen in bytes, followed by an aci string; print it.
+       {
+            word36 addr = rA >> 18;
+            word36 len = M [addr ++];
+            word36 chunk;
+            char buf [len];
+            int i;
+            for (i = 0; i < len; i ++)
+              {
+                if (i % 4 == 0)
+                  chunk = M [addr ++];
+                word36 ch = chunk >> (9 * 3);    
+                chunk = (chunk << 9) & DMASK;
+                buf [i] = (char) (ch & 0x7f);
+              }
+            buf [i] = 0;
+            sim_printf ("%s", buf);
+       }
             
     }
 }
