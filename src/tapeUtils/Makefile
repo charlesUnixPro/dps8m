@@ -3,6 +3,7 @@ LDFLAGS = -g
 ETF_OBJS = extract_tape_files.o bit36.o simhtapes.o
 MF_OBJS = mfile.o bit36.o simhtapes.o
 DT_OBJS = dumpTape.o bit36.o
+DF_OBJS = dumpFile.o bit36.o
 RST_OBJS = restore.o bit36.o 
 SCN_OBJS = scan.o bit36.o
 DIS_OBJS = disasm.o bit36.o
@@ -15,15 +16,16 @@ P9_OBJS = pack9.o
 RTOC_OBJS = restore_toc.o bit36.o
 RTT_OBJS = restore_tape.o bit36.o simhtapes.o
 
-EXES = extract_tape_files mfile dumpTape restore scan disasm pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape
+EXES = extract_tape_files mfile dumpTape dumpFile restore scan disasm pack extract_bound_bootload_0 unpack mxarc print_bind_map pack9 restore_toc restore_tape
 
-OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS)
+OBJS = $(ETF_OBJS) $(MF_OBJS) $(DT_OBJS) $(DF_OBJS) $(RST_OBJS) $(SCN_OBJS) $(DIS_OBJS) $(PK_OBJS) $(EBL0_OBJS) $(UP_OBS) $(MXA_OBJS) $(PBM_OBJS) $(P9_OBJS) $(RTOC_OBJS) $(RTT_OBJS)
 
 all : $(EXES)
 
 extract_tape_files : $(ETF_OBJS)
 mfile : $(MF_OBJS)
 dumpTape : $(DT_OBJS)
+dumpFile : $(DF_OBJS)
 restore : $(RST_OBJS)
 scan : $(SCN_OBJS)
 disasm : $(DIS_OBJS)
@@ -41,6 +43,7 @@ bit36.o : bit36.c bit36.h
 mfile.o : mfile.c bit36.h simhtapes.h mst.h
 simhtapes.o : simhtapes.c simhtapes.h
 dumpTape.o : dumpTape.c bit36.h
+dumpFile.o : dumpFile.c bit36.h
 restore.o : restore.c bit36.h mst.h
 scan.o : scan.c bit36.h mst.h
 disasm.o : disasm.c bit36.h
