@@ -382,7 +382,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
                   {
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOF: %s\n", __func__, simh_tape_msg (ret));
-                    * stati = 044023; // EOF category EOF file mark
+                    * stati = 04423; // EOF category EOF file mark
                     if (tbc != 0)
                       {
                         sim_debug (DBG_ERR, &tape_dev,
