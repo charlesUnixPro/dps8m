@@ -2852,8 +2852,6 @@ extern DEVICE clk_dev;
 
 int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
 int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
-int con_iom_cmd(int chan, int dev_cmd, int dev_code, int* majorp, int* subp);
-int con_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
 int con_iom_fault(int chan, bool pre);
 
 void console_init(void);
@@ -2962,7 +2960,6 @@ t_stat channel_svc(UNIT *up);
 int get_iom_numunits (void);
 enum chan_type { chan_type_CPI, chan_type_PSI };
 typedef enum chan_type chan_type;
-t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, enum chan_type ctype, int dev_unit_num);
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
 
 /* dps8_mpc.c */
