@@ -350,7 +350,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
             sim_debug (DBG_INFO, & tape_dev, 
                        "%s: Request status is %06o.\n",
                        __func__, * stati);
-//--             return 0;
+            return 0;
           }
         case 5: // CMD 05 -- Read Binary Record
           {
