@@ -53,6 +53,8 @@ static DEBTAB opcon_dt [] =
 
 UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0) }};
 
+static t_stat opcon_reset (DEVICE * dptr);
+
 DEVICE opcon_dev = {
     "OPCON",       /* name */
     opcon_unit,    /* units */
@@ -66,7 +68,7 @@ DEVICE opcon_dev = {
     8,             /* data width */
     NULL,          /* examine routine */
     NULL,          /* deposit routine */
-    NULL,          /* reset routine */
+    opcon_reset,   /* reset routine */
     NULL,          /* boot routine */
     NULL,          /* attach routine */
     NULL,          /* detach routine */
@@ -92,19 +94,24 @@ DEVICE opcon_dev = {
 //-- #include <unistd.h>
 //-- //#include "hw6180.h"
 //-- 
-//-- typedef struct s_console_state {
-//--     // Hangs off the device structure
-//--     enum { no_mode, read_mode, write_mode } io_mode;
-//--     // SIMH console library has only putc and getc; the SIMH terminal
-//--     // library has more features including line buffering.
-//--     char buf[81];
-//--     char *tailp;
-//--     char *readp;
-//--     flag_t have_eol;
-//--     char *auto_input;
-//--     char *autop;
-//-- } con_state_t;
-//-- 
+typedef struct s_console_state
+  {
+    // Hangs off the device structure
+    enum { no_mode, read_mode, write_mode } io_mode;
+    // SIMH console library has only putc and getc; the SIMH terminal
+    // library has more features including line buffering.
+    char buf[81];
+    char *tailp;
+    char *readp;
+    flag_t have_eol;
+    char *auto_input;
+    char *autop;
+ } con_state_t;
+
+// We only support a single console instance, so this should be okay.
+
+static con_state_t console_state;
+
 //-- #define N_LINES 4
 
 static struct
@@ -113,11 +120,11 @@ static struct
     int chan_num;
   } cables_from_ioms_to_con [N_OPCON_UNITS];
 
-//-- // Buffer to accumulate Write ASCII
-//-- #define writeBufSize 4096
-//-- static word36 writeBuf [writeBufSize];
-//-- static int writeBufCnt;
-//-- 
+// Buffer to accumulate Write ASCII
+#define writeBufSize 4096
+static word36 writeBuf [writeBufSize];
+static int writeBufCnt;
+
 //-- static void check_keyboard(int chan);
 //-- 
 
@@ -125,6 +132,17 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
 static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
 
 //-- // ============================================================================
+
+static t_stat opcon_reset (DEVICE * dptr)
+  {
+    console_state . io_mode = no_mode;
+    console_state . tailp = console_state . buf;
+    console_state . readp = console_state . buf;
+    console_state . have_eol = 0;
+    console_state . auto_input = NULL;
+    console_state . autop = NULL;
+    return SCPE_OK;
+  }
 
 void console_init()
 {
@@ -136,7 +154,6 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
   {
     if (cables_from_ioms_to_con [OPCON_UNIT_NUM] . iom_unit_num != -1)
       {
-        // sim_debug (DBG_ERR, & sys_dev, "cable_opcon: socket in use\n");
         sim_printf ("cable_opcon: socket in use\n");
         return SCPE_ARG;
       }
@@ -160,15 +177,15 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
 //--     chan_devinfo* devinfop = devp->ctxt;
 //--     struct s_console_state *con_statep = devinfop->statep;
 //--     if (con_statep->auto_input) {
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_set: Discarding prior auto-input.\n");
+//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Discarding prior auto-input., __func__\n");
 //--         free(con_statep->auto_input);
 //--     }
 //--     if (cptr) {
 //--         con_statep->auto_input = strdup(cptr);
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_set: Auto-input now: %s\n", cptr);
+//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input now: %s\n", cptr, __func__);
 //--     } else {
 //--         con_statep->auto_input = NULL;
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_set: Auto-input disabled.\n");
+//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
 //--     }
 //--     con_statep->autop = con_statep->auto_input;
     return SCPE_OK;
@@ -176,8 +193,8 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
 
 int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 {
-//--     sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_show: FILE=%p, uptr=%p, val=%d,desc=%p\n",
-//--             st, uptr, val, desc);
+//--     sim_debug (DBG_NOTIFY, & opcon_dev, "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
+//--             __func__, st, uptr, val, desc);
 //--     
 //--     DEVICE *devp = find_opcon();
 //--     if (devp == NULL)
@@ -185,9 +202,9 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 //--     chan_devinfo* devinfop = devp->ctxt;
 //--     struct s_console_state *con_statep = devinfop->statep;
 //--     if (con_statep->auto_input == NULL)
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_show: No auto-input exists.\n");
+//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: No auto-input exists.\n", __func__);
 //--     else
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "opcon_autoinput_show: Auto-input is/was: %s\n", con_statep->auto_input);
+//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input is/was: %s\n", __func__, con_statep->auto_input);
 //--     
     return SCPE_OK;
 }
@@ -268,7 +285,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
 //--     int dev_code = opcon_unit -> u4;
 //--     //int iom_unit_num = opcon_unit -> u5;
 //-- 
-//--     sim_debug (DBG_DEBUG, & opcon_dev, "con_iom_cmd: Chan 0%o, dev-cmd 0%o, dev-code 0%o\n", chan, dev_cmd, dev_code);
+//--     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o, dev-cmd 0%o, dev-code 0%o\n", __func__, chan, dev_cmd, dev_code);
 //--     
 //--     // FIXME: Should Major be added to 040? and left shifted 6? Ans: it's 4 bits
 //--     
@@ -279,20 +296,23 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
 //--     
 //--     check_keyboard(chan);
 //--     
-//--     switch(dev_cmd) {
-//--         case 0: {               // CMD 00 Request status
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Status request cmd received");
-//--             *majorp = 0;
-//--             *subp = 0;
-//--             *have_status = 1;
-//--             return 0;
-//--         }
+    switch (p -> dev_cmd)
+      {
+        case 0: // CMD 00 Request status
+          {
+            sim_debug (DBG_NOTIFY, & opcon_dev,
+                       "%s: Status request cmd received",
+                       __func__);
+            * stati = 04000;
+            return 0;
+        }
+
 //--         case 023:               // Read ASCII
 //--             con_statep->io_mode = read_mode;
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Read ASCII command received\n");
+//--             sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Read ASCII command received\n", __func__);
 //--             if (con_statep->tailp != con_statep->buf)
 //--               {
-//--                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Discarding previously buffered input.\n");
+//--                 sim_debug (DBG_WARN, & opcon_dev, "%s: Discarding previously buffered input.\n", __func__);
 //--               }
 //--             // TODO: discard any buffered chars from SIMH?
 //--             con_statep->tailp = con_statep->buf;
@@ -304,56 +324,58 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
 //--             // cancel_run(STOP_IBKPT);
 //--             // sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Auto-breakpoint for read.\n");
 //--             return 0;
-//--         case 033:               // Write ASCII
-//--             con_statep->io_mode = write_mode;
-//--             writeBufCnt = 0;
-//-- 
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Write ASCII cmd received\n");
-//--             if (con_statep->tailp != con_statep->buf)
-//--               {
-//--                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Might be discarding previously buffered input.\n");
-//--               }
-//--             *majorp = 00;
-//--             *subp = 0;
-//--             return 0;
-//--         case 040:               // Reset
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Reset cmd received\n");
-//--             con_statep->io_mode = no_mode;
-//--             *majorp = 0;
-//--             *subp = 0;
-//--             *have_status = 1;
-//--             return 0;
-//--         case 051:               // Write Alert -- Ring Bell
-//--             // AN70-1 says only console channels respond to this command
-//--             sim_printf("CONSOLE: ALERT\n");
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Write Alert cmd received\n");
-//--             sim_putchar('\a');
-//--             *majorp = 0;
-//--             *subp = 0;
-//--             *have_status = 1;
-//--             return 0;
-//--         case 057:               // Read ID (according to AN70-1)
-//--             // FIXME: No support for Read ID; appropriate values are not known
-//--             // [CAC] Looking at the bootload console code, it seems more 
-//--             // concerned about the device responding, rather then the actual
-//--             // returned value. Make some thing up.
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Read ID received\n");
-//--             //*majorp = 05;
-//--             //*subp = 1;
-//--             *majorp = 0;
-//--             *subp = 0;
-//--             *have_status = 1;
-//--             return 0;
-//--         default: {
-//--             *majorp = 05;   // command reject
-//--             *subp = 1;      // invalid instruction code
-//--             sim_debug (DBG_ERR, & opcon_dev, "con_iom_cmd: Unknown command 0%o\n", dev_cmd);
-//--             *have_status = 1;
-//--             return 1;
-//--         }
-//--     }
+
+        case 033:               // Write ASCII
+            console_state . io_mode = write_mode;
+            writeBufCnt = 0;
+
+            sim_debug (DBG_NOTIFY, & opcon_dev,
+                       "%s: Write ASCII cmd received\n", __func__);
+            if (console_state . tailp != console_state . buf)
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Might be discarding previously buffered input.\n");
+              }
+            * stati = 00;
+            return 0;
+
+        case 040:               // Reset
+            sim_debug (DBG_NOTIFY, & opcon_dev,
+                       "%s: Reset cmd received\n", __func__);
+            console_state . io_mode = no_mode;
+            * stati = 04000;
+            return 0;
+
+        case 051:               // Write Alert -- Ring Bell
+            // AN70-1 says only console channels respond to this command
+            sim_printf ("CONSOLE: ALERT\n");
+            sim_debug (DBG_NOTIFY, & opcon_dev,
+                       "%s: Write Alert cmd received\n", __func__);
+            sim_putchar('\a');
+            * stati = 04000;
+            return 0;
+
+        case 057:               // Read ID (according to AN70-1)
+            // FIXME: No support for Read ID; appropriate values are not known
+            // [CAC] Looking at the bootload console code, it seems more 
+            // concerned about the device responding, rather then the actual
+            // returned value. Make some thing up.
+            sim_debug (DBG_NOTIFY, & opcon_dev,
+                       "%s: Read ID received\n", __func__);
+            //*majorp = 05;
+            //*subp = 1;
+            * stati = 04000;
+            return 0;
+
+        default:
+          {
+            * stati = 04501; // command reject, invalid instruction code
+            sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
+                       __func__, p -> dev_cmd);
+            return 1;
+          }
+      }
     return 1;   // not reached
-}
+  }
 
 
 /*

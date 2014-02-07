@@ -395,8 +395,10 @@ static DEBTAB iom_dt [] =
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
     { "ERR", DBG_ERR },
+    { "WARN", DBG_WARN },
     { "DEBUG", DBG_DEBUG },
     { "ALL", DBG_ALL }, // don't move as it messes up DBG message
+    { "TRACE", DBG_TRACE },
     { NULL, 0 }
   };
 
@@ -1511,6 +1513,7 @@ void iom_interrupt (int iom_unit_num)
   {
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
       __func__, 'A' + iom_unit_num);
+    sim_debug (DBG_TRACE, & iom_dev, "\nIOM starting.\n");
 
     //iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
 
@@ -1557,6 +1560,9 @@ static int do_connect_chan (int iom_unit_num)
         sim_debug (DBG_DEBUG, & iom_dev,
                    "%s: Connect LPW at %#06o: %s\n", 
                     __func__, chanloc, lpw2text (& lpw, true));
+        sim_debug (DBG_TRACE, & iom_dev,
+                   "Connect LPW at %#06o: %s\n", 
+                    chanloc, lpw2text (& lpw, true));
 
         // 4.3.1a: CONNECT_CHANNEL = YES
     
@@ -1564,7 +1570,7 @@ static int do_connect_chan (int iom_unit_num)
 
         if (lpw . nc == 0 && lpw . trunout == 0)
           {
-             iom_fault (iom_unit_num, IOM_CONNECT_CHAN, "do_connect_chan", 1, iom_ill_tly_cont);
+             iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_ill_tly_cont);
              return 1;
           }
    
@@ -1572,7 +1578,7 @@ static int do_connect_chan (int iom_unit_num)
 
         if (lpw . nc == 0 && lpw . trunout == 1 && lpw . tally == 0)
           {
-             iom_fault (iom_unit_num, IOM_CONNECT_CHAN, "do_connect_chan", 1, 
+             iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, 
                         iom_lpw_tro_conn);
              return 1;
           }
@@ -1582,7 +1588,7 @@ static int do_connect_chan (int iom_unit_num)
         if (lpw . nc == 0 && lpw . trunout == 1 && lpw . tally > 1)
           {
              if (lpw . dcw_ptr  + lpw . tally >= 01000000)
-               iom_fault (iom_unit_num, IOM_CONNECT_CHAN, "do_connect_chan", 1, iom_256K_of);
+               iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_256K_of);
              return 1;
           }
    
@@ -1616,6 +1622,8 @@ static int do_connect_chan (int iom_unit_num)
     
         sim_debug (DBG_INFO, & iom_dev, "%s: PCW is: %s\n", 
                    __func__, pcw2text (& pcw));
+        sim_debug (DBG_TRACE, & iom_dev, "PCW is: %s\n", 
+                   pcw2text (& pcw));
 
         // BUG/TODO: Should these be user faults, not system faults?
 
@@ -1623,7 +1631,7 @@ static int do_connect_chan (int iom_unit_num)
 
         if (pcw . cp != 07)
           {
-            iom_fault (iom_unit_num, IOM_CONNECT_CHAN, "do_connect_chan channel pcw", 1, iom_not_pcw_conn);
+            iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_not_pcw_conn);
             return 1;
           }
         
@@ -1631,7 +1639,7 @@ static int do_connect_chan (int iom_unit_num)
 
         if (pcw . chan < 0 || pcw . chan >= max_channels)
           {
-            iom_fault(iom_unit_num, IOM_CONNECT_CHAN, "send channel pcw", 1, iom_ill_chan);
+            iom_fault(iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_ill_chan);
             return 1;
           }
     
@@ -1742,7 +1750,12 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 
     if (iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI)
       {
+        // 3. The connect channel PCW is treated differently by the CPI channel
+        // and the PSI channel. The CPI channel does a store status, The
+        // PSI channel goes into startup.
+
         word12 stati = 0;
+
         ret = dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, pcwp,
                              & stati, & need_data);
         if (ret)
@@ -1750,7 +1763,15 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
             sim_debug (DBG_DEBUG, & iom_dev,
                        "%s: dev_send_idcw returned %d\n", __func__, ret);
           }
-// XXX do status service, terminate interrupt?
+
+        if (stati & 04000)
+          {
+             status_service (iom_unit_num, chan, pcwp -> dev_code, stati);
+          }
+
+        send_terminate_interrupt (iom_unit_num, chan);
+
+        return 0;
       }
 
     lpw_t lpw; // Channel scratch pad
@@ -1782,6 +1803,9 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
             sim_debug (DBG_DEBUG, & iom_dev,
                        "LPW at %#06o: %s\n", chanloc,
                        lpw2text (& lpw, false));
+            sim_debug (DBG_TRACE, & iom_dev,
+                       "Payload LPW at %#06o: %s\n", 
+                        chanloc, lpw2text (& lpw, true));
           }
 
         // 4.3.1a: CONNECT_CHANNEL == NO
@@ -1794,14 +1818,14 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
             // 4.3.1a: 256K OVERFLOW?
             if (lpw . ae == 0 && lpw . dcw_ptr  + lpw . tally >= 01000000)
               {
-                iom_fault (iom_unit_num, IOM_CONNECT_CHAN, "do_connect_chan", 1, iom_256K_of);
+                iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_256K_of);
                 return 1;
               }
-            if (lpw . tally <= 1)
-              {
-                ptro = true;
-                sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (d)\n", __func__);
-              }
+            //if (lpw . tally <= 1)
+              //{
+                //ptro = true;
+                //sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (d)\n", __func__);
+              //}
           }
     
         if (lpw . nc == 0 && lpw . trunout == 1)
@@ -1815,29 +1839,31 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
               {
                 // 4.3.1a: TALLY == 0
                 // 4.3.1a: SET USER FAULT FLAG
-                iom_fault (iom_unit_num, chan, "do_connect_chan", 0, 1);
+                iom_fault (iom_unit_num, chan, __func__, 0, 1);
               }
             else if (lpw . tally > 1)
               {
                 if (lpw . ae == 0 && lpw . dcw_ptr  + lpw . tally >= 01000000)
                   {
-                    iom_fault (iom_unit_num, IOM_CONNECT_CHAN, "do_connect_chan", 1, iom_256K_of);
+                    iom_fault (iom_unit_num, IOM_CONNECT_CHAN, __func__, 1, iom_256K_of);
                     return 1;
                   }
               }
             else // tally == 1
               {
-                ptro = true;
-                sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (a)\n", __func__);
+// Turning this code on does not fix bug of 2nd IDCW @ 78
+// because the tall is 3
+                //ptro = true;
+                //sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (a)\n", __func__);
               }
 
           }
     
-        if (lpw . nc == 1)
-          {
-            ptro = true;
-            sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (b)\n", __func__);
-          }
+        //if (lpw . nc == 1)
+          //{
+            //ptro = true;
+            //sim_debug (DBG_DEBUG, & iom_dev, "%s: forcing ptro (b)\n", __func__);
+          //}
 
         // 4.3.1a: LPW 20?
     
@@ -1866,6 +1892,8 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
         fetch_and_parse_dcw (iom_unit_num, chan, & dcw, dcw_addr, 1);
         sim_debug (DBG_INFO, & iom_dev, "%s: DCW is: %s\n",
                    __func__, dcw2text (& dcw));
+        sim_debug (DBG_TRACE, & iom_dev, "DCW is: %s\n",
+                   dcw2text (& dcw));
     
         //if (dcw . type == ddcw && dcw . control == 0)
           //ptro = true;
@@ -1895,8 +1923,28 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                 dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, & dcw . fields . instr, & stati, & need_data);
                 // The IOM boot IDCW has a control of 0, but that means that
                 // the IOTD is ignored.
+                // Exit DCW loop if non-zero major status
+                if ((stati & 04000) && // have status
+                    ((stati & 03700) != 0))
+                  {
+                    sim_debug (DBG_DEBUG, & iom_dev,
+                               "%s: IDCW returns non-zero status(%04o); terminating DCW loop\n",
+                               __func__, stati);
+                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati);
+                    break;
+                  }
+                // terminate?
+// The code that searches for the console has an IDCW reset with terminate,
+// follow by the IDCW alert. Why does the reset not cause a terminate?
+// Guess: terminate condition is control == 0 && major status != 0?
                 //if (dcw . fields . instr . control == 0)
-                  //ptro = true;
+                if (dcw . fields . instr . control == 0 &&
+                    (stati & 04000) && // have status
+                    ((stati & 03700) != 0))
+                  {
+                    ptro = true;
+                    sim_debug (DBG_TRACE, & iom_dev, "IDCW terminate\n");
+                  }
               }
             goto D;
           }
@@ -3062,11 +3110,11 @@ static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp
       {
         // BUG: no device connected; what's the appropriate fault code(s) ?
 //--         chanp->status.power_off = 1;
-        * stati |= 03000; // have_status, power off
+        * stati |= 06000; // have_status, power off
         sim_debug (DBG_WARN, & iom_dev,
                    "%s: No device connected to channel %#o(%d)\n",
                    __func__, chan, chan);
-        iom_fault(iom_unit_num, chan, "list-service", 0, 0);
+        iom_fault(iom_unit_num, chan, __func__, 0, 0);
         return 1;
     }
 //--     chanp->status.power_off = 0;
@@ -3371,6 +3419,8 @@ static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t *d
         // This DCW is an IOTD -- do I/O and disconnect.  So, we'll
         // return a code zero --  don't ask for another list service
         *control = 0;
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: DDCW disconnect\n", __func__);
       }
     else
      {
@@ -3381,6 +3431,8 @@ static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t *d
         *control = 3;
 #else
         *control = 2;
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: DDCW proceed\n", __func__);
 #endif
       }
 
@@ -3770,6 +3822,9 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
     sim_debug (DBG_DEBUG, & iom_dev,
                "%s: Writing status for chan %d dev_code %d to 0%o=>0%o\n",
                __func__, chan, dev_code, scw, addr);
+    sim_debug (DBG_TRACE, & iom_dev,
+               "Writing status for chan %d dev_code %d to 0%o=>0%o\n",
+               chan, dev_code, scw, addr);
 #else
     t_uint64 sc_word = chanp->scw;
     int addr = getbits36(sc_word, 0, 18);   // absolute
@@ -3782,6 +3837,8 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
 #endif
     sim_debug (DBG_DEBUG, & iom_dev, "%s: Status: 0%012llo 0%012llo\n",
                __func__, word1, word2);
+    sim_debug (DBG_TRACE, & iom_dev, "Status: 0%012llo 0%012llo\n",
+               word1, word2);
     sim_debug (DBG_DEBUG, & iom_dev,
                "%s: Status: 0%04o, (12)e/o=%c, (13)marker=%c, (14..15)Z, 16(Z?), 17(Z)\n",
                __func__, stati,
@@ -3798,42 +3855,61 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
       }
 #endif
     store_abs_pair (addr, word1, word2);
-    switch (lq)
+
+    if (tally > 0 || (tally == 0 && lq != 0))
       {
-        case 0:
-          // list
-          if (tally != 0)
-            {
-              addr += 2;
+        switch (lq)
+          {
+            case 0:
+              // list
+              if (tally != 0)
+                {
+                  addr += 2;
+                  -- tally;
+                }
+              break;
+
+            case 1:
+              // 4 entry (8 word) queue
+              if (tally % 8 == 1 || tally % 8 == -1)
+                addr -= 8;
+              else
+                addr += 2;
               -- tally;
-            }
-          break;
+              break;
 
-        case 1:
-          // 4 entry (8 word) queue
-          if (tally % 8 == 1 || tally % 8 == -1)
-            addr -= 8;
-          else
-            addr += 2;
-          -- tally;
-          break;
+            case 2:
+              // 16 entry (32 word) queue
+              if (tally % 32 == 1 || tally % 32 == -1)
+                addr -= 32;
+              else
+                addr += 2;
+              -- tally;
+              break;
+          }
 
-        case 2:
-          // 16 entry (32 word) queue
-          if (tally % 32 == 1 || tally % 32 == -1)
-            addr -= 32;
-          else
-            addr += 2;
-          -- tally;
-          break;
+#if 0 // XXX CAC this code makes no sense
+        if (tally < 0 && tally == - (1 << 11) - 1) // 12bits => -2048 .. 2047
+          {
+            sim_debug (DBG_WARN, & iom_dev,
+                       "%s: Tally SCW address 0%o wraps to zero\n",
+                       __func__, tally);
+            tally = 0;
+          }
+#else
+       while (tally < 0)
+          {
+            sim_debug (DBG_WARN, & iom_dev,
+                       "%s: Tally SCW address 0%o wraps at zero\n",
+                       __func__, tally);
+            tally += 4096;
+          }
+#endif
+        sc_word = setbits36 (sc_word, tally, 24, 12);
+        sc_word = setbits36 (sc_word, addr, 0, 18);
+        store_abs_word (scw, sc_word);
       }
-    if (tally < 0 && tally == - (1 << 11) - 1) // 12bits => -2048 .. 2047
-      {
-        sim_debug (DBG_WARN, & iom_dev,
-                   "%s: Tally SCW address 0%o wraps to zero\n",
-                   __func__, tally);
-        tally = 0;
-      }
+
     // BUG: update SCW in core
     return 0;
   }
