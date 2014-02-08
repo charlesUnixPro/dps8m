@@ -3570,7 +3570,8 @@ void mvt(DCDstruct *ins)
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, rIR, I_TRUNC);
-    
+    SCF(e->N1 > e->N2, rIR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
+
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
     
     for(int i = 0 ; i < min(e->N1, e->N2); i += 1)
