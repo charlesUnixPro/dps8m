@@ -1769,9 +1769,12 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
              status_service (iom_unit_num, chan, pcwp -> dev_code, stati);
           }
 
-        send_terminate_interrupt (iom_unit_num, chan);
+        if (! need_data)
+          {
+            send_terminate_interrupt (iom_unit_num, chan);
 
-        return 0;
+            return 0;
+          }
       }
 
     lpw_t lpw; // Channel scratch pad

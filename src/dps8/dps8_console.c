@@ -336,6 +336,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Might be discarding previously buffered input.\n");
               }
             * stati = 00;
+            * need_data = true;
             return 0;
 
         case 040:               // Reset
@@ -363,7 +364,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
                        "%s: Read ID received\n", __func__);
             //*majorp = 05;
             //*subp = 1;
-            * stati = 04000;
+            * stati = 04500;
             return 0;
 
         default:
@@ -396,14 +397,14 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //--         return 1;
 //--     
 //--     check_keyboard(chan);
-//--     
-//--     switch (con_statep->io_mode) {
-//--         case no_mode:
-//--             sim_debug (DBG_ERR, & opcon_dev, "con_iom_io: Console is uninitialized\n");
-//--             *majorp = 05;       // 05 -- Command Reject
-//--             *subp = 1;          // 01 Invalid Instruction Code
-//--             return 1;
-//--             
+    
+    switch (console_state . io_mode)
+      {
+        case no_mode:
+          sim_debug (DBG_ERR, & opcon_dev, "%s: Console is uninitialized\n", __func__);
+          * stati = 05001;       // 05 -- Command Reject 01 Invalid Instruction Code
+          return 1;
+            
 //--         case read_mode: {
 //--             // Read keyboard if we don't have an EOL from the operator
 //--             // yet
@@ -469,9 +470,10 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //--             cancel_run(STOP_BKPT);
 //--             return ret;
 //--         }
-//--             
-//--         case write_mode: {
-//--             
+            
+        case write_mode:
+          {
+            
 //-- #if 0
 //--             char buf[40];   // max four "\###" sequences
 //--             *buf = 0;
@@ -513,20 +515,38 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //--               }
 //-- #endif
 //-- 
-//--             *majorp = 0;
-//--             *subp = 0;
-//--             
-//--             return 0;
-//--         }
-//--             
-//--         default:
-//--             sim_debug (DBG_ERR, & opcon_dev, "con_iom_io: Console is in unknown mode %d\n", con_statep->io_mode);
-//--             *majorp = 05;
-//--             *subp = 1;
-//--             return 1;
-//--     }
-//-- }
-//-- 
+            sim_printf ("CONSOLE: ");
+            //sim_printf ("tally %d\n", * tally);
+            int nchars = 0;
+            word36 datum;
+            while (* tally)
+              {
+                if (nchars <= 0)
+                  {
+                    datum = * wordp ++;
+                    nchars = 4;
+                  }
+                word36 wide_char = datum >> 27; // slide leftmost char into low byte
+                datum = datum << 9; // lose the leftmost char
+                nchars --;
+                char ch = wide_char & 0x7f;
+                sim_printf ("%c", ch);
+                if (ch == '\r')
+                  sim_printf ("\n");
+                tally --;
+              }
+            * stati = 0;
+            return 0;
+          }
+            
+        default:
+          sim_debug (DBG_ERR, & opcon_dev, "%s: Console is in unknown mode %d\n", __func__, console_state . io_mode);
+          * stati = 0501;
+          return 1;
+      }
+    return 0;
+  }
+
 //-- // The IOM will send a fault to the device for TRO and/or PTRO
 //-- // pre ? PTRO : TRO
 //-- int con_iom_fault(int chan, bool pre)
@@ -540,8 +560,8 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //--         sim_printf ("  %012llo\n", writeBuf [i]);
 //--       }
 //-- 
-    return 0;
-  }
+//--     return 0;
+//--   }
 //-- 
 //-- // ============================================================================
 //-- 
