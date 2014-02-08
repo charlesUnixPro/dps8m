@@ -733,7 +733,7 @@ static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp
 static int do_payload_channel (int iom_unit_num, pcw_t * pcw);
 //-- static int send_channel_pcw (int iom_unit_num, int chan, int dev_code, int addr);
 //-- static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *controlp/*, flag_t *need_indir_svc */);
-static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t * dcwp, int * control);
+static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t * dcwp, int * control, word12 * stati);
 static int lpw_write (int chan, int chanloc, const lpw_t* lpw);
 static int do_connect_chan (int iom_unit_num);
 static char * lpw2text (const lpw_t * p, int conn);
@@ -742,7 +742,7 @@ static char* dcw2text(const dcw_t *p);
 static void fetch_and_parse_lpw (lpw_t * p, int addr, bool is_conn);
 static void decode_idcw(int iom_unit_num, pcw_t *p, flag_t is_pcw, t_uint64 word0, t_uint64 word1);
 static void fetch_and_parse_dcw (int iom_unit_num, int chan, dcw_t *p, int addr, int read_only);
-static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati);
+static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount);
 //-- //static int send_chan_flags();
 static int send_general_interrupt (int iom_unit_num, int chan, int pic);
 static int send_terminate_interrupt (int iom_unit_num, int chan);
@@ -1766,7 +1766,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 
         if (stati & 04000)
           {
-             status_service (iom_unit_num, chan, pcwp -> dev_code, stati);
+             status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> chan_data);
           }
 
         if (! need_data)
@@ -1933,7 +1933,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                     sim_debug (DBG_DEBUG, & iom_dev,
                                "%s: IDCW returns non-zero status(%04o); terminating DCW loop\n",
                                __func__, stati);
-                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati);
+                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> chan_data);
                     break;
                   }
                 // terminate?
@@ -2049,6 +2049,60 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
            user_fault_flag = iom_cs_normal;
          }
     
+//#define LPW_REORDER
+// Doesn't actually fix the problem
+#ifdef LPW_REORDER
+// This a duplicate of the code from D:. We need to update the LPW before
+// sending the DDCW, so we copy the update code here, and instead of
+// falling through to D, just to END.
+
+        // 4.3.1c: SEND FLAGS TO CHANNEL
+//XXX         channel_fault (chan);
+    
+        // XXX SEND FLAGS TO CHANNEL
+    
+        // 4.3.1c: LPW 21?
+    
+        if (lpw . nc == 0)
+          {
+    
+            // 4.3.1c: LPW 21 == 0 (UPDATE)
+    
+            // 4.3.1c: UPDATE LPW ADDRESS AND TALLY
+    
+            -- lpw . tally;
+            lpw . dcw_ptr ++;
+    
+          }
+          
+        // 4.3.1c: IDCW OR FIRST_LIST?
+    
+        if (dcw . type == idcw || first_list)
+    
+          {
+            // 4.3.1c: IDCW OR FIRST_LIST == YES
+    
+            // 4.3.1c:  WRITE LPW AND LPWX INTO MAILBOXES (scratch and core)
+    
+            lpw_write (chan, chanloc, & lpw);
+    
+            goto end;
+          }
+        else
+          {
+            // 4.3.1c: IDCW OR FIRST_LIST == NO
+    
+            // TDCW?
+    
+            if (lpw . nc == 0 || dcw . type == tdcw)
+              {
+                // 4.3.1c:  WRITE LPW INTO MAILBOX (scratch and core)
+    
+                lpw_write (chan, chanloc, & lpw);
+              }
+          }
+#endif
+
         // 4.3.1b: SEND DCW TO CHANNEL
     
         // XXX SEND DCW TO CHANNEL
@@ -2059,7 +2113,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
         // IOTD (do I/O and disconnect), or 2 otherwise.
         // return code of 1 for no iom_io callback set, or result or iom_io
         // callback: 1 for internal error or data exhausted.
-        ret = do_ddcw (iom_unit_num, chan, pcwp -> dev_code, addr, & dcw, & control);
+        ret = do_ddcw (iom_unit_num, chan, pcwp -> dev_code, addr, & dcw, & control, & stati);
         if (control == 0)
           {
             ptro = true;
@@ -2067,6 +2121,11 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
           }
 
         sim_debug (DBG_DEBUG, & iom_dev, "%s: do_ddcw returns %d\n", __func__, ret);
+#ifdef LPW_REORDER
+// We already updated the LPW; jump to end instead of falling through.
+        goto end;
+#endif
+
     
         // 4.3.1c: D
     D:;
@@ -2122,7 +2181,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 
         if (stati & 04000)
           {
-             status_service (iom_unit_num, chan, pcwp -> dev_code, stati);
+             status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> chan_data);
           }
 
 
@@ -3335,7 +3394,7 @@ static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp
  *
  */
 
-static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t *dcwp, int *control)
+static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t *dcwp, int *control, word12 * stati)
   {
     
 //--     channel_t* chanp = get_chan(iom_unit_num, chan, dev_code);
@@ -3395,8 +3454,7 @@ static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t *d
     // Indirect List Service
     // The major status word is 4 bits; the 5th bit will be used here to
     // also track the power-off bit 
-    word12 stati = 0;
-    ret = iom_io (unitp, chan, dev_code, & tally, wordp, & stati);
+    ret = iom_io (unitp, chan, dev_code, & tally, wordp, stati);
     if (ret != 0)
       {
         sim_debug (DBG_DEBUG, & iom_dev,
@@ -3769,7 +3827,7 @@ static int lpw_write (int chan, int chanloc, const lpw_t * p)
  *
  */
 
-static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati)
+static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount)
 {
     // See page 33 and AN87 for format of y-pair of status info
     
@@ -3797,8 +3855,8 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
     word1 = setbits36(word1, 18, 3, chan_status.chan_stat);
     word1 = setbits36(word1, 21, 3, chan_status.iom_stat);
     word1 = setbits36(word1, 24, 6, chan_status.addr_ext);
-    word1 = setbits36(word1, 30, 6, chanp->status.rcount);
 #endif
+    word1 = setbits36(word1, 30, 6, rcount);
     
     word2 = 0;
 #if 0
@@ -3852,8 +3910,8 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
 #if 1
     if (lq == 3)
       {
-        sim_debug (DBG_WARN, &iom_dev, "status_service: SCW for channel %d has illegal LQ\n",
-                chan);
+        sim_debug (DBG_WARN, &iom_dev, "%s: SCW for channel %d has illegal LQ\n",
+                __func__, chan);
         lq = 0;
       }
 #endif
@@ -3900,16 +3958,26 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
             tally = 0;
           }
 #else
-       while (tally < 0)
+       // tally is 12 bit math
+       if (tally & ~07777)
           {
             sim_debug (DBG_WARN, & iom_dev,
-                       "%s: Tally SCW address 0%o wraps at zero\n",
+                       "%s: Tally SCW address 0%o under/over flow\n",
                        __func__, tally);
-            tally += 4096;
+            tally &= 07777;
           }
 #endif
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s: Updating SCW from: %012llo\n",
+                   __func__, sc_word);
         sc_word = setbits36 (sc_word, tally, 24, 12);
         sc_word = setbits36 (sc_word, addr, 0, 18);
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s:                to: %012llo\n",
+                   __func__, sc_word);
+        sim_debug (DBG_DEBUG, & iom_dev,
+                   "%s:                at: %06o\n",
+                   __func__, scw);
         store_abs_word (scw, sc_word);
       }
 
