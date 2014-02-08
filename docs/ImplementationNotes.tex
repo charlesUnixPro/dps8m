@@ -932,6 +932,52 @@ unpaged."
 
 The same error appears on page 390.
 
+
+\paragraph{\texttt{MVT instruction.}}
+
+\begin{verbatim}
+20184 crashes in formatting first_message; an index register is
+slightly negative, and an MLR instruction is (correctly) treating it
+as unsigned, and running off of the end of the segment, where
+appendCycle correctly slaps its hand for exceeding the segment
+boundary.
+
+The X register gets set negative here:
+
+ascii.no_trim:
+        mvt     (pr,rl),(pr,rl),fill(040)     " we will do some useless filling
+        desc9a  pr1|0,al
+        desc9a  pr7|0,x4
+        arg     ascii.bad_char_trans
+        ttn     ascii.truncated
+
+        a9bd    7|0,al
+        als     18
+        sta     ascii.tct_count "  so we can subtract
+        sbx4    ascii.tct_count " cant be negative, since no truncation
+        tmoz    return_to_caller        " but be safe
+        tra     main_char_loop
+
+X4 gets negative becuase A is .GT. X4; the MVT correct detects this
+and sets the truncate bit. The code tests the TRO bit to prevent the
+underflow.
+
+Why, O Why, is the code using TTN and not TTRN? Why?
+
+Somebody is lying.
+\end{verbatim}
+
+In the description of the indicator register (c.f. AL39 Fig. 3-7) the tally runout indicator has this note. 
+
+This indicator is set OFF at initialization of any tallying operation, that is, any repeat instruction or any indirect then 
+tally address modification. It is then set ON for any of the following conditions: ...
+(4) If an EIS string scanning instruction reaches the end of the string without finding a match condition.
+
+Apparently MVT also follows this pattern -- although AL-39, DH02-01 and Bull RJ78 REV02 make absolutely no mention of this behavior. 
+This is either a hack, bug or an undocumented feature. \texttt{MVT} instruction in dps8_eis.c has been modified to set the TALLY bit as well as the TRUNC bit uon overflow
+
+
+
 \paragraph{\textbf{tss} instruction}
 
 Page 169, the \textbf{tss} instruction:
