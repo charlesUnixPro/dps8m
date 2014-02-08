@@ -5360,7 +5360,11 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         case 0447:  ///< spl - Store Pointers and Lengths
-            return STOP_UNIMP;
+// XXX Unimplemented; dummy handler here.
+            sim_debug (DBG_ERR, & cpu_dev, "XXX Faking SPL instruction\n");
+            memset (Yblock8, 0, sizeof (Yblock8));
+            sim_debug (DBG_ERR, & cpu_dev, "XXX Faking SPL instruction\n");
+            break;
             
         // EIS - Address Register Special Arithmetic
         case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register
