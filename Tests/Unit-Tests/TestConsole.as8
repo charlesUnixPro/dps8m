@@ -30,6 +30,15 @@ connect_lpw:
 	oct	0		" SCW
 	oct	0		" DCW
 
+" Console Channel Mailbox
+
+	org	console_mbx
+console_lpw:
+	oct	0		" LPW
+	oct	0		" LPWE
+	oct	0		" SCW
+	oct	0		" DCW
+
 " Main procedure
 
 	org	010000
@@ -61,6 +70,8 @@ test:
 
 	lda	lpw2
 	sta	connect_lpw
+	lda	lpw3
+	sta	console_lpw
 	cioc	cioc_port
 
 	emcall	18
@@ -77,7 +88,8 @@ cioc_port:
 
 " ALERT
 
-lpw1:	vfd	18/pwc1,6/2,12/1
+"lpw1:	vfd	18/pwc1,6/2,12/1
+lpw1:	vfd	18/pwc1,6/4,12/0
 
 	even
 pwc1:
@@ -87,14 +99,25 @@ pwc1:
 " write.ASCII
 
 
-lpw2:	vfd	18/pcw2,6/2,12/1
+"lpw2:	vfd	18/pcw2,6/2,12/2
+lpw2:	vfd	18/pcw2,6/4,12/0
 
 	even
 pcw2:
-	vfd	6/CONSOLE.request_status,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	"vfd	6/CONSOLE.request_status,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+	vfd	6/CONSOLE.write_ASCII,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
 	vfd	9/console_channel,27/0
-	"vfd	6/CONSOLE.write_ASCII,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
-	"vfd	9/console_channel,27/0
+
+
+
+
+lpw3:	vfd	18/pcw3,6/2,12/1
+	even
+
+" idcw
+pcw3:	"vfd	6/CONSOLE.write_ASCII,6/console_dev_code,6/0,3/7,1/0,2/terminate,6/non_data,6/0
+" iotd
+	vfd	18/hw_msg,18/hw_len
 
 msg1:	aci	'Console test\n\0'
 
@@ -102,3 +125,6 @@ msg2:	aci	'Expect ALERT\n\0'
 
 msg3:	aci	'Expect "Hello, world"\n\0'
 
+
+	equ	hw_len, 12
+hw_msg:	aci	'Hello, world'

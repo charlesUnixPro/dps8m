@@ -3,8 +3,8 @@ do base_system.ini
 reset scu
 ;set iom debug=all
 ;set opcon debug=all
-;set cpu debug=trace
+;set cpu debug=trace;intr;fault
 load TestConsole.oct
-
 g 0
+q
 
