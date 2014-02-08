@@ -149,13 +149,18 @@ Writing SDW to address 00001034 (DSBR.ADDR+2*14 offset)
 Writing SDW to address 00001024 (DSBR.ADDR+2*10 offset) 
       4095 (007777) words loaded into segment 10 (12) at address 211560
 LOT => PR[4]: SNR=00012 RNR=0 WORDNO=000000 BITNO:00
+LOT => PR[5]: SNR=00012 RNR=0 WORDNO=000000 BITNO:00
     loading stack_0 as segment# 8
 Writing SDW to address 00001020 (DSBR.ADDR+2*8 offset) 
       49152 (140000) words loaded into segment 8 (10) at address 221560
-snapping lot_ links....
+snapping lot_ links...
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-Howdy world this is 'TestIndirect'! - It's ' 1/06 20:31 '
+	211560 + 0 => 000000000232
+	211560 + 13 => 000013001756
+	211560 + 14 => 000014002570
+	211560 + 15 => 000015000422
+Howdy world this is 'TestIndirect'! - It's ' 2/08 13:14 '
 TINDC$magicC was = 2718281828 (Should be 2718281828)
 TestIndirectA: magicA: 14 000043 2324 000000
 
@@ -313,7 +318,7 @@ _printTemps:3: t2(11)=41
 _printTemps:3: t2(12)=42
 Now leaving TINC$_main_C ...
 T-H-A-T-S all folks (from 0|main) !!! 
-cpuCycles = 118425
+cpuCycles = 118426
 TestIndirect-28> g 1 
 
 DIS instruction, IC: main|145 (00000145) (000000616000)
