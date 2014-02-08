@@ -67,7 +67,7 @@ then
             TEST="$VARIABLE".out
 
             echo Regenerating "$TEST" ...
-#            "$DPS8" "$VARIABLE" > $TEST
+            "$DPS8" "$VARIABLE" > $TEST
 
         done
         exit

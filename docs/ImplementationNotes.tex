@@ -932,6 +932,124 @@ unpaged."
 
 The same error appears on page 390.
 
+\paragraph{\texttt{FRD instruction.}}
+
+In the description of the \texttt{FRD} instruction AL39 has these notes:
+
+\begin{verbatim}
+The frd instruction is executed as follows:
+C(AQ) + (11...1)29,71 → C(AQ)
+If C(AQ)0 = 0, then a carry is added at AQ71
+If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+If overflow does not occur, C(EAQ) is normalized.
+If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
+\end{verbatim}
+
+I believe this is wrong.
+
+
+Referring to my implementation notes of \texttt{FRD} in dps8_math.c...
+
+\begin{verbatim}
+//! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 28 bits and a normalization on C(EAQ).
+//! A true round is a rounding operation such that the sum of the result of applying the operation to two numbers of
+//! equal magnitude but opposite sign is exactly zero.
+
+//! The frd instruction is executed as follows:
+//! C(AQ) + (11...1)29,71 → C(AQ)
+//! If C(AQ)0 = 0, then a carry is added at AQ71
+//! If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+//! If overflow does not occur, C(EAQ) is normalized.
+//! If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
+
+//! I believe AL39 is incorrect; bits 28-71 should be set to 0, not 29-71. DH02-01 & Bull RJ78 are correct.
+
+//! test case 15.5
+//!                 rE                     rA                                     rQ
+//! 014174000000 00000110 000111110000000000000000000000000000 000000000000000000000000000000000000
+//! +                                                  1111111 111111111111111111111111111111111111
+//! =            00000110 000111110000000000000000000001111111 111111111111111111111111111111111111
+//! If C(AQ)0 = 0, then a carry is added at AQ71
+//! =            00000110 000111110000000000000000000010000000 000000000000000000000000000000000000
+//! 0 → C(AQ)29,71
+//!              00000110 000111110000000000000000000010000000 000000000000000000000000000000000000
+//! after normalization .....
+//! 010760000002 00000100 011111000000000000000000001000000000 000000000000000000000000000000000000
+//! This is wrong
+
+//! 0 → C(AQ)28,71
+//!              00000110 000111110000000000000000000000000000 000000000000000000000000000000000000
+//! after normalization .....
+//! 010760000000 00000100 011111000000000000000000000000000000 000000000000000000000000000000000000
+//! This is correct
+
+//!
+//! GE CPB1004F, DH02-01 (DPS8/88) & Bull DPS9000 RJ78 ... have this ...
+
+//! The rounding operation is performed in the following way.
+//! -  a) A constant (all 1s) is added to bits 29-71 of the mantissa.
+//! -  b) If the number being rounded is positive, a carry is inserted into the least significant bit position of the adder.
+//! -  c) If the number being rounded is negative, the carry is not inserted.
+//! -  d) Bits 28-71 of C(AQ) are replaced by zeros.
+//! If the mantissa overflows upon rounding, it is shifted right one place and a corresponding correction is made to the exponent.
+//! If the mantissa does not overflow and is nonzero upon rounding, normalization is performed.
+
+//! If the resultant mantissa is all zeros, the exponent is forced to -128 and the zero indicator is set.
+//! If the exponent resulting from the operation is greater than +127, the exponent Overflow indicator is set.
+//! If the exponent resulting from the operation is less than -128, the exponent Underflow indicator is set.
+//! The definition of normalization is located under the description of the FNO instruction.
+
+//! So, Either AL39 is wrong or the DPS8m did it wrong. (Which was fixed in later models.) I'll assume AL39 is wrong.
+
+\end{verbatim}
+
+
+
+\paragraph{\texttt{MVT instruction.}}
+
+\begin{verbatim}
+20184 crashes in formatting first_message; an index register is
+slightly negative, and an MLR instruction is (correctly) treating it
+as unsigned, and running off of the end of the segment, where
+appendCycle correctly slaps its hand for exceeding the segment
+boundary.
+
+The X register gets set negative here:
+
+ascii.no_trim:
+        mvt     (pr,rl),(pr,rl),fill(040)     " we will do some useless filling
+        desc9a  pr1|0,al
+        desc9a  pr7|0,x4
+        arg     ascii.bad_char_trans
+        ttn     ascii.truncated
+
+        a9bd    7|0,al
+        als     18
+        sta     ascii.tct_count "  so we can subtract
+        sbx4    ascii.tct_count " cant be negative, since no truncation
+        tmoz    return_to_caller        " but be safe
+        tra     main_char_loop
+
+X4 gets negative becuase A is .GT. X4; the MVT correct detects this
+and sets the truncate bit. The code tests the TRO bit to prevent the
+underflow.
+
+Why, O Why, is the code using TTN and not TTRN? Why?
+
+Somebody is lying.
+\end{verbatim}
+
+In the description of the indicator register (c.f. AL39 Fig. 3-7) the tally runout indicator has this note. 
+
+This indicator is set OFF at initialization of any tallying operation, that is, any repeat instruction or any indirect then 
+tally address modification. It is then set ON for any of the following conditions: ...
+(4) If an EIS string scanning instruction reaches the end of the string without finding a match condition.
+
+Apparently MVT also follows this pattern -- although AL-39, DH02-01 and Bull RJ78 REV02 make absolutely no mention of this behavior. 
+This is either a hack, bug or an undocumented feature. \texttt{MVT} instruction in dps8_eis.c has been modified to set the TALLY bit as well as the TRUNC bit uon overflow
+
+
+
 \paragraph{\textbf{tss} instruction}
 
 Page 169, the \textbf{tss} instruction:

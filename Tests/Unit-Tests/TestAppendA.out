@@ -28,10 +28,10 @@ Seg 6 - *** Uninitialized ***
 Seg 7 - *** Uninitialized ***
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-Date : ' 1/06 20:35 '
+Date : ' 2/08 13:14 '
 froms0=123
-Mon , 6 Jan  2014 20:35:20 Pst 
-Date 0: ' 1/06 20:35 '
+Sat , 8 Feb  2014 13:14:31 Pst 
+Date 0: ' 2/08 13:14 '
 This is A1... 3457623 -42 ASDF 000116 000045 | 000000 000043 000017 000000
 desc1:1: 000116 000045, PR2: saved: 000000 000017, modified:000000 000116
 1: If this works, I'll be surprised...
@@ -45,7 +45,7 @@ This is the new ioa! -1234567890 123456 654321 7654321 12 345670 QwEr ABC123
 '0123456789+-'
 Well, I'll be ....
 
-cpuCycles = 8697
+cpuCycles = 8700
 TestAppendA-15> g 0
 
 DIS instruction, IC: Play|114 (00000114) (000000616000)
