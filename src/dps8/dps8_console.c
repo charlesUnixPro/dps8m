@@ -533,9 +533,9 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
                 sim_printf ("%c", ch);
                 if (ch == '\r')
                   sim_printf ("\n");
-                tally --;
+                (* tally) --;
               }
-            * stati = 0;
+            * stati = 04000;
             return 0;
           }
             
