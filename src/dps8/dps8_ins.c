@@ -5390,7 +5390,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     // If A = 1, then
                     //   C(ARn.WORDNO) + ADDRESS + (C(REG) + C(ARn.CHAR)) / 4 → C(ARn.WORDNO)
                     //   (C(ARn.CHAR) + C(REG))mod4 → C(ARn.CHAR)
-                    AR[ARn].WORDNO += (address + r / 4);
+                    AR[ARn].WORDNO += (address + (r + AR[ARn].CHAR) / 4);
                     AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
