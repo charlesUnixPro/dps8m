@@ -37,6 +37,7 @@ static t_stat sys_cable (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat loadSystemBook (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
+static t_stat absAddr (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -49,7 +50,8 @@ CTAB dps8_cmds[] =
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
-    {"LSB", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
+    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n"},
+    {"ABS", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -307,6 +309,204 @@ char * lookupSystemBookAddress (word18 segno, word18 offset)
               offset);
    return buf;
  }
+
+// ABS segno:offset
+
+static t_stat absAddr (int32 arg, char * buf)
+  {
+    int segno, offset;
+    if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
+      return SCPE_ARG;
+    //char * ans = lookupSystemBookAddress (segno, offset);
+    //sim_printf ("%s\n", ans ? ans : "not found");
+    word36 res;
+
+    if (get_addr_mode () != APPEND_mode)
+      {
+        sim_printf ("CPU not in append mode\n");
+        return SCPE_ARG;
+      }
+
+    if (DSBR.U == 1) // Unpaged
+      {
+        if (2 * (uint) /*TPR . TSR*/ segno >= 16 * ((uint) DSBR . BND + 1))
+          {
+            sim_printf ("DSBR boundary violation.\n");
+            return SCPE_ARG;
+          }
+
+        // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+
+        word36 SDWe, SDWo;
+        core_read (DSBR . ADDR + 2 * /*TPR . TSR*/ segno, & SDWe);
+        core_read (DSBR . ADDR + 2 * /*TPR . TSR*/ segno  + 1, & SDWo);
+
+        // 3. If SDW.F = 0, then generate directed fault n where n is given in
+        // SDW.FC. The value of n used here is the value assigned to define a
+        // missing segment fault or, simply, a segment fault.
+
+        // absAddr doesn't care if the page isn't resident
+
+
+        // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
+
+        word14 BOUND = (SDWo >> (35 - 14)) & 037777;
+        if (/*TPR . CA*/ offset >= 16 * (BOUND + 1))
+          {
+            sim_printf ("SDW boundary violation.\n");
+            return SCPE_ARG;
+          }
+
+        // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
+
+        // absAddr doesn't care
+
+        // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+
+        word24 ADDR = (SDWe >> 12) & 077777760;
+        res = (word36) ADDR + (word36) /*TPR.CA*/ offset;
+        res &= PAMASK; //24 bit math
+        //res <<= 12; // 24:12 format
+
+      }
+    else
+      {
+        //word15 segno = TPR . TSR;
+        //word18 offset = TPR . CA;
+
+        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access 
+        // violation, out of segment bounds, fault.
+
+        if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
+          {
+            sim_printf ("DSBR boundary violation.\n");
+            return SCPE_ARG;
+          }
+
+        // 2. Form the quantities:
+        //       y1 = (2 * segno) modulo 1024
+        //       x1 = (2 * segno ­ y1) / 1024
+
+        word24 y1 = (2 * segno) % 1024;
+        word24 x1 = (2 * segno - y1) / 1024;
+
+        // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
+
+        word36 PTWx1;
+        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+
+        struct _ptw0 PTW1;
+        PTW1.ADDR = GETHI(PTWx1);
+        PTW1.U = TSTBIT(PTWx1, 9);
+        PTW1.M = TSTBIT(PTWx1, 6);
+        PTW1.F = TSTBIT(PTWx1, 2);
+        PTW1.FC = PTWx1 & 3;
+
+        // 4. If PTW(x1).F = 0, then generate directed fault n where n is 
+        // given in PTW(x1).FC. The value of n used here is the value 
+        // assigned to define a missing page fault or, simply, a
+        // page fault.
+
+        if (!PTW1.F)
+          {
+            sim_printf ("!PTW1.F\n");
+            return SCPE_ARG;
+          }
+
+        // 5. Fetch the target segment SDW, SDW(segno), from the 
+        // descriptor segment page at PTW(x1).ADDR + y1.
+
+        word36 SDWeven, SDWodd;
+        core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd);
+
+        struct _sdw0 SDW0; 
+        // even word
+        SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+        SDW0.R1 = (SDWeven >> 9) & 7;
+        SDW0.R2 = (SDWeven >> 6) & 7;
+        SDW0.R3 = (SDWeven >> 3) & 7;
+        SDW0.F = TSTBIT(SDWeven, 2);
+        SDW0.FC = SDWeven & 3;
+
+        // odd word
+        SDW0.BOUND = (SDWodd >> 21) & 037777;
+        SDW0.R = TSTBIT(SDWodd, 20);
+        SDW0.E = TSTBIT(SDWodd, 19);
+        SDW0.W = TSTBIT(SDWodd, 18);
+        SDW0.P = TSTBIT(SDWodd, 17);
+        SDW0.U = TSTBIT(SDWodd, 16);
+        SDW0.G = TSTBIT(SDWodd, 15);
+        SDW0.C = TSTBIT(SDWodd, 14);
+        SDW0.EB = SDWodd & 037777;
+
+        // 6. If SDW(segno).F = 0, then generate directed fault n where 
+        // n is given in SDW(segno).FC.
+        // This is a segment fault as discussed earlier in this section.
+
+        if (!SDW0.F)
+          {
+            sim_printf ("!SDW0.F\n");
+            return SCPE_ARG;
+          }
+
+        // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an 
+        // access violation, out of segment bounds, fault.
+
+        if (((offset >> 4) & 037777) > SDW0 . BOUND)
+          {
+            sim_printf ("SDW boundary violation\n");
+            return SCPE_ARG;
+          }
+
+        // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the 
+        // segment are incompatible with the reference, generate the 
+        // appropriate access violation fault.
+
+        // Only the address is wanted, so no check
+
+        // 9. Form the quantities:
+        //    y2 = offset modulo 1024
+        //    x2 = (offset - y2) / 1024
+
+        word24 y2 = offset % 1024;
+        word24 x2 = (offset - y2) / 1024;
+    
+        // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+
+        word36 PTWx2;
+        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+    
+        struct _ptw0 PTW2;
+        PTW2.ADDR = GETHI(PTWx2);
+        PTW2.U = TSTBIT(PTWx2, 9);
+        PTW2.M = TSTBIT(PTWx2, 6);
+        PTW2.F = TSTBIT(PTWx2, 2);
+        PTW2.FC = PTWx2 & 3;
+
+        // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
+        // given in PTW(x2).FC. This is a page fault as in Step 4 above.
+
+        // absAddr only wants the address; it doesn't care if the page is
+        // resident
+
+        // if (!PTW2.F)
+        //   {
+        //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
+        //     // initiate a directed fault
+        //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+        //   }
+
+        // 12. Generate the 24-bit absolute main memory address 
+        // PTW(x2).ADDR + y2.
+
+        res = (((word36) PTW2 . ADDR) << 6)  + (word36) y2;
+        res &= PAMASK; //24 bit math
+        //res <<= 12; // 24:12 format
+      }
+
+    sim_printf ("Address is %08llo\n", res);
+    return SCPE_OK;
+  }
 
 // LSB n:n
 
