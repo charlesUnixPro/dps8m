@@ -25,6 +25,7 @@ static void EISWrite(EISaddr *p, word36 data)
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
         
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, p -> SNR, p -> address);
         Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, true); // write data
     }
     else
@@ -35,6 +36,7 @@ static void EISWrite(EISaddr *p, word36 data)
             TPR.TSR = PPR.PSR;
         }
         
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
         Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, false); // write data
     }
 }
@@ -48,6 +50,7 @@ static word36 EISRead(EISaddr *p)
         TPR.TSR = p->SNR;
         
         Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
     else
     {
@@ -58,6 +61,7 @@ static word36 EISRead(EISaddr *p)
         }
         
         Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, false);  // read operand
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
     return data;
 }
@@ -3095,6 +3099,11 @@ void mlr(DCDstruct *ins)
             break;
     }
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
+      __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
+      fill, fillT, e -> N1, e -> N2);
+
     // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved and the truncation indicator is set ON.
     // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
     //The user of string replication or overlaying is warned that the decimal unit addresses the main memory in unaligned (not on modulo 8 boundary) units of Y-block8 words and that the overlayed string, C(Y-charn2), is not returned to main memory until the unit of Y-block8 words is filled or the instruction completes.
@@ -3564,6 +3573,11 @@ void mvt(DCDstruct *ins)
             break;
     }
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
+      __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
+      fill, fillT, e -> N1, e -> N2);
+
     //int xlatAddr = 0;
     //int xlatCN = 0;
 
