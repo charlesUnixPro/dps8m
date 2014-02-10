@@ -1934,7 +1934,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                                "%s: IDCW returns non-zero status(%04o); terminating DCW loop\n",
                                __func__, stati);
                     //status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> chan_data);
-                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : 0);
+                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : dcw . fields . ddcw . tally);
                     break;
                   }
                 // terminate?
