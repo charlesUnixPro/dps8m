@@ -2184,7 +2184,14 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
           {
              //status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> chan_data);
              //if (dcw . type != idcw) sim_printf ("faking chan_data\n");
+// The docs indicate the tally residue should be used here, but that
+// breaks t4d (badly).
+
+#if 1
              status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : 1);
+#else
+             status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : dcw . fields . ddcw . tally);
+#endif
           }
 
 
