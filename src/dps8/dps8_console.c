@@ -89,7 +89,7 @@ DEVICE opcon_dev = {
  at http://example.org/project/LICENSE.
  */
 
-//-- #include <ctype.h>
+#include <ctype.h>
 //-- #include <time.h>
 //-- #include <unistd.h>
 //-- //#include "hw6180.h"
@@ -517,8 +517,10 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //-- 
             sim_printf ("CONSOLE: ");
             //sim_printf ("tally %d\n", * tally);
-            int nchars = 0;
             word36 datum;
+// Tally is in words, not chars.
+#if 0
+            int nchars = 0;
             while (* tally)
               {
                 if (nchars <= 0)
@@ -535,6 +537,27 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
                   sim_printf ("\n");
                 (* tally) --;
               }
+#else
+            while (* tally)
+              {
+                datum = * wordp ++;
+                (* tally) --;
+
+                for (int i = 0; i < 4; i ++)
+                  {
+                    word36 wide_char = datum >> 27; // slide leftmost char into low byte
+                    datum = datum << 9; // lose the leftmost char
+                    char ch = wide_char & 0x7f;
+                    if (isprint (ch))
+                      sim_printf ("%c", ch);
+                    else
+                      sim_printf ("\\%03o", ch);
+                    //if (ch == '\r')
+                      //sim_printf ("\n");
+                  }
+              }
+            sim_printf ("\n");
+#endif
             * stati = 04000;
             return 0;
           }
