@@ -229,7 +229,7 @@ void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
         address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -344,7 +344,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
         address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -444,7 +444,7 @@ void parseBitstringOperandDescriptor(int k, EISstruct *e)
         address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -3512,7 +3512,7 @@ void mvt(DCDstruct *ins)
         xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -3851,7 +3851,7 @@ void scm(DCDstruct *ins)
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4031,7 +4031,7 @@ void scmr(DCDstruct *ins)
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
 
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4143,7 +4143,7 @@ void tct(DCDstruct *ins)
         xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
 
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4210,7 +4210,7 @@ void tct(DCDstruct *ins)
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4345,7 +4345,7 @@ void tctr(DCDstruct *ins)
         xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4412,7 +4412,7 @@ void tctr(DCDstruct *ins)
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4720,7 +4720,7 @@ void scd(DCDstruct *ins)
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4913,7 +4913,7 @@ void scdr(DCDstruct *ins)
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
         ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_BITNO = AR[n].ABITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {

@@ -449,10 +449,21 @@ extern struct _tpr {
 extern struct _par {
     word15  SNR;    ///< The segment number of the segment containing the data item described by the pointer register.
     word3   RNR;    ///< The final effective ring number value calculated during execution of the instruction that last loaded the PR.
+#if 0
     word6   BITNO;  ///< The number of the bit within PRn.WORDNO that is the first bit of the data item. Data items aligned on word boundaries always have the value 0. Unaligned data items may have any value in the range [1,35].
     word18  WORDNO; ///< The offset in words from the base or origin of the segment to the data item.
                         // The offset in words relative to the current addressing base referent (segment origin, BAR.BASE, or absolute 0 depending on addressing mode) to the word containing the next data item element.
     word2   CHAR;   ///< The number of the 9-bit byte within ARn.WORDNO containing the first bit of the next data item element.
+#else
+    word18  WORDNO; ///< The offset in words from the base or origin of the segment to the data item.
+    union {
+      struct {
+        word2 CHAR:2;
+        word4 ABITNO:4;
+      };
+      word6 PBITNO:6;
+    };
+#endif
 } PAR[8];
 
 #define AR    PAR   // XXX remember there are subtle differences between AR/PR.BITNO
