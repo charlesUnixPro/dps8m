@@ -3431,6 +3431,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = TPR.CA;
             PR[0].BITNO = TPR.TBR;
+            PR[0].CHAR = 0;
             break;
         case 0352:  ///< epp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3442,6 +3443,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = TPR.CA;
             PR[2].BITNO = TPR.TBR;
+            PR[2].CHAR = 0;
             break;
         case 0370:  ///< epp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3453,6 +3455,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = TPR.CA;
             PR[4].BITNO = TPR.TBR;
+            PR[4].CHAR = 0;
             break;
         case 0372:  ///< epp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3464,6 +3467,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = TPR.CA;
             PR[6].BITNO = TPR.TBR;
+            PR[6].CHAR = 0;
             break;
 
         case 0173:  ///< lpri
@@ -4897,6 +4901,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = TPR.CA;
             PR[1].BITNO = TPR.TBR;
+            PR[1].CHAR = 0;
             break;
         case 0353:  ///< epp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4908,6 +4913,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = TPR.CA;
             PR[3].BITNO = TPR.TBR;
+            PR[3].CHAR = 0;
             break;
         case 0371:  ///< epp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4919,6 +4925,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = TPR.CA;
             PR[5].BITNO = TPR.TBR;
+            PR[5].CHAR = 0;
             break;
         case 0373:  ///< epp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -4930,6 +4937,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = TPR.CA;
             PR[7].BITNO = TPR.TBR;
+            PR[7].CHAR = 0;
             break;
         
         case 0250:  ///< spbp0

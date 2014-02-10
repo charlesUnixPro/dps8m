@@ -948,7 +948,7 @@ If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
 I believe this is wrong.
 
 
-Referring to my implementation notes of \texttt{FRD} in dps8_math.c...
+Referring to my implementation notes of \texttt{FRD} in dps8\_math.c...
 
 \begin{verbatim}
 //! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 28 bits and a normalization on C(EAQ).
@@ -1046,9 +1046,18 @@ tally address modification. It is then set ON for any of the following condition
 (4) If an EIS string scanning instruction reaches the end of the string without finding a match condition.
 
 Apparently MVT also follows this pattern -- although AL-39, DH02-01 and Bull RJ78 REV02 make absolutely no mention of this behavior. 
-This is either a hack, bug or an undocumented feature. \texttt{MVT} instruction in dps8_eis.c has been modified to set the TALLY bit as well as the TRUNC bit uon overflow
+This is either a hack, bug or an undocumented feature. \texttt{MVT} instruction in dps8\_eis.c has been modified to set the TALLY bit as well as the TRUNC bituon overflow
 
 
+\paragraph{\texttt{EPP instruction.}}
+
+The code in bootload\_formline has the line:
+
+\begin{verbatim}
+	epp1    0,x6*                   " pr1 -> word of chars
+\end{verbatim}
+
+which relies on the epp1 instruction setting the AR1.CHAR register to zero. Given the relationship between the AR and PR register sets, this is not an unreasonable behavior. AL-39 does not mention the CHAR registers in the EPPn instruction documentation. The emulator sets the corresponding CHAR register to zero for EPPn instructions.
 
 \paragraph{\textbf{tss} instruction}
 
