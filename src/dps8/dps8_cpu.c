@@ -995,7 +995,10 @@ jmpRetry:;
         }
         
         sim_interval --;
-        if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
+        //if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
+        // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
+        // PPR.PSR into the high 12
+        if (sim_brk_summ && sim_brk_test ((rIC & 0777777) | ((((t_addr) PPR.PSR) & 037777) << 18), SWMASK ('E'))) {    /* breakpoint? */
             reason = STOP_BKPT;                        /* stop simulation */
             break;
         }
