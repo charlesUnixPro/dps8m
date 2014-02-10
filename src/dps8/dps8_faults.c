@@ -418,7 +418,7 @@ For now, at least, we must remember a few things:
 
 void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
 {
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d, fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037)  // quicker?
