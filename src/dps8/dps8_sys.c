@@ -38,6 +38,7 @@ static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat loadSystemBook (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
+static t_stat absAddrN (int segno, int offset);
 
 CTAB dps8_cmds[] =
 {
@@ -310,6 +311,31 @@ char * lookupSystemBookAddress (word18 segno, word18 offset)
    return buf;
  }
 
+// Warning: returns ptr to static buffer
+int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
+  {
+    int i;
+    for (i = 0; i < nBookSegments; i ++)
+      if (strcmp (bookSegments [i] . segname, segname) == 0)
+        break;
+    if (i >= nBookSegments)
+      return -1;
+
+    for (int j = 0; j < nBookComponents; j ++)
+      {
+        if (bookComponents [j] . bookSegmentNum != i)
+          continue;
+        if (strcmp (bookComponents [j] . compname, compname) == 0)
+          {
+            * segno = bookSegments [i] . segno;
+            * offset = bookComponents [j] . txt_start;
+            return 0;
+          }
+      }
+
+   return -1;
+ }
+
 // ABS segno:offset
 
 static t_stat absAddr (int32 arg, char * buf)
@@ -317,8 +343,11 @@ static t_stat absAddr (int32 arg, char * buf)
     int segno, offset;
     if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
       return SCPE_ARG;
-    //char * ans = lookupSystemBookAddress (segno, offset);
-    //sim_printf ("%s\n", ans ? ans : "not found");
+    return absAddrN (segno, offset);
+  }
+
+static t_stat absAddrN (int segno, int offset)
+  {
     word36 res;
 
     if (get_addr_mode () != APPEND_mode)
@@ -508,15 +537,81 @@ static t_stat absAddr (int32 arg, char * buf)
     return SCPE_OK;
   }
 
-// LSB n:n
-
+// LSB n:n   given a segment number and offset, return a segment name,
+//           component and offset in that component
+//     sname:cname+offset
+//           given a segment name, component name and offset, return
+//           the segment number and offset
+   
 static t_stat lookupSystemBook (int32 arg, char * buf)
   {
-    int segno, offset;
+    char w1 [strlen (buf)];
+    char w2 [strlen (buf)];
+    char w3 [strlen (buf)];
+    long segno, offset;
+
+    size_t colon = strcspn (buf, ":");
+    if (buf [colon] != ':')
+      return SCPE_ARG;
+
+    strncpy (w1, buf, colon);
+    w1 [colon] = '\0';
+    //sim_printf ("w1 <%s>\n", w1);
+
+    size_t plus = strcspn (buf + colon + 1, "+");
+    if (buf [colon + 1 + plus] == '+')
+      {
+        strncpy (w2, buf + colon + 1, plus);
+        w2 [plus] = '\0';
+        strcpy (w3, buf + colon + 1 + plus + 1);
+      }
+    else
+      {
+        strcpy (w2, buf + colon + 1);
+        strcpy (w3, "");
+      }
+    //sim_printf ("w1 <%s>\n", w1);
+    //sim_printf ("w2 <%s>\n", w2);
+    //sim_printf ("w3 <%s>\n", w3);
+
+    char * end1;
+    segno = strtol (w1, & end1, 0);
+    char * end2;
+    offset = strtol (w2, & end2, 0);
+
+    if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
+      { 
+        // n:n
+        char * ans = lookupSystemBookAddress (segno, offset);
+        sim_printf ("%s\n", ans ? ans : "not found");
+      }
+    else
+      {
+        if (* w3)
+          {
+            char * end3;
+            offset = strtol (w3, & end3, 0);
+            if (* end3 != '\0')
+              return SCPE_ARG;
+          }
+        else
+          offset = 0;
+        long comp_offset;
+        int rc = lookupSystemBookName (w1, w2, & segno, & comp_offset);
+        if (rc)
+          {
+            sim_printf ("not found\n");
+            return SCPE_OK;
+          }
+        sim_printf ("0%o:0%o\n", (uint) segno, (uint) (comp_offset + offset));
+        absAddrN  (segno, comp_offset + offset);
+      }
+/*
     if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
       return SCPE_ARG;
     char * ans = lookupSystemBookAddress (segno, offset);
     sim_printf ("%s\n", ans ? ans : "not found");
+*/
     return SCPE_OK;
   }
 
