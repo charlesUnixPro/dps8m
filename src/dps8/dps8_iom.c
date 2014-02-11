@@ -2188,8 +2188,13 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 // breaks t4d (badly).
 
 #if 1
+// this one works for 20184
+             status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : 0);
+#elif 0
+// this one works for t4d
              status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : 1);
 #else
+// this one matches the docs
              status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : dcw . fields . ddcw . tally);
 #endif
           }
