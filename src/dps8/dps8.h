@@ -2996,7 +2996,8 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num);
 /* dps8_sys.c */
 
 extern word36 *M;
-char * lookupSystemBookAddress (word18 segno, word18 offset);
+char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffst);
+void listSource (char * compname, word18 offset);
 
 /* dps8_utils.c */
 

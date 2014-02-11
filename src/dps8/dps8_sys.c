@@ -38,7 +38,9 @@ static t_stat dps_debug_start (int32 arg, char * buf);
 static t_stat loadSystemBook (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
+static t_stat setSearchPath (int32 arg, char * buf);
 static t_stat absAddrN (int segno, int offset);
+static t_stat test (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -53,6 +55,8 @@ CTAB dps8_cmds[] =
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
     {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n"},
     {"ABS", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
+    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n"},
+    {"TEST", test, 0, "test: internal testing\n"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -265,10 +269,14 @@ static int addBookComponent (int segnum, char * name, int txt_start, int txt_len
 
 
 // Warning: returns ptr to static buffer
-char * lookupSystemBookAddress (word18 segno, word18 offset)
+char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
   {
     static char buf [129];
     int i;
+    if (compname)
+      * compname = NULL;
+    if (compoffset)
+      * compoffset = 0;
     for (i = 0; i < nBookSegments; i ++)
       if (bookSegments [i] . segno == segno)
         break;
@@ -288,6 +296,10 @@ char * lookupSystemBookAddress (word18 segno, word18 offset)
             sprintf (buf, "%s:%s+0%0o", bookSegments [i] . segname,
               bookComponents [j].compname,
               offset - bookComponents [j] . txt_start);
+            if (compname)
+              * compname = bookComponents [j].compname;
+            if (compoffset)
+              * compoffset = offset - bookComponents [j] . txt_start;
             return buf;
           }
         if (bookComponents [j] . txt_start <= offset &&
@@ -335,6 +347,75 @@ int lookupSystemBookName (char * segname, char * compname, long * segno, long * 
 
    return -1;
  }
+
+static char * sourceSearchPath = NULL;
+
+// search path is path:path:path....
+
+static t_stat setSearchPath (int32 arg, char * buf)
+  {
+    if (sourceSearchPath)
+      free (sourceSearchPath);
+    sourceSearchPath = strdup (buf);
+    return SCPE_OK;
+  }
+
+static t_stat test (int32 arg, char * buf)
+  {
+    listSource (buf, 0);
+    return SCPE_OK;
+  }
+
+void listSource (char * compname, word18 offset)
+  {
+    const int offset_str_len = 10;
+    //char offset_str [offset_str_len + 1];
+    char offset_str [17];
+    sprintf (offset_str, "    %06o", offset);
+
+    char path [(sourceSearchPath ? strlen (sourceSearchPath) : 1) + 
+               1 + // "/"
+               (compname ? strlen (compname) : 1) +
+                1 + strlen (".list") + 1];
+    char * searchp = sourceSearchPath ? sourceSearchPath : ".";
+    // find <search path>/<compname>.list
+    while (* searchp)
+      {
+        size_t pathlen = strcspn (searchp, ":");
+        strncpy (path, searchp, pathlen);
+        path [pathlen] = '\0';
+        if (searchp [pathlen] == ':')
+          searchp += pathlen + 1;
+        else
+          searchp += pathlen;
+
+        strcat (path, "/");
+        strcat (path, compname);
+        strcat (path, ".list");
+        //sim_printf ("<%s>\n", path);
+        FILE * listing = fopen (path, "r");
+        if (listing)
+          {
+            // sim_printf ("found <%s>\n", path);
+
+            // alm listing files look like:
+            //     000226  4a  4 00010 7421 20  \tstx2]tbootload_0$entry_stack_ptr,id
+            while (! feof (listing))
+              {
+                char line [133];
+                fgets (line, 132, listing);
+                if (strncmp (line, offset_str, offset_str_len) == 0)
+                  {
+                    sim_printf ("%s", line);
+                    //break;
+                  }
+                if (strcmp (line, "\fLITERALS\n") == 0)
+                  break;
+              }
+            fclose (listing);
+          }
+      }
+  }
 
 // ABS segno:offset
 
@@ -582,7 +663,7 @@ static t_stat lookupSystemBook (int32 arg, char * buf)
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
         // n:n
-        char * ans = lookupSystemBookAddress (segno, offset);
+        char * ans = lookupSystemBookAddress (segno, offset, NULL, NULL);
         sim_printf ("%s\n", ans ? ans : "not found");
       }
     else
