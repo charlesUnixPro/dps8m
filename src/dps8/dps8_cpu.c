@@ -208,6 +208,8 @@ t_stat dpsCmd_InitSDWAM ()
     return SCPE_OK;
 }
 
+// Assumes unpaged DSBR
+
 _sdw0 *fetchSDW(word15 segno)
 {
     word36 SDWeven, SDWodd;
@@ -365,9 +367,6 @@ t_stat dpsCmd_DumpSegmentTable()
                       }
                   }
             }
-              
-            //_sdw0 *s = fetchSDW(segno);
-            //printSDW0(s);
         }
     }
 

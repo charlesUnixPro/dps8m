@@ -6463,55 +6463,68 @@ static int doABSA (DCDstruct * i, word36 * result)
 
             // Only the address is wanted, so no check
 
-            // 9. Form the quantities:
-            //    y2 = offset modulo 1024
-            //    x2 = (offset - y2) / 1024
+            if (SDW0.U == 0)
+              {
+                // Segment is paged
 
-            word24 y2 = offset % 1024;
-            word24 x2 = (offset - y2) / 1024;
+                // 9. Form the quantities:
+                //    y2 = offset modulo 1024
+                //    x2 = (offset - y2) / 1024
+
+                word24 y2 = offset % 1024;
+                word24 x2 = (offset - y2) / 1024;
     
-            sim_debug (DBG_APPENDING, & cpu_dev, 
-              "absa y2:%08o x2:%08o\n", y2, x2);
+                sim_debug (DBG_APPENDING, & cpu_dev, 
+                  "absa y2:%08o x2:%08o\n", y2, x2);
 
-            // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+                // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
 
-            sim_debug (DBG_APPENDING, & cpu_dev, 
-              "absa read PTWx2@%08o+%08o %08o\n",
-              SDW0 . ADDR, x2, (SDW0 . ADDR + x2) & PAMASK);
+                sim_debug (DBG_APPENDING, & cpu_dev, 
+                  "absa read PTWx2@%08o+%08o %08o\n",
+                  SDW0 . ADDR, x2, (SDW0 . ADDR + x2) & PAMASK);
 
-            word36 PTWx2;
-            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+                word36 PTWx2;
+                core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
     
-            struct _ptw0 PTW2;
-            PTW2.ADDR = GETHI(PTWx2);
-            PTW2.U = TSTBIT(PTWx2, 9);
-            PTW2.M = TSTBIT(PTWx2, 6);
-            PTW2.F = TSTBIT(PTWx2, 2);
-            PTW2.FC = PTWx2 & 3;
+                struct _ptw0 PTW2;
+                PTW2.ADDR = GETHI(PTWx2);
+                PTW2.U = TSTBIT(PTWx2, 9);
+                PTW2.M = TSTBIT(PTWx2, 6);
+                PTW2.F = TSTBIT(PTWx2, 2);
+                PTW2.FC = PTWx2 & 3;
 
-            sim_debug (DBG_APPENDING, & cpu_dev, 
-              "absa PTW2 ADDR %08o U %o M %o F %o FC %o\n", 
-              PTW2 . ADDR, PTW2 . U, PTW2 . M, PTW2 . F, PTW2 . FC);
+                sim_debug (DBG_APPENDING, & cpu_dev, 
+                  "absa PTW2 ADDR %08o U %o M %o F %o FC %o\n", 
+                  PTW2 . ADDR, PTW2 . U, PTW2 . M, PTW2 . F, PTW2 . FC);
 
-            // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
-            // given in PTW(x2).FC. This is a page fault as in Step 4 above.
+                // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
+                // given in PTW(x2).FC. This is a page fault as in Step 4 above.
 
-            // ABSA only wants the address; it doesn't care if the page is
-            // resident
+                // ABSA only wants the address; it doesn't care if the page is
+                // resident
 
-            // if (!PTW2.F)
-            //   {
-            //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
-            //     // initiate a directed fault
-            //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
-            //   }
+                // if (!PTW2.F)
+                //   {
+                //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
+                //     // initiate a directed fault
+                //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+                //   }
 
-            // 12. Generate the 24-bit absolute main memory address 
-            // PTW(x2).ADDR + y2.
+                // 12. Generate the 24-bit absolute main memory address 
+                // PTW(x2).ADDR + y2.
 
-            res = (((word36) PTW2 . ADDR) << 6)  + (word36) y2;
-            res &= PAMASK; //24 bit math
-            res <<= 12; // 24:12 format
+                res = (((word36) PTW2 . ADDR) << 6)  + (word36) y2;
+                res &= PAMASK; //24 bit math
+                res <<= 12; // 24:12 format
+              }
+            else
+              {
+                // Segment is unpaged
+                // SDW0.ADDR is the base address of the segment
+                res = (word36) SDW0 . ADDR + offset;
+                res &= PAMASK; //24 bit math
+                res <<= 12; // 24:12 format
+              }
           }
 
 #if 0
