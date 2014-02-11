@@ -4057,6 +4057,28 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                                 doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
                         }
                     }
+                    else if (nxt->info->flags & READ_YPAIR)
+                    {
+                        switch (GET_TM(nxt->tag))
+                        {
+                            case TM_R:
+                                Read(nxt, TPR.CA, &Ypair[0], OPERAND_READ, 0);
+                                Read(nxt, TPR.CA+1, &Ypair[1], OPERAND_READ, 0);
+                                break;
+                            case TM_RI:
+                            {
+                                //In the case of RI modification, only one indirect reference is made per repeated execution. The TAG field of the indirect word is not interpreted. The indirect word is treated as though it had R modification with R = N.
+                                word36 tmp;
+                                Read(nxt, TPR.CA, &tmp, OPERAND_READ, 0);     // XXX can append mode be invoked here?
+                                Read(nxt, GETHI(tmp),  &Ypair[0], OPERAND_READ, 0); // XXX ""
+                                Read(nxt, GETHI(tmp)+1,  &Ypair[1], OPERAND_READ, 0); // XXX ""
+                                break;
+                            }
+                            default:
+                                // XXX generate fault. Only R & RI allowed
+                                doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
+                        }
+                    }
                     
 
                     // The repetition cycle consists of the following steps:

@@ -660,7 +660,7 @@ extern word36 Ypair[2];        ///< 2-words
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
-#define YPAIRTO72(ypair)    (((word72)(ypair[0] << 36 | ypair[1])) & MASK72)
+#define YPAIRTO72(ypair)    (((((word72)(ypair[0])) << 36) | ypair[1]) & MASK72)
 
 void putByte(word36 *dst, word9 data, int posn);
 word9 getByte(int posn, word36 src);
