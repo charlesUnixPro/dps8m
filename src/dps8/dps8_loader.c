@@ -1209,9 +1209,23 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     return SCPE_OK;
 }
 
+t_stat sim_dump (FILE *fileref, char *cptr, char *fnam, int flag)
+{
+    size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
+    if (rc != MEMSIZE)
+    {
+        sim_printf ("fwrite returned %ld; expected %d\n", rc, MEMSIZE);
+        return SCPE_IOERR;  
+    }
+    return SCPE_OK;
+}
+
 // This is part of the simh interface
 t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
 {
+    if (flag)
+        return sim_dump (fileref, cptr, fnam, flag);
+      
     size_t fmt;
     
     int32 segno = -1;
