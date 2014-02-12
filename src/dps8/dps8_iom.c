@@ -1748,6 +1748,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
     int chan = pcwp -> chan;
     bool need_data = false; // this is how a device asks for list service to continue
 
+#if 0
     if (iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI)
       {
         // 3. The connect channel PCW is treated differently by the CPI channel
@@ -1776,6 +1777,32 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
             return 0;
           }
       }
+#else
+    {
+      // 3. The connect channel PCW is treated differently by the CPI channel
+      // and the PSI channel. The CPI channel does a store status, The
+      // PSI channel goes into startup.
+
+      word12 stati = 0;
+
+      ret = dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, pcwp,
+                           & stati, & need_data);
+      if (ret)
+        {
+          sim_debug (DBG_DEBUG, & iom_dev,
+                     "%s: dev_send_idcw returned %d\n", __func__, ret);
+        }
+
+#if 0
+      if (! need_data && iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI)
+        {
+          send_terminate_interrupt (iom_unit_num, chan);
+
+          return 0;
+        }
+#endif
+      }
+#endif
 
     lpw_t lpw; // Channel scratch pad
     bool ptro = false;
@@ -1788,6 +1815,8 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
     word12 stati = 0;
 
     uint chanloc = mbx_loc (iom_unit_num, chan);
+
+    int rcount = 0;
 
     do // while (!ptro)
       {
@@ -1924,6 +1953,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                 // SEND IDCW TO CHANNEL
                 need_data = false;
                 dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, & dcw . fields . instr, & stati, & need_data);
+                rcount = dcw . fields . instr . chan_data;
                 // The IOM boot IDCW has a control of 0, but that means that
                 // the IOTD is ignored.
                 // Exit DCW loop if non-zero major status
@@ -2050,60 +2080,6 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
            user_fault_flag = iom_cs_normal;
          }
     
-//#define LPW_REORDER
-// Doesn't actually fix the problem
-#ifdef LPW_REORDER
-// This a duplicate of the code from D:. We need to update the LPW before
-// sending the DDCW, so we copy the update code here, and instead of
-// falling through to D, just to END.
-
-        // 4.3.1c: SEND FLAGS TO CHANNEL
-//XXX         channel_fault (chan);
-    
-        // XXX SEND FLAGS TO CHANNEL
-    
-        // 4.3.1c: LPW 21?
-    
-        if (lpw . nc == 0)
-          {
-    
-            // 4.3.1c: LPW 21 == 0 (UPDATE)
-    
-            // 4.3.1c: UPDATE LPW ADDRESS AND TALLY
-    
-            -- lpw . tally;
-            lpw . dcw_ptr ++;
-    
-          }
-          
-        // 4.3.1c: IDCW OR FIRST_LIST?
-    
-        if (dcw . type == idcw || first_list)
-    
-          {
-            // 4.3.1c: IDCW OR FIRST_LIST == YES
-    
-            // 4.3.1c:  WRITE LPW AND LPWX INTO MAILBOXES (scratch and core)
-    
-            lpw_write (chan, chanloc, & lpw);
-    
-            goto end;
-          }
-        else
-          {
-            // 4.3.1c: IDCW OR FIRST_LIST == NO
-    
-            // TDCW?
-    
-            if (lpw . nc == 0 || dcw . type == tdcw)
-              {
-                // 4.3.1c:  WRITE LPW INTO MAILBOX (scratch and core)
-    
-                lpw_write (chan, chanloc, & lpw);
-              }
-          }
-#endif
-
         // 4.3.1b: SEND DCW TO CHANNEL
     
         // XXX SEND DCW TO CHANNEL
@@ -2115,6 +2091,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
         // return code of 1 for no iom_io callback set, or result or iom_io
         // callback: 1 for internal error or data exhausted.
         ret = do_ddcw (iom_unit_num, chan, pcwp -> dev_code, addr, & dcw, & control, & stati);
+        rcount = dcw . fields . ddcw . tally;
         if (control == 0)
           {
             ptro = true;
@@ -2122,11 +2099,6 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
           }
 
         sim_debug (DBG_DEBUG, & iom_dev, "%s: do_ddcw returns %d\n", __func__, ret);
-#ifdef LPW_REORDER
-// We already updated the LPW; jump to end instead of falling through.
-        goto end;
-#endif
-
     
         // 4.3.1c: D
     D:;
@@ -2178,6 +2150,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
           }
     end:
 
+#if 0
 // XXX I am guessing that one does status service after each dcw
 
         if (stati & 04000)
@@ -2198,13 +2171,14 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
              status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : dcw . fields . ddcw . tally);
 #endif
           }
-
+#endif
 
         first_list = false;
       }
     //while (lpw . nc == 0 &&  ! (lpw . trunout && lpw . tally <= 0) && ! disconnect);
     while (! ptro || need_data);
 
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount);
     //sim_debug (DBG_DEBUG, & iom_dev, "%s: left list service; tally %d, disconnect %d\n", __func__, lpw . tally, disconnect);
     sim_debug (DBG_DEBUG, & iom_dev, "%s: left list service; tally %d\n",
                __func__, lpw . tally);
