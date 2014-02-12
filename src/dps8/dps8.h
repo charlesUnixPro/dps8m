@@ -2185,6 +2185,8 @@ typedef struct {
     uint append_after; // 
     uint super_user; // 
     uint epp_hack; // 
+    uint halt_on_unimp; // If non-zero, halt CPU on unimplemented instruction
+                        // instead of faulting
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU

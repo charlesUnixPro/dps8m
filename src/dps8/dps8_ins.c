@@ -4731,8 +4731,10 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
  
             
         default:
-            doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
-            //return STOP_UNIMP;
+            if (switches . halt_on_unimp)
+                return STOP_UNIMP;
+            else
+                doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
             
     }
     
@@ -6014,8 +6016,10 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         default:
-            doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
-            //return STOP_UNIMP;
+            if (switches . halt_on_unimp)
+                return STOP_UNIMP;
+            else
+                doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
     }
 
 //#ifndef USE_CONTINUATIONS
