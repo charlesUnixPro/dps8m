@@ -282,7 +282,7 @@ t_stat dpsCmd_DumpSegmentTable()
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
     if (DSBR.U) {
-        sim_printf("*** Descriptor Segment Table (Unpaged) ***\n");
+        sim_printf("*** Descriptor Segment Table ***\n");
         for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
         {
             sim_printf("Seg %d - ", segno);
@@ -1970,6 +1970,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Append after:             %01o(8)\n", switches . append_after);
     sim_printf("Super user:               %01o(8)\n", switches . super_user);
     sim_printf("EPP hack:                 %01o(8)\n", switches . epp_hack);
+    sim_printf("Halt on unimplemented:    %01o(8)\n", switches . halt_on_unimp);
 
     return SCPE_OK;
 }
@@ -1997,6 +1998,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           append_after = n
 //           super_user = n
 //           epp_hack = n
+//           halt_on_unimplmented = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2087,6 +2089,7 @@ static config_list_t cpu_config_list [] =
     /* 18 */ { "append_after", 0, 1, cfg_on_off },
     /* 19 */ { "super_user", 0, 1, cfg_on_off },
     /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
+    /* 21 */ { "halt_on_unimplemented", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2201,6 +2204,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 20: // EPP_HACK
               switches . epp_hack = v;
+              break;
+
+            case 21: // HALT_ON_UNIMPLEMENTED
+              switches . halt_on_unimp = v;
               break;
 
             default:
