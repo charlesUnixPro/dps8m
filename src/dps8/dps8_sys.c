@@ -41,6 +41,8 @@ static t_stat absAddr (int32 arg, char * buf);
 static t_stat setSearchPath (int32 arg, char * buf);
 static t_stat absAddrN (int segno, int offset);
 static t_stat test (int32 arg, char * buf);
+static t_stat virtAddrN (int address);
+static t_stat virtAddr (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -54,7 +56,8 @@ CTAB dps8_cmds[] =
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
     {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n"},
-    {"ABS", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
+    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
+    {"VIRTUAL", virtAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n"},
     {"TEST", test, 0, "test: internal testing\n"},
     { NULL, NULL, 0, NULL}
@@ -628,6 +631,112 @@ static t_stat absAddrN (int segno, int offset)
 
     sim_printf ("Address is %08llo\n", res);
     return SCPE_OK;
+  }
+
+// VIRTUAL address
+
+static t_stat virtAddr (int32 arg, char * buf)
+  {
+    int address;
+    if (sscanf (buf, "%i", & address) != 1)
+      return SCPE_ARG;
+    return virtAddrN (address);
+  }
+
+static t_stat virtAddrN (int address)
+  {
+    if (DSBR.U) {
+        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
+        {
+            _sdw0 *s = fetchSDW(segno);
+            if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16)
+              sim_printf ("  %06o:%06o\n", segno, address - s -> ADDR);
+        }
+    } else {
+        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 512)
+        {
+            word24 y1 = (2 * segno) % 1024;
+            word24 x1 = (2 * segno - y1) / 1024;
+            word36 PTWx1;
+            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+
+            struct _ptw0 PTW1;
+            PTW1.ADDR = GETHI(PTWx1);
+            PTW1.U = TSTBIT(PTWx1, 9);
+            PTW1.M = TSTBIT(PTWx1, 6);
+            PTW1.F = TSTBIT(PTWx1, 2);
+            PTW1.FC = PTWx1 & 3;
+           
+            if (PTW1.F == 0)
+                continue;
+            //sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
+            //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
+            //sim_printf ("    Target segment page table\n");
+            for (word15 tspt = 0; tspt < 512; tspt ++)
+            {
+                word36 SDWeven, SDWodd;
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd);
+                struct _sdw0 SDW0;
+                // even word
+                SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+                SDW0.R1 = (SDWeven >> 9) & 7;
+                SDW0.R2 = (SDWeven >> 6) & 7;
+                SDW0.R3 = (SDWeven >> 3) & 7;
+                SDW0.F = TSTBIT(SDWeven, 2);
+                SDW0.FC = SDWeven & 3;
+
+                // odd word
+                SDW0.BOUND = (SDWodd >> 21) & 037777;
+                SDW0.R = TSTBIT(SDWodd, 20);
+                SDW0.E = TSTBIT(SDWodd, 19);
+                SDW0.W = TSTBIT(SDWodd, 18);
+                SDW0.P = TSTBIT(SDWodd, 17);
+                SDW0.U = TSTBIT(SDWodd, 16);
+                SDW0.G = TSTBIT(SDWodd, 15);
+                SDW0.C = TSTBIT(SDWodd, 14);
+                SDW0.EB = SDWodd & 037777;
+
+                if (SDW0.F == 0)
+                    continue;
+                //sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
+                //          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
+                if (SDW0.U == 0)
+                {
+                    for (word18 offset = 0; offset < 16 * (SDW0.BOUND + 1); offset += 1024)
+                    {
+                        word24 y2 = offset % 1024;
+                        word24 x2 = (offset - y2) / 1024;
+
+                        // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+
+                        word36 PTWx2;
+                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+
+                        struct _ptw0 PTW2;
+                        PTW2.ADDR = GETHI(PTWx2);
+                        PTW2.U = TSTBIT(PTWx2, 9);
+                        PTW2.M = TSTBIT(PTWx2, 6);
+                        PTW2.F = TSTBIT(PTWx2, 2);
+                        PTW2.FC = PTWx2 & 3;
+
+                        //sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 
+                        //             offset, PTW2.ADDR, PTW2.U, PTW2.M, PTW2.F, PTW2.FC);
+                        if (address >= PTW2.ADDR + offset && address < PTW2.ADDR + offset + 1024)
+                          sim_printf ("  %06o:%06o\n", tspt, (address - offset) - PTW2.ADDR);
+
+                      }
+                  }
+                else
+                  {
+                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16)
+                      sim_printf ("  %06o:%06o\n", tspt, address - SDW0.ADDR);
+                  }
+            }
+        }
+    }
+
+    return SCPE_OK;
+
   }
 
 // LSB n:n   given a segment number and offset, return a segment name,
