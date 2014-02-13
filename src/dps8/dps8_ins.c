@@ -1923,6 +1923,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0402:  ///< mpy
             /// C(Q) × C(Y) → C(AQ), right adjusted
             
+#if 0
             /// XXX need todo some sign extension here!!!!!!
             tmp72 = (word72)rQ * (word72)CY;
             tmp72 &= MASK72;
@@ -1940,6 +1941,24 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rA |= SIGN;
             
             SCF(rA & SIGN, rIR, I_NEG);
+#else
+            {
+                int64_t t0 = rQ;
+                if (t0 & SIGN36)
+                    t0 |= SIGNEXT; // propagte word36 sign to 64 bits
+
+                int64_t t1 = CY;
+                if (t1 & SIGN36)
+                    t1 |= SIGNEXT; // propagte word36 sign to 64 bits
+
+                __int128_t prod = (__int128_t) t0 * (__int128_t) t1;
+
+                convertToWord36((word72)prod, &rA, &rQ);
+
+                SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
+                SCF(rA & SIGN, rIR, I_NEG);
+            }
+#endif
             break;
             
         /// Fixed-Point Division
