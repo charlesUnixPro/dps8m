@@ -801,6 +801,7 @@ static word18 tmp18 = 0;
 static word36 tmp36 = 0;
 static word36 tmp36q = 0;      ///< tmp quotent
 static word36 tmp36r = 0;      ///< tmp remainder
+static word36 tmpSign = 0;
 
 static word72 tmp72 = 0;
 static word72 trAQ = 0;     ///< a temporary C(AQ)
@@ -1305,6 +1306,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0735:  ///< als
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             
+#if 0
             rA <<= tmp36;
             rA &= DMASK;    // keep to 36-bits
             
@@ -1313,7 +1315,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_CARRY);
             else
                 CLRF(rIR, I_CARRY);
-            
+#else
+            tmpSign = rA & SIGN36;
+            CLRF(rIR, I_CARRY);
+
+            for (int i = 0; i < tmp36; i ++)
+            {
+                rA <<= 1;
+                if (tmpSign != (rA & SIGN36))
+                    SETF(rIR, I_CARRY);
+            }
+            rA &= DMASK;    // keep to 36-bits 
+#endif
+
             if (rA == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -1415,8 +1429,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// vacated positions with zeros.
             
             CLRF(rIR, I_CARRY);
-            
+ 
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
+#if 0
             for(int i = 0 ; i < tmp36 ; i++)
             {
                 rA <<= 1;               // shift left 1
@@ -1430,6 +1445,22 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 
                 rQ <<= 1;               // shift left 1
             }
+#else
+            tmpSign = rQ & SIGN36;
+            for(int i = 0 ; i < tmp36 ; i++)
+            {
+                rA <<= 1;               // shift left 1
+            
+                if (tmpSign != (rA & SIGN36))
+                    SETF(rIR, I_CARRY);
+                
+                bool b0 = rQ & SIGN;    ///< Q0
+                if (b0)
+                    rA |= 1;            // Q0 => A35
+                
+                rQ <<= 1;               // shift left 1
+            }
+#endif
                             
             rA &= DMASK;    // keep to 36-bits
             rQ &= DMASK;
@@ -1532,7 +1563,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0736:  ///< qls
             // Shift C(Q) left the number of positions given in C(TPR.CA)11,17; fill vacated positions with zeros.
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            
+#if 0
             rQ <<= tmp36;
             
             
@@ -1542,7 +1573,18 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 CLRF(rIR, I_CARRY);
             
             rQ &= DMASK;    // keep to 36-bits (after we test for carry)
-            
+#else
+            tmpSign = rQ & SIGN36;
+            CLRF(rIR, I_CARRY);
+
+            for (int i = 0; i < tmp36; i ++)
+            {
+                rQ <<= 1;
+                if (tmpSign != (rQ & SIGN36))
+                    SETF(rIR, I_CARRY);
+            }
+            rQ &= DMASK;    // keep to 36-bits 
+#endif
             if (rQ == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -1552,7 +1594,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
-            
             break;
 
         case 0772:  ///< qrl
