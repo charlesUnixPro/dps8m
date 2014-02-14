@@ -6154,6 +6154,31 @@ t_stat doXED(word36 *Ypair)
     return (ret);
 }
 
+static void print_uint128_r (__uint128_t n)
+{
+    if (n == 0) {
+      return;
+    }
+
+    print_uint128_r(n/10);
+    sim_printf("%c", (int) (n%10+0x30));
+}
+
+static void print_int128 (__int128_t n)
+{
+    if (n == 0)
+    {
+        sim_printf ("0");
+        return;
+    }
+    if (n < 0)
+    {
+        sim_printf ("-");
+        n = -n;
+    }
+    print_uint128_r (n);
+}
+
 
 #include <ctype.h>
 
@@ -6255,10 +6280,10 @@ emCall(DCDstruct *i)
             break;
         }
 
-       case 16:     ///< puts - A points to by an aci string; print it.
-                    // The string includes C-sytle escapes: \0 for end
-                    // of string, \n for newline, \\ for a backslash
-       {
+        case 16:     ///< puts - A points to by an aci string; print it.
+                     // The string includes C-sytle escapes: \0 for end
+                     // of string, \n for newline, \\ for a backslash
+        {
             const int maxlen = 256;
             char buf [maxlen + 1];
 
@@ -6269,47 +6294,58 @@ emCall(DCDstruct *i)
             int cnt = 0;
 
             for (i = 0; cnt < maxlen; i ++)
-              {
+            {
                 // fetch char
                 if (i % 4 == 0)
-                  chunk = M [addr ++];
+                    chunk = M [addr ++];
                 word36 wch = chunk >> (9 * 3);    
                 chunk = (chunk << 9) & DMASK;
                 char ch = (char) (wch & 0x7f);
 
                 if (is_escape)
-                  {
+                {
                     if (ch == '0')
-                      ch = '\0';
+                        ch = '\0';
                     else if (ch == 'n')
-                      ch = '\n';
+                        ch = '\n';
                     else
-                      /* ch = ch */;
+                        /* ch = ch */;
                     is_escape = false;
-                  }
+                }
                 else
-                  {
+                {
                     if (ch == '\\')
-                      is_escape = true;
+                        is_escape = true;
                     else
-                      {
+                    {
                         buf [cnt ++] = ch;
                         if (ch == '\0')
-                          break;
-                      }
-                  }
-              }
+                            break;
+                    }
+                }
+            }
             // Safety; if filled buffer before finding eos, put an eos
             // in the extra space that was allocated
             buf [maxlen] = '\0';
             sim_printf ("%s", buf);
             break;
-       }
+        }
             
-      // case 17 used above
+        // case 17 used above
 
-      case 18:     ///< halt
-        return STOP_HALT;
+        case 18:     ///< halt
+            return STOP_HALT;
+
+        case 19:     ///< putdecaq - put decimal contents of AQ to stdout
+        {
+            int64_t t0 = rA;
+            if (t0 & SIGN36)
+               t0 |= SIGNEXT; // propagte word36 sign to 64 bits
+            __int128_t AQ = ((__int128_t) t0) << 36;
+            AQ |= (rQ & DMASK);
+            print_int128 (AQ);
+            break;
+        }
     }
     return 0;
 }
