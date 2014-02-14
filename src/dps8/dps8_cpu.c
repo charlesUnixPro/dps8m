@@ -567,6 +567,8 @@ t_stat cpu_reset (DEVICE *dptr)
     if (M == NULL)
         return SCPE_MEM;
     
+    memset (M, -1, MEMSIZE * sizeof (word36));
+
     rIC = 0;
     rA = 0;
     rQ = 0;
