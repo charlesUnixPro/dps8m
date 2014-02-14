@@ -1,5 +1,6 @@
 \documentclass[notitlepage]{report}
 \usepackage {listings}
+\usepackage{ulem}
 \renewcommand{\thesection}{\arabic{part}.\arabic{section}}
 \makeatletter
 \@addtoreset{section}{part}
@@ -1057,7 +1058,15 @@ The code in bootload\_formline has the line:
 	epp1    0,x6*                   " pr1 -> word of chars
 \end{verbatim}
 
-which relies on the epp1 instruction setting the AR1.CHAR register to zero. Given the relationship between the AR and PR register sets, this is not an unreasonable behavior. AL-39 does not mention the CHAR registers in the EPPn instruction documentation. The emulator sets the corresponding CHAR register to zero for EPPn instructions.
+which relies on the epp1 instruction setting the AR1.CHAR register to zero. Given the relationship between the AR and PR register sets, this is not an unreasonable behavior. AL-39 does not mention the CHAR registers in the EPPn instruction documentation. However, AL-39 does say:
+
+\begin{verbatim}
+AL-39, pg:317:
+" The terms "pointer register" and "address register" both apply to the same physical hardware. The distinction arises from the manner in which the register is used and in the interpretation of the register contents."
+\end{verbatim}
+
+\sout{The emulator sets the corresponding CHAR register to zero for EPPn instructions.}
+The emulator uses a union of bitfields to map PR.BITNO on the AR.BITNO and AR.CHAR bits, so that the "same phyiscal hardware" behavior is matched.
 
 \paragraph{\textbf{tss} instruction}
 
@@ -1065,7 +1074,7 @@ Page 169, the \textbf{tss} instruction:
 
 "SUMMARY: \texttt{C(TPR.CA) + (BAR base) $\rightarrow$ C(PPR.IC)}"
 
-The \textbf{tss}instruction should not add the \texttt{BAR} base to the \texttt{CA}; that is done during \texttt{CA} formation in the instruction fetch cycle. The line should read:
+The \textbf{tss} instruction should not add the \texttt{BAR} base to the \texttt{CA}; that is done during \texttt{CA} formation in the instruction fetch cycle. The line should read:
 
 "SUMMARY: \texttt{C(TPR.CA) $\rightarrow$ C(PPR.IC)}"
 
@@ -1075,5 +1084,69 @@ Page 340, Figure 8-1 "Complete Appending Unit Operation Flowchart", step L, show
 is \textbf{tsp\emph{n}} then set up the \texttt{PR\emph{n}} register.
 
 Page 168-169 \textbf{tsp\textit{n}} instruction shows the same \texttt{PR\emph{n}} register setup, but the value in \texttt{PPR.PSR} will have been changed by the Append Unit.
+
+\paragraph{Left shifting and the carry bit}
+
+AL-39, pg. 27, Indicator Register, says this about the carry bit:
+
+\begin{verbatim}
+Carry   This indicator is set ON for....
+
+        (1) If a bit propaates leftward out of bit 0 ... for any binary or shifting instruction.
+\end{verbatim}
+
+Page 107, "als":
+
+\begin{verbatim}
+Carry    If C(A)0 changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+Page 108, "lls":
+
+\begin{verbatim}
+Carry    If C(AQ)0 changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+Page 109, "qls":
+
+\begin{verbatim}
+Carry    If C(Q)0 changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+But, CPB-1004F, GE-635 Pgm Ref says:
+
+Page 78, "als"
+
+\begin{verbatim}
+Carry    If C(Q)0 ever changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+The wording is the same for "qls" and "lls".
+
+DH02-01 DPS8 Asm, pg 243, "ALS" says:
+
+\begin{verbatim}
+Carry    If C(Q)0 changes during the shift, then ON; otherwise OFF. When the Carry indicator is ON, the algebriac range of A had been exceeded.
+\end{verbatim}
+
+(LLS and QLS have similar wording.)
+
+The phrase about algebraic range supports the interpretation of checking the carry at each step; it the sign bit changes at any step of the shift, then information has been lost; right shifting the result will not recreate the original data.
+
+RJ78 has the same wording as DH02.
+
+\paragraph{Minor typo in \emph{div}}
+
+AL-39, page 124:
+
+\begin{verbatim}
+SUMMARY: C(Q) / (Y) integer quotient  C(Q)..
+\end{verbatim}
+
+should read:
+
+\begin{verbatim}
+SUMMARY: C(Q) / C(Y) integer quotient  C(Q)..
+\end{verbatim}
 
 \end{document}
