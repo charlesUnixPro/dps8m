@@ -1305,11 +1305,16 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0735:  ///< als
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             
+            bool bitA0before = rA & 0400000000000LL;
+            
             rA <<= tmp36;
             rA &= DMASK;    // keep to 36-bits
+
+            bool bitA0after = rA & 0400000000000LL;
+
             
-            
-            if (rA & 0xfffffff000000000LL)  // any bit shifted out???
+            //if (rA & 0xfffffff000000000LL)  // any bit shifted out???
+            if (bitA0before != bitA0after)
                 SETF(rIR, I_CARRY);
             else
                 CLRF(rIR, I_CARRY);
@@ -1417,12 +1422,15 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             CLRF(rIR, I_CARRY);
             
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            
+            bitA0before = rA & 0400000000000LL;
+
             for(int i = 0 ; i < tmp36 ; i++)
             {
                 rA <<= 1;               // shift left 1
             
-                if (rA & 0xfffffff000000000LL)  // any bits shifted out???
-                    SETF(rIR, I_CARRY);
+                //if (rA & 0xfffffff000000000LL)  // any bits shifted out???
+                //    SETF(rIR, I_CARRY);
                 
                 bool b0 = rQ & SIGN;    ///< Q0
                 if (b0)
@@ -1434,6 +1442,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA &= DMASK;    // keep to 36-bits
             rQ &= DMASK;
             
+            bitA0after = rA & 0400000000000LL;
+            
+            if (bitA0before != bitA0after)
+                SETF(rIR, I_CARRY);
+            else
+                CLRF(rIR, I_CARRY);
+
             if (rA == 0 && rQ == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -1533,10 +1548,15 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // Shift C(Q) left the number of positions given in C(TPR.CA)11,17; fill vacated positions with zeros.
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             
+            bool bitQ0before = rQ & 0400000000000LL;
+
             rQ <<= tmp36;
             
+            bool bitQ0after = rQ & 0400000000000LL;
+
             
-            if (rQ & 0xfffffff000000000LL)  // any bit shifted out???
+            if (bitQ0before != bitQ0after)
+            //if (rQ & 0xfffffff000000000LL)  // any bit shifted out???
                 SETF(rIR, I_CARRY);
             else
                 CLRF(rIR, I_CARRY);
