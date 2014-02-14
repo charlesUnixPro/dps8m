@@ -1093,25 +1093,25 @@ void EISwrite4r(EISaddr *p, int *pos, int char4)
     switch (*pos)
     {
         case 0:
-            w = bitfieldInsert36(w, char4, 31, 4);
+            w = bitfieldInsert36(w, char4, 31, 5);
             break;
         case 1:
             w = bitfieldInsert36(w, char4, 27, 4);
             break;
         case 2:
-            w = bitfieldInsert36(w, char4, 22, 4);
+            w = bitfieldInsert36(w, char4, 22, 5);
             break;
         case 3:
             w = bitfieldInsert36(w, char4, 18, 4);
             break;
         case 4:
-            w = bitfieldInsert36(w, char4, 13, 4);
+            w = bitfieldInsert36(w, char4, 13, 5);
             break;
         case 5:
             w = bitfieldInsert36(w, char4, 9, 4);
             break;
         case 6:
-            w = bitfieldInsert36(w, char4, 4, 4);
+            w = bitfieldInsert36(w, char4, 4, 5);
             break;
         case 7:
             w = bitfieldInsert36(w, char4, 0, 4);
@@ -1142,25 +1142,25 @@ void EISwrite4(EISaddr *p, int *pos, int char4)
     switch (*pos)
     {
         case 0:
-            w = bitfieldInsert36(w, char4, 31, 4);
+            w = bitfieldInsert36(w, char4, 31, 5);
             break;
         case 1:
             w = bitfieldInsert36(w, char4, 27, 4);
             break;
         case 2:
-            w = bitfieldInsert36(w, char4, 22, 4);
+            w = bitfieldInsert36(w, char4, 22, 5);
             break;
         case 3:
             w = bitfieldInsert36(w, char4, 18, 4);
             break;
         case 4:
-            w = bitfieldInsert36(w, char4, 13, 4);
+            w = bitfieldInsert36(w, char4, 13, 5);
             break;
         case 5:
             w = bitfieldInsert36(w, char4, 9, 4);
             break;
         case 6:
-            w = bitfieldInsert36(w, char4, 4, 4);
+            w = bitfieldInsert36(w, char4, 4, 5);
             break;
         case 7:
             w = bitfieldInsert36(w, char4, 0, 4);
