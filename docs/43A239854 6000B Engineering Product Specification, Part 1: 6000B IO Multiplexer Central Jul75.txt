@@ -2266,7 +2266,7 @@ Honeywell   Rev. A                                                 Page 45
                                  ---------------------------------------------
 Note: The present hardware     16|      4      | Wraparound    |  U         
       limits the channel       17|      4      |               |  U
-      number to 77(8) and      18|      4      |               |  SCU
+      number to 77(8) and      18|      4      |               |  SCW
       the maximum mailbox      19|      4      |               |  U  
       address to the Chan-       ---------------------------------------------
       nel Mailbox Base         20|      5      | Bootload      |  U         
@@ -3987,7 +3987,7 @@ Honeywell   Rev. A                             Cont. on Page       Page 84
 	                         control word (SCW, LPW, or DCW), when up-
 	                         dated, will be equal to or greater than
 	                         256K, but the tally will not decrement
-	                         to zero. In the case of the LPW, LPWA
+	                         to zero. In the case of the LPW, LPWE
 	                         bit 21 must equal zero to detect this
 	                         fault.
 
