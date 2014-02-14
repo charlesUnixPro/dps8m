@@ -43,6 +43,7 @@ static t_stat absAddrN (int segno, int offset);
 static t_stat test (int32 arg, char * buf);
 static t_stat virtAddrN (int address);
 static t_stat virtAddr (int32 arg, char * buf);
+static t_stat sbreak (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -60,6 +61,7 @@ CTAB dps8_cmds[] =
     {"VIRTUAL", virtAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n"},
     {"TEST", test, 0, "test: internal testing\n"},
+    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\b"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -632,6 +634,26 @@ static t_stat absAddrN (int segno, int offset)
     sim_printf ("Address is %08llo\n", res);
     return SCPE_OK;
   }
+
+// SBREAK segno:offset
+
+static t_stat sbreak (int32 arg, char * buf)
+  {
+    //printf (">> <%s>\n", buf);
+    int segno, offset;
+    int where;
+    int cnt = sscanf (buf, "%i:%i%n", & segno, & offset, & where);
+    if (cnt != 2)
+      {
+        return SCPE_ARG;
+      }
+    char reformatted [strlen (buf) + 20];
+    sprintf (reformatted, "0%04o%06o%s", segno, offset, buf + where);
+    //printf (">> <%s>\n", reformatted);
+    t_stat rc = brk_cmd (arg, reformatted);
+    return rc;
+  }
+
 
 // VIRTUAL address
 
