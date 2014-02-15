@@ -696,7 +696,8 @@ t_stat executeInstruction(DCDstruct *ci)
             if (where)
               {
                 sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, where);
-                listSource (compname, compoffset);
+                if_sim_debug (DBG_TRACE, &cpu_dev)
+                  listSource (compname, compoffset);
               }
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
