@@ -454,7 +454,7 @@ bool didITSITP = false; ///< true after an ITS/ITP processing
 
 static void doITP(word4 Tag)
 {
-    sim_debug(DBG_APPENDING, &cpu_dev, "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n", GET_ITP_PRNUM(Ypair), GET_ITP_WORDNO(Ypair), GET_ITP_BITNO(Ypair), GET_ITP_MOD(Ypair));
+    sim_debug(DBG_APPENDING, &cpu_dev, "ITP Pair: PRNUM=%o BITNO=%o WORDNO=%o MOD=%o\n", GET_ITP_PRNUM(itxPair), GET_ITP_WORDNO(itxPair), GET_ITP_BITNO(itxPair), GET_ITP_MOD(itxPair));
     /**
      For n = C(ITP.PRNUM):
      C(PRn.SNR) → C(TPR.TSR)
