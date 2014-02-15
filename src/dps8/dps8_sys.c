@@ -58,10 +58,10 @@ CTAB dps8_cmds[] =
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
     {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n"},
     {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
-    {"VIRTUAL", virtAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
+    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n"},
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n"},
     {"TEST", test, 0, "test: internal testing\n"},
-    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\b"},
+    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n"},
     { NULL, NULL, 0, NULL}
 };
 
