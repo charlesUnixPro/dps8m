@@ -6271,6 +6271,9 @@ emCall(DCDstruct *i)
     {
         case 1:     ///< putc9 - put 9-bit char in AL to stdout
         {
+            if (rA > 0xff)  // don't want no 9-bit bytes here!
+                break;
+            
             char c = rA & 0x7f;
             if (c)  // ignore NULL chars. 
                 // putc(c, stdout);
