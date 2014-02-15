@@ -34,6 +34,7 @@ writeOperands(DCDstruct *i)
         doComputedAddressContinuation(i);    //, writeCY);
     else
         WriteOP(i, TPR.CA, OPERAND_STORE, i->tag);
+    modCont->bActive = false;
 }
 
 /**
