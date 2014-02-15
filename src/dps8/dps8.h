@@ -73,6 +73,7 @@ typedef word72      float72;    // double precision float
 extern uint64 sim_deb_start;
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+#define if_sim_debug(dbits, dptr) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits))
 
 #define PRIVATE static
 
