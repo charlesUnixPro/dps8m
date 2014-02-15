@@ -334,23 +334,6 @@ extern char ASCIIToGEBcd[128];  ///< ASCII => GEBCD map
 
 #define MFkREGMASK  0xf
 
-//#define 0    (1 << 0)   ///< fetches/reads operand (CA) from memory
-//#define 0   (1 << 1)   ///< stores/writes operand to memory (its a STR-OP)
-//#define 0             (0) ///< a Read-Modify-Write instruction
-//#define 0      (1 << 2)   ///< fetches/reads Y-pair operand (CA) from memory
-//#define 0     (1 << 3)   ///< stores/writes Y-pair operand to memory
-//#define 0    (1 << 4)   ///< fetches/reads Y-block8 operand (CA) from memory
-//#define STORE_YBLOCK8   (1 << 5)   ///< stores/writes Y-block8 operand to memory
-//#define 0   (1 << 6)   ///< fetches/reads Y-block16 operands from memory
-//#define STORE_YBLOCK16  (1 << 7)   ///< fetches/reads Y-block16 operands from memory
-//#define TRANSFER_INS    (1 << 8)   ///< a transfer instruction
-//#define TSPN_INS        (1 << 9)   ///< a TSPn instruction
-//#define CALL6_INS       (1 << 10)  ///< a call6 instruction
-//#define 0      (1 << 11)  ///< just prepare TPR.CA for instruction
-//#define NO_RPT          (1 << 12)  ///< Repeat instructions not allowed
-//#define 0         (1 << 13)  ///< Bit-29 has an instruction specific meaning. Ignore.
-//#define NO_TAG          (1 << 14)  ///< tag is interpreted differently and for addressing purposes is effectively 0
-
 #define max(a,b)    max2((a),(b))
 #define max2(a,b)   ((a) > (b) ? (a) : (b))
 #define max3(a,b,c) max((a), max((b),(c)))
@@ -765,10 +748,11 @@ struct opnd        // for OPCODE operand(s)
     bool bit29;    // set bit-29
 } opnd;
 
-
 extern bool bInhibit;   // reflects inhibit flag
 
 void doOpcode(struct opnd *o);
+void doOpcodeR(struct opnd *o, expr *e);
+void doOpcodeX(struct opnd *o, expr *e);
 void doMWEis(opCode *o, tuple *t);
 void doRPT(opCode *o, word36, word36, tuple *);
 void doSTC(opCode *o, word36, word36, int);
