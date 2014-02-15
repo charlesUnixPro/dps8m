@@ -93,7 +93,7 @@
 static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static int mt_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data);
+static int mt_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
 static int mt_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
 
 #define N_MT_UNITS_MAX 16
@@ -272,7 +272,7 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
  *
  */
 
-static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data)
+static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
     * need_data = false;
     int mt_unit_num = MT_UNIT_NUM (unitp);
@@ -288,6 +288,10 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
 
     sim_debug (DBG_DEBUG, &tape_dev, "%s: IOM %c, Chan 0%o, dev-cmd 0%o, dev-code 0%o\n",
             __func__, 'A' + iom_unit_num, pcwp -> chan, pcwp -> dev_cmd, pcwp -> dev_code);
+
+    // XXX do right when write
+    * is_read = true;
+
 //--     
 //--     devinfop->is_read = 1;
 //--     devinfop->time = -1;

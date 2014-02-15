@@ -128,7 +128,7 @@ static int writeBufCnt;
 //-- static void check_keyboard(int chan);
 //-- 
 
-static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data);
+static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
 static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
 
 //-- // ============================================================================
@@ -278,9 +278,10 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
  * or IDCW.
  */
 
-static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data)
+static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
   {
     * need_data = false;
+    * is_read = true;
 //--     int chan = opcon_unit -> u3;
 //--     int dev_code = opcon_unit -> u4;
 //--     //int iom_unit_num = opcon_unit -> u5;
@@ -326,6 +327,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
 //--             return 0;
 
         case 033:               // Write ASCII
+            * is_read = false;
             console_state . io_mode = write_mode;
             writeBufCnt = 0;
 
@@ -347,6 +349,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
             return 0;
 
         case 051:               // Write Alert -- Ring Bell
+            * is_read = false;
             // AN70-1 says only console channels respond to this command
             sim_printf ("CONSOLE: ALERT\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,

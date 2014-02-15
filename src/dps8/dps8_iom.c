@@ -729,7 +729,7 @@ static uint mbx_loc (int iom_unit_num, int chan_num);
 static void iom_fault (int iom_unit_num, int chan, const char * who, int is_sys, int signal);
 //-- static int list_service(int iom_unit_num, int chan, int dev_code, int first_list, int *ptro, int *addr);
 static int send_flags_to_channel (void);
-static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp, word12 * stati, bool * need_data);
+static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read);
 static int do_payload_channel (int iom_unit_num, pcw_t * pcw);
 //-- static int send_channel_pcw (int iom_unit_num, int chan, int dev_code, int addr);
 //-- static int do_dcw(int iom_unit_num, int chan, int dev_code, int addr, int *controlp/*, flag_t *need_indir_svc */);
@@ -742,7 +742,7 @@ static char* dcw2text(const dcw_t *p);
 static void fetch_and_parse_lpw (lpw_t * p, int addr, bool is_conn);
 static void decode_idcw(int iom_unit_num, pcw_t *p, flag_t is_pcw, t_uint64 word0, t_uint64 word1);
 static void fetch_and_parse_dcw (int iom_unit_num, int chan, dcw_t *p, int addr, int read_only);
-static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount);
+static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount, int is_read);
 //-- //static int send_chan_flags();
 static int send_general_interrupt (int iom_unit_num, int chan, int pic);
 static int send_terminate_interrupt (int iom_unit_num, int chan);
@@ -1747,6 +1747,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
     int ret;
     int chan = pcwp -> chan;
     bool need_data = false; // this is how a device asks for list service to continue
+    bool is_read = false;
 
 #if 0
     if (iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI)
@@ -1786,7 +1787,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
       word12 stati = 0;
 
       ret = dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, pcwp,
-                           & stati, & need_data);
+                           & stati, & need_data, & is_read);
       if (ret)
         {
           sim_debug (DBG_DEBUG, & iom_dev,
@@ -1952,7 +1953,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                 lpw . idcw = dcw_addr;
                 // SEND IDCW TO CHANNEL
                 need_data = false;
-                dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, & dcw . fields . instr, & stati, & need_data);
+                dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, & dcw . fields . instr, & stati, & need_data, & is_read);
                 rcount = dcw . fields . instr . chan_data;
                 // The IOM boot IDCW has a control of 0, but that means that
                 // the IOTD is ignored.
@@ -1964,7 +1965,8 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                                "%s: IDCW returns non-zero status(%04o); terminating DCW loop\n",
                                __func__, stati);
                     //status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> chan_data);
-                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : dcw . fields . ddcw . tally);
+                    //status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . chan_data : dcw . fields . ddcw . tally, is_read);
+                    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, dcw . type == idcw ? dcw . fields . instr . dev_code : dcw . fields . ddcw . tally, is_read);
                     break;
                   }
                 // terminate?
@@ -2178,7 +2180,8 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
     //while (lpw . nc == 0 &&  ! (lpw . trunout && lpw . tally <= 0) && ! disconnect);
     while (! ptro || need_data);
 
-    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount);
+    //status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, is_read);
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> dev_code, is_read);
     //sim_debug (DBG_DEBUG, & iom_dev, "%s: left list service; tally %d, disconnect %d\n", __func__, lpw . tally, disconnect);
     sim_debug (DBG_DEBUG, & iom_dev, "%s: left list service; tally %d\n",
                __func__, lpw . tally);
@@ -3145,7 +3148,7 @@ static int send_flags_to_channel (void)
  * send/receive chan_data to/from any currently implemented devices...
  */
 
-static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp, word12 * stati, bool * need_data)
+static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
 //--     channel_t* chanp = get_chan(iom_unit_num, chan, dev_code);
 //--     if (chanp == NULL)
@@ -3221,8 +3224,9 @@ static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp
 
     * stati = 0;
     * need_data = false;
+    * is_read = false;
 
-    int rc = iom_cmd (unitp, pcwp, stati, need_data);
+    int rc = iom_cmd (unitp, pcwp, stati, need_data, is_read);
 
     sim_debug (DBG_DEBUG, & iom_dev,
                "%s: iom_cmd returns rc:%d, stati:%04o\n",
@@ -3816,7 +3820,7 @@ static int lpw_write (int chan, int chanloc, const lpw_t * p)
  *
  */
 
-static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount)
+static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount, int is_read)
 {
     // See page 33 and AN87 for format of y-pair of status info
     
@@ -3856,6 +3860,7 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
     word2 = setbits36(word2, 22, 2, chan_status.type);
     word2 = setbits36(word2, 24, 12, chan_status.dcw_residue);
 #endif
+    word2 = setbits36(word2, 21, 1, is_read);
     
     // BUG: need to write to mailbox queue
     
