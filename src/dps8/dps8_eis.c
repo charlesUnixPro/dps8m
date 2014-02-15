@@ -3413,13 +3413,13 @@ void mrl(DCDstruct *ins)
     }
 }
 
-word8 xlate(word36 *xlatTbl, int dstTA, int c)
+word9 xlate(word36 *xlatTbl, int dstTA, int c)
 {
     int idx = (c / 4) & 0177;      // max 128-words (7-bit index)
     word36 entry = xlatTbl[idx];
     
     int pos9 = c % 4;      // lower 2-bits
-    int cout = (int)GETBYTE(entry, pos9);
+    unsigned int cout = (int)GETBYTE(entry, pos9);
     //int cout = getByte(pos9, entry);
     switch(dstTA)
     {
@@ -3602,7 +3602,7 @@ void mvt(DCDstruct *ins)
             // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
             cidx = c;
             
-            int cout = xlate(xlatTbl, e->dstTA, cidx);
+            unsigned int cout = xlate(xlatTbl, e->dstTA, cidx);
 
 //            switch(e->dstSZ)
 //            {
@@ -3650,7 +3650,7 @@ void mvt(DCDstruct *ins)
     
     if (e->N1 < e->N2)
     {
-        int cfill = xlate(xlatTbl, e->dstTA, fillT);
+        unsigned int cfill = xlate(xlatTbl, e->dstTA, fillT);
         switch (e->srcSZ)
         {
             case 6:
@@ -4254,7 +4254,7 @@ void tct(DCDstruct *ins)
                 break;              // should already be 0-filled
         }
         
-        int cout = xlate(xlatTbl, e->srcTA, m);
+        unsigned int cout = xlate(xlatTbl, e->srcTA, m);
         if (cout)
         {
             CY3 = bitfieldInsert36(0, cout, 27, 9); // C(Y-char92)m → C(Y3)0,8
@@ -4455,7 +4455,7 @@ void tctr(DCDstruct *ins)
                 break;          // should already be 0-filled
         }
         
-        int cout = xlate(xlatTbl, e->srcTA, m);
+        unsigned int cout = xlate(xlatTbl, e->srcTA, m);
 
         if (cout)
         {
