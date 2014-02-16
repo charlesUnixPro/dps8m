@@ -63,10 +63,11 @@ static DEBTAB cpu_dt[] = {
     { "ADDRMOD",    DBG_ADDRMOD     },
     { "APPENDING",  DBG_APPENDING   },
 
+    { "NOTIFY",     DBG_NOTIFY      },
+    { "INFO",       DBG_INFO        },
+    { "ERR",        DBG_ERR         },
     { "WARN",       DBG_WARN        },
     { "DEBUG",      DBG_DEBUG       },
-    { "INFO",       DBG_INFO        },
-    { "NOTIFY",     DBG_NOTIFY      },
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
     { "FAULT",      DBG_FAULT       },

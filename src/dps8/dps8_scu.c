@@ -584,10 +584,10 @@ static t_stat scu_reset (DEVICE *dptr);
 
 static DEBTAB scu_dt [] =
   {
-    { "WARN", DBG_WARN },
     { "NOTIFY", DBG_NOTIFY },
     { "INFO", DBG_INFO },
     { "ERR", DBG_ERR },
+    { "WARN", DBG_WARN },
     { "DEBUG", DBG_DEBUG },
     { "ALL", DBG_ALL }, // don't move as it messes up DBG message
     { NULL, 0 }
