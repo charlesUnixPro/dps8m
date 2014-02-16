@@ -797,7 +797,7 @@ word24
 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.TSR=%05o\n", PPR.PRR, PPR.PSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH) || (thisCycle == SEQUENTIAL_INSTRUCTION_FETCH);
