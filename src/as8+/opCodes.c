@@ -132,6 +132,79 @@ void doOpcode(struct opnd *o)
     addr += 1;
 }
 
+void doOpcodeX(struct opnd *opnd, expr *e)
+{
+    if (nPass == 1)
+    {
+        //if (debug) printf("doOpcode(1):addr=%06o\n", addr);
+        addr += 1;      // just bump address counter
+        return;
+    }
+    if (nPass != 2)     // only pass 1 | 2 allowed
+        return;
+    
+    if (e->type != eExprAbsolute)
+    {
+        yyerror("only absolute index-register specifiers allowed");
+        return;
+    }
+    
+    if (e->value > 7)
+    {
+        yyprintf("index-register out-of-range 0..7 (%d)", e->value);
+        return;
+    }
+
+    /*
+     * reconstruct actual mnemonic/opcode and assemble that
+     */
+    char mne[256];
+    sprintf(mne, "%s%d", opnd->o->mne, (int)e->value & 07);
+    
+    // look for mnemonic
+    opCode *op = findOpcode(mne);
+    
+    opnd->o = op;
+    
+    doOpcode(opnd);
+}
+
+void doOpcodeR(struct opnd *opnd, expr *e)
+{
+    if (nPass == 1)
+    {
+        //if (debug) printf("doOpcode(1):addr=%06o\n", addr);
+        addr += 1;      // just bump address counter
+        return;
+    }
+    if (nPass != 2)     // only pass 1 | 2 allowed
+        return;
+    
+    if (e->type != eExprAbsolute)
+    {
+        yyerror("only absolute AR/PR specifiers allowed");
+        return;
+    }
+    
+    if (e->value > 7)
+    {
+        yyprintf("AR/PR specifier out-of-range 0..7 (%d)", e->value);
+        return;
+    }
+    /*
+     * reconstruct actual mnemonic/opcode and assemble that
+     */
+    char mne[256];
+    sprintf(mne, "%s%d", opnd->o->mne, (int)e->value & 07);
+    
+    // look for mnemonic
+    opCode *op = findOpcode(mne);
+    
+    opnd->o = op;
+    
+    doOpcode(opnd);
+}
+
 void doMWEis(opCode *op, tuple *head)
 {
     if (nPass == 1)

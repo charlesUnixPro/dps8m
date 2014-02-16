@@ -829,7 +829,8 @@ h:      switch (*s) {
                             fprintf(stderr, "strexp(%s): strtoll conversion error", s);
                         else
                             s = end_ptr;
-                        *d++ = val & 0xff;
+                        *d++ = val & 0x1ff; // unfortunately since we aren't using wide characters we're still stuck at 8-bits
+                        
                         goto h;
                     case 'a' :  /*!< A bell       */
                         *d++ = '\a';

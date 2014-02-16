@@ -9,7 +9,7 @@ segref created for segment 'UtilsB' symbol:Bthree, addr:004464
 2303 (004377) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestFP ... 2/08 13:14 
+This is TestFP ... 2/15 21:53 
 Arcsin tests ...
    5.7391704
    11.536959
@@ -73,5 +73,5 @@ Arcsin tests ...
 cpuCycles = 4646
 TestFP-11> g 0
 
-DIS instruction, IC: TestFP|746 (00000746) (000000616000)
+DIS instruction, IC: 000746 (000000616000)
 Goodbye

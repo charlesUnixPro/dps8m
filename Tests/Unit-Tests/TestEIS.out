@@ -1,11 +1,11 @@
-2398 (004536) words loaded
+2402 (004542) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestEIS ... 2/08 13:14 
+This is TestEIS ... 2/15 20:53 
 BTD Tests ...
 Result: 055065061062 (-512) (Should be 055065061062 (-512))
 Result: 000065065053 (55+) (Should be 000065065053 (55+))
-Result: 320000000001 043105000000 (Should be 320000000001 043105000000)
+Result: 320000000001 043105777777 (Should be 320000000001 043105XXXXXX)
 Result: '      -12345' (Should be '      -12345')
 DTB Tests ...
 Result: 777777775456 (Should be 777777775456)
