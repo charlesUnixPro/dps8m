@@ -583,7 +583,7 @@ For numeric parameters (<n>), the value is interpreted in `C' style; i.e. leadin
 \paragraph{Base set of debug options} (Almost) all of the SIMH devices (clk, cpu, iom, scu, tape) support a base set of debug options. (The device SYS is an abstraction that does not currently have code paths that are part of the VM.)
 
 \begin{lstlisting}
-	set [clk|cpu|iom|scu|tape] debug=[notify|info|err|debug|all]
+	set [clk|cpu|iom|scu|tape|opcon] debug=[notify|info|err|warn|debug|all]
 \end{lstlisting}
 
 \paragraph{Number of CPUS} Some day we will support multiple cpus:
@@ -597,11 +597,11 @@ For numeric parameters (<n>), the value is interpreted in `C' style; i.e. leadin
 The following commands perform the functions of the CPU configuration switches:
 
 \begin{lstlisting}
-	set cpu config=faultbase=<n>
+	set cpu config=faultbase=[<n>|Multics]
 \end{lstlisting}
 
 \begin{lstlisting}
-	set cpu config=num=<n>
+	set cpu config=num=[0|1|on|off|enable|disable]
 \end{lstlisting}
 
 \begin{lstlisting}
@@ -609,14 +609,39 @@ The following commands perform the functions of the CPU configuration switches:
 \end{lstlisting}
 
 \begin{lstlisting}
-	set cpu config=mode=<GCOS|MULTICS>
+	set cpu config=mode=[0|1|GCOS|MULTICS]
 \end{lstlisting}
 
 \begin{lstlisting}
 	set cpu config=speed=<n>
 \end{lstlisting}
 
-TODO: port, assignment, interlace, enable, init\_enable
+\begin{lstlisting}
+	set cpu config=port=[0|1|2|3|A|B|C|D]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=assignment=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=interlace=[off|2|4]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=enable=[0|1|on|off|enable|disable]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=init_enable=[0|1|on|off|enable|disable]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=store_size=[0|1|2|3|4|5|6|7|
+	                           32|64|128|256|512|1024|2048|4096|
+	                           32K|64|128K|256K|512K|1024K|2048K|4096K|
+	                           1M|2M|4M]
+\end{lstlisting}
 
 \paragraph{Set CPU VM runtime configuration} The following commands perform various internal configurations of the VM.
 
@@ -676,6 +701,27 @@ This switch addresses an unresolved issue with the sequence of events in the ins
 	set cpu config=append_after=[0|1|off|on]
 \end{lstlisting}
 
+\subparagraph{Super\_user}
+This switch is no longer in use.
+
+\begin{lstlisting}
+	set cpu config=super_user=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{EPP\_hack}
+This switch is no longer in use.
+
+\begin{lstlisting}
+	set cpu config=epp_hack=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Halt\_on\_unimplemented}
+This switch cause the emulator to halt the simulation on encountering an unimplemented instruction, rather then invoking fault handling.
+
+\begin{lstlisting}
+	set cpu config=halt_on_unimplmented=[0|1|off|on]
+\end{lstlisting}
+
 \paragraph{Show CPU config}
 This command will show the current configuration settings of the CPU.
 
@@ -702,13 +748,10 @@ Display the contents of the A, Q and IR registers after each execution execution
 Display the contents of the index registers after each execution execution.
 
 \subparagraph{Regdumppr}
-Display the contents of the AR register after each execution execution.
+Display the contents of the PR registers after each execution execution.
 
 \subparagraph{Regdumpadr}
-Display the contents of the AR register after each execution execution.
-
-\subparagraph{Regdumpadr}
-Display the contents of the AR register after each execution execution.
+Display the contents of the AR registers after each execution execution.
 
 \subparagraph{Regdumpppr}
 Display the contents of the PPR register after each execution execution.
@@ -756,7 +799,10 @@ This is a list of registers the SIMH examine and deposit commands work with.
 	     ppr.psr prr.p
 	     dsbr.addr dsbr.bnd dsbr.u dsbr.stack
 	     bar.base bar.bound
-	     faultbase
+	     pr0.snr pr1.snr pr2.snr pr3.snr pr4.snr pr5.snr pr6.snr pr7.snr
+	     pr0.rnr pr1.rnr pr2.rnr pr3.rnr pr4.rnr pr5.rnr pr6.rnr pr7.rnr
+	     pr0.wordno pr1.wordno pr2.wordno pr3.wordno
+	     pr4.wordno pr5.wordno pr6.wordno pr7.wordno
 \end{lstlisting}
 
 \paragraph{Number of IOMs}
@@ -768,7 +814,7 @@ These command set or show the number of IOMs in the system.
 \end{lstlisting}
 
 \paragraph{Show IOM mailbox}
-This command shows the contents of an IOM mailbox
+This command shows the contents of an IOM's mailboxes
 
 \begin{lstlisting}
 	show iom<n> mbx
@@ -778,7 +824,63 @@ This command shows the contents of an IOM mailbox
 	set iom<n> config=
 	    [os | boot | iom_base | multiplex_base |
 	     tapechan | cardchan | scuport | port | addr |
-	     interlace | enable | initenable | halfsize| bootskip]
+	     interlace | enable | initenable | halfsize| store_size |
+	     bootskip]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=boot=[card|tape]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=iombase=[<n>|Multics]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=multiplexbase=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=tapechan=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=cardchan=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=scuport=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=port=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=addr=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=interlace=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=enable=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=initenable=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=halfsize=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=store_size=[0|1|2|3|4|5|6|7|
+		                          32|64|128|256|512|1024|2048|4096|
+		                          32K|64|128K|256K|512K|1024K|2048K|4096K|
+		                          1M|2M|4M]
 \end{lstlisting}
 
 \begin{lstlisting}
@@ -814,17 +916,33 @@ This command shows the contents of an IOM mailbox
 \end{lstlisting}
 
 \begin{lstlisting}
-	set scu<n> config=lwrstoresize=[32|64|128|256|512|1024|2048|4096]
+	set scu<n> config=lwrstore_size=[0|1|2|3|4|5|6|7|
+	                                 32|64|128|256|512|1024|2048|4096|
+	                                 32K|64|128K|256K|512K|1024K|2048K|4096K|
+	                                 1M|2M|4M]
 \end{lstlisting}
 
 \begin{lstlisting}
 	show scu<n> config
 \end{lstlisting}
 
+\paragraph{Operator console autoinput}
+
+These commands are currently unimplemented.
+
 \begin{lstlisting}
-	set sys config=[]connect_time|activate_time|
+	set opcon autoinput
+	show opcon autoinput
+\end{lstlisting}
+
+\begin{lstlisting}
+	show sys config
+\end{lstlisting}
+
+\begin{lstlisting}
+	set sys config=[connect_time|activate_time|
 	                mt_read_time|mt_xfer_time|
-	               iom_boot_time=[off|n] 
+	               iom_boot_time=[off|n]]
 \end{lstlisting}
 
 \begin{lstlisting}
@@ -918,22 +1036,26 @@ The file `20184.ini' is will set up the base system and boot the '20184.tap' tap
 
 \part{AL-39 errata}
 
-Page 289: 
+\section{Page or unpaged mode}
 
-\paragraph{\texttt{SDW} vs. \texttt{DSBR}}
+AL-39,Page 289: 
 
+\begin{quote}
 "A bit in the \texttt{SDW} for a segment (\texttt{SDW.U}) specifies whether the segment is paged or
 unpaged."
+\end{quote}
 
 This makes no sense; the procedure for looking up an \texttt{SDW} is different for paged and unpaged
 configurations. I believe the sentence should read:
 
+\begin{quote}
 "A bit in the \texttt{DSBR} for a segment (\texttt{DSBR.U}) specifies whether the segment is paged or
 unpaged."
+\end{quote}
 
 The same error appears on page 390.
 
-\paragraph{\texttt{FRD instruction.}}
+\section{\texttt{FRD} instruction.}
 
 In the description of the \texttt{FRD} instruction AL39 has these notes:
 
@@ -1006,17 +1128,17 @@ Referring to my implementation notes of \texttt{FRD} in dps8\_math.c...
 
 
 
-\paragraph{\texttt{MVT instruction.}}
+\section{\texttt{MVT instruction.}}
 
-\begin{verbatim}
-20184 crashes in formatting first_message; an index register is
-slightly negative, and an MLR instruction is (correctly) treating it
+20184 crashes in formatting first\_message; an index register is
+slightly negative, and an \texttt{MLR} instruction is (correctly) treating it
 as unsigned, and running off of the end of the segment, where
 appendCycle correctly slaps its hand for exceeding the segment
 boundary.
 
-The X register gets set negative here:
+The \texttt{X} register gets set negative here:
 
+\begin{verbatim}
 ascii.no_trim:
         mvt     (pr,rl),(pr,rl),fill(040)     " we will do some useless filling
         desc9a  pr1|0,al
@@ -1030,27 +1152,31 @@ ascii.no_trim:
         sbx4    ascii.tct_count " cant be negative, since no truncation
         tmoz    return_to_caller        " but be safe
         tra     main_char_loop
+\end{verbatim}
 
-X4 gets negative becuase A is .GT. X4; the MVT correct detects this
+\texttt{X4} gets negative becuase \texttt{A} is $>$ \texttt{X4}; the \texttt{MVT} 
+instruction correctly detects this
 and sets the truncate bit. The code tests the TRO bit to prevent the
 underflow.
 
 Why, O Why, is the code using TTN and not TTRN? Why?
 
 Somebody is lying.
-\end{verbatim}
+
 
 In the description of the indicator register (c.f. AL39 Fig. 3-7) the tally runout indicator has this note. 
 
+\begin{quote}
 This indicator is set OFF at initialization of any tallying operation, that is, any repeat instruction or any indirect then 
 tally address modification. It is then set ON for any of the following conditions: ...
 (4) If an EIS string scanning instruction reaches the end of the string without finding a match condition.
+\end{quote}
 
 Apparently MVT also follows this pattern -- although AL-39, DH02-01 and Bull RJ78 REV02 make absolutely no mention of this behavior. 
 This is either a hack, bug or an undocumented feature. \texttt{MVT} instruction in dps8\_eis.c has been modified to set the TALLY bit as well as the TRUNC bituon overflow
 
 
-\paragraph{\texttt{EPP instruction.}}
+\section{\texttt{EPP} instruction.}
 
 The code in bootload\_formline has the line:
 
@@ -1058,34 +1184,37 @@ The code in bootload\_formline has the line:
 	epp1    0,x6*                   " pr1 -> word of chars
 \end{verbatim}
 
-which relies on the epp1 instruction setting the AR1.CHAR register to zero. Given the relationship between the AR and PR register sets, this is not an unreasonable behavior. AL-39 does not mention the CHAR registers in the EPPn instruction documentation. However, AL-39 does say:
+which relies on the epp1 instruction setting the AR1.CHAR register to zero. Given the relationship between the AR and PR register sets, this is not an unreasonable behavior. AL-39 does not mention the CHAR registers in the EPPn instruction documentation. However, AL-39 does say (pg 317):
 
-\begin{verbatim}
-AL-39, pg:317:
+\begin{quote}
 " The terms "pointer register" and "address register" both apply to the same physical hardware. The distinction arises from the manner in which the register is used and in the interpretation of the register contents."
-\end{verbatim}
+\end{quote}
 
 \sout{The emulator sets the corresponding CHAR register to zero for EPPn instructions.}
 The emulator uses a union of bitfields to map PR.BITNO on the AR.BITNO and AR.CHAR bits, so that the "same phyiscal hardware" behavior is matched.
 
-\paragraph{\textbf{tss} instruction}
+\section{\textbf{tss} instruction}
 
 Page 169, the \textbf{tss} instruction:
 
-"SUMMARY: \texttt{C(TPR.CA) + (BAR base) $\rightarrow$ C(PPR.IC)}"
+\begin{quote}
+SUMMARY: \texttt{C(TPR.CA) + (BAR base) $\rightarrow$ C(PPR.IC)}
+\end{quote}
 
 The \textbf{tss} instruction should not add the \texttt{BAR} base to the \texttt{CA}; that is done during \texttt{CA} formation in the instruction fetch cycle. The line should read:
 
-"SUMMARY: \texttt{C(TPR.CA) $\rightarrow$ C(PPR.IC)}"
+\begin{quote}
+SUMMARY: \texttt{C(TPR.CA) $\rightarrow$ C(PPR.IC)}
+\end{quote}
 
-\paragraph{\textbf{tsp\textit{n}} instruction}
+\section{\textbf{tsp\textit{n}} instruction}
 
-Page 340, Figure 8-1 "Complete Appending Unit Operation Flowchart", step L, shows that if the opcode
+AL-39, Page 340, Figure 8-1 "Complete Appending Unit Operation Flowchart", step L, shows that if the opcode
 is \textbf{tsp\emph{n}} then set up the \texttt{PR\emph{n}} register.
 
 Page 168-169 \textbf{tsp\textit{n}} instruction shows the same \texttt{PR\emph{n}} register setup, but the value in \texttt{PPR.PSR} will have been changed by the Append Unit.
 
-\paragraph{Left shifting and the carry bit}
+\section{Left shifting and the carry bit}
 
 AL-39, pg. 27, Indicator Register, says this about the carry bit:
 
@@ -1135,7 +1264,7 @@ The phrase about algebraic range supports the interpretation of checking the car
 
 RJ78 has the same wording as DH02.
 
-\paragraph{Minor typo in \emph{div}}
+\section{Minor typo in \texttt{div}}
 
 AL-39, page 124:
 
