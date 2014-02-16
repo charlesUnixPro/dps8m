@@ -64,7 +64,7 @@ erlen:      bss	,1
 eredit_d:	vfd	9/lte+1,o9/20,9/lte+3,o9/20,9/lte+4,o9/52,9/mfls+10,9/enf
             vfd	9/mvc+1
             
-msg2_b:     acc /Result: ^n ^n (Should be 320000000001 043105000000)\r\n/
+msg2_b:     acc /Result: ^n ^n (Should be 320000000001 043105XXXXXX)\r\n/
 msg2_c:     acc /Result: '^g^g' (Should be '      -12345')\r\n/
 
 BTD3:
@@ -290,11 +290,11 @@ MOPS:   vfd     9/mvc+3,9/lte+3, o9/0, 9/lte+4  " MICROP  (MVC,3),(LTE,3)m1O000,
         vfd     o9/040, 9/mors+1
 
 TABLE22:aci     /01234567/        " 0X
-        VFD     A2/89,18/0,36/0  " 1X
+        VFD     A18/89,18/0,36/0  " 1X
         OCT     0,0               " 2X
         OCT     0,0               " 3X
         ACI     / JKLMNOP/        " 4X
-        VFD     A2/QR,18/0,36/0  " 5X
+        VFD     A18/QR,18/0,36/0  " 5X
         OCT     0,0               " 6X
         OCT     0,0               " 7X
 
@@ -636,7 +636,7 @@ NEXT:
        AWDX     pr4|0,4  " put FLD1 address into AR4
        SCD      (pr,rl,x5),(DU)
        desc9a   pr4|0,X7 " FLD1 operand pointer (FLD1+1,1,7)
-FLD2ad:VFD      A2/45    " FLD2 operand  " ahould be A18
+FLD2ad:VFD      A18/45    " FLD2 operand  " ahould be A18
        ARG      FLD3ad   " pointer to count FLD3
        TTN      NO.GOT
 
@@ -655,7 +655,7 @@ SCDR0:
 SCDR1:
        SCDR     (),(DU)       " DU modification of FLD2 operand descriptor
        desc9a   FLD1ae,8      " scanned string operand descriptor
-       VFD      A2/AB         " FLD2 character pair - A B
+       VFD      A18/AB         " FLD2 character pair - A B
        ARG      FLD3ae        " pointer count word
        TTN      NO.GOT        " match not found - tally runout ON
     
@@ -1045,7 +1045,7 @@ AD2D1:
             
 FLD1as:     aci     / 123450-/      " -1234.50
 FLD2as:     aci     /+009/
-            vfd     a3/876,9/2
+            vfd     a27/876,9/2
 "FLD2as:    aci     /+0098762/      " 987600
                                     " result: +986366 0
 
@@ -1069,7 +1069,7 @@ AD2D2:
             tra     AD2D3
             
 FLD1at:     ac4     /0123456+/      "0123456+
-FLD2at:     vfd     a4/+000,a1/1, 9/2   "+00012
+FLD2at:     vfd     a36/+000,a9/1, 9/2   "+00012
                                     " +13340 (Sum) (truncation fault)
 
 
@@ -1094,7 +1094,7 @@ AD2D3:
             TRA     AD3D0
 
 "FLD1au:     aci     /+990/      this will cause formatDecimal() to raise SIGFPE cause exponent in too big to fit in number
-FLD1au:     vfd     a3/+99, 9/0     "+990
+FLD1au:     vfd     a27/+99, 9/0     "+990
 FLD2au:     ac4     /0123456+/      "0123456+
             "USE     memory contents 0113456+ (Sum)
 
@@ -1170,7 +1170,7 @@ AD3D2:
 
         tra     SB2D0
                             
-FLD1aw: vfd     a3/-12, 9/2     " -12 2
+FLD1aw: vfd     a27/-12, 9/2     " -12 2
 FLD2aw: ac4     /00123456/      " 00123456
 FLD3aw: BSS     1               " xxx+0346   (Sum)
 DFLD3aw:desc4ls FLD3aw(3),5,-1  " FLD3 sum operand descriptor
@@ -1204,7 +1204,7 @@ SB2D1:
 
                                 " memory contents
 FLD1ax: ac4      /125+/         " 125+
-FLD2ax: vfd     a4/+654, a3/321, 9/-2
+FLD2ax: vfd     a36/+654, a27/321, 9/-2
         "EDEC     8A+6543.21     " + 6 5 4 3 2 1 -2
                                 " +654309-2 (Result)
 
@@ -1295,8 +1295,8 @@ SB3D2:
        
         tra     MP2D0
                                      " memory contents
-FLD1ba: vfd  a4/-987, a3/654, 9/-3   " - 9 8 7 6 5 4 -3
-FLD2ba: vfd  a4/-123, a3/456, 9/-3   " - 1 2 3 4 5 6 -3
+FLD1ba: vfd  a36/-987, a27/654, 9/-3   " - 9 8 7 6 5 4 -3
+FLD2ba: vfd  a36/-123, a27/456, 9/-3   " - 1 2 3 4 5 6 -3
 FLD3ba: BSS      1                   " -0086419   (Result)
 "
 " 320010144031    
@@ -1606,7 +1606,7 @@ DV3D2:
         tra     CMPN0
                                 " memory contents
 FLD1bi: aci     /0002/          " 0002
-FLD2bi: vfd     a4/+876, a3/543, 9/-3    " +876543-3
+FLD2bi: vfd     a36/+876, a27/543, 9/-3    " +876543-3
 FLD3bi: BSS     1               " x+438272
         desc4ls FLD3bi(1),7,-1  " quotient operand descriptor
                                 " instruction fault?     none
@@ -1622,7 +1622,7 @@ FLD3bi: BSS     1               " x+438272
 "        dis
 "
 "FLD1:   aci     /0002/          " 0002
-"FLD2:   vfd     a4/+876, a3/543, 9/-3    " +876543-3
+"FLD2:   vfd     a36/+876, a27/543, 9/-3    " +876543-3
 "FLD3:   BSS     1               " x+438272
 
 " 013103202162
@@ -1766,13 +1766,13 @@ FLD1f:  aci     /000300405-/
 "FLD2f:  vfd     9/cht,a8/ *+-$,.0,9/mflc+7,9/enf+8,9/insb+7 "MICROP (CHT,0),8H *+-$,.0,(MFLC,7),(ENF,8),(INSB,7)
 FLD2f:  vfd     9/mflc+7,9/enf+8,9/insb+7,9/mvc+2   "MICROP (CHT,0),8H *+-$,.0,(MFLC,7),(ENF,8),(INSB,7)
         vfd     9/insn+4                           "MICROP  (MVC,2),(INSN,4) memory contents in BCD char.
-FLD2f1: vfd     9/cht, h3/ *+       "need to be able to combine these 1st two -- h2 + h3 = h5 == 45-bits!!!
-        vfd     h2/-$, o9/020, h1/.
-        vfd     h1/0,9/mflc+7, 9/enf+8, 9/insb+7,9/mvc+2, 9/insn+4
+FLD2f1: vfd     9/cht, h27/ *+       "need to be able to combine these 1st two -- h2 + h3 = h5 == 45-bits!!!
+        vfd     h18/-$, o9/020, h9/.
+        vfd     h9/0,9/mflc+7, 9/enf+8, 9/insb+7,9/mvc+2, 9/insn+4
 
-FLD2f2: vfd     9/cht, a3/ *+
-        vfd     a2/@?, o9/054, a1/.
-        vfd     a1/0, 9/mflc+7, 9/enf+8, 9/insb+7  "MICROP (CHT,0),8H *+-$,.0,(MFLC,7),(ENF,8),(INSB,7)
+FLD2f2: vfd     9/cht, a27/ *+
+        vfd     a18/@?, o9/054, a9/.
+        vfd     a9/0, 9/mflc+7, 9/enf+8, 9/insb+7  "MICROP (CHT,0),8H *+-$,.0,(MFLC,7),(ENF,8),(INSB,7)
         vfd     9/mvc+2, 9/insn+4                  "MICROP  (MVC,2),(INSN,4) memory contents in BCD char.
 
 FLD3f:  bss     3
@@ -1792,19 +1792,19 @@ MVEmsg: acc     "MVE Tests ...\r\n"
 msg10:  acc     "Result: '^g^g^g^g^g' (Should be '* SMITHROGER, WILLIAM S. - #25')\r\n"
 
 FLD1h:  BCI     "12SMITHROGERWILLIAMS25AB"
-FLD2h:  vfd     9/cht, h1/*, o9/073, h1/.               "MICROP  (CHT,0),8H*,.-    
-        vfd     h1/-, o9/020, o9/020, o9/020, 
+FLD2h:  vfd     9/cht, h9/*, o9/073, h9/.               "MICROP  (CHT,0),8H*,.-
+        vfd     h9/-, o9/020, o9/020, o9/020
         vfd     o9/020, 9/ses+8, 9/insb+1, 9/insb+5     "MICROP  (SES,8),(INSB,1),(INSB,5)
         vfd     9/mvc+10, 9/insb+2, 9/insb+5, 9/mvc+7   "MICROP  (MVC,10),(INSB,2)(INSB,5),(MVC,7)
         vfd     9/insb+5, 9/mvc+1, 9/insb+3, 9/insb+5   "MICROP  (INSB,5),(MVC,1),(INSB,3),(INSB,5)
-        vfd     9/insb+4, 9/insb+5, 9/insb+0, h1/#      "MICROP  (INSB,4),(INSB,5),(INSB,0),1H#
+        vfd     9/insb+4, 9/insb+5, 9/insb+0, h9/#      "MICROP  (INSB,4),(INSB,5),(INSB,0),1H#
         vfd     9/mvc+2                                 "MICROP  (MCV,2)
 FLD3h:  bss     5
 
 msg11:  acc     "Result: '^a^a^a' (Should be 'code error#2')\r\n"
 
 FLD1i:  ACI     "error-2"
-FLD2i:  vfd     9/lte+1, A1/#, 9/mvc+5, 9/insm+1    "MICROP  (LTE,1),1A#,(MVC,5),(INSM,1),(IGN,1),(MVC,1)
+FLD2i:  vfd     9/lte+1, A9/#, 9/mvc+5, 9/insm+1    "MICROP  (LTE,1),1A#,(MVC,5),(INSM,1),(IGN,1),(MVC,1)
         vfd     9/ign+1, 9/mvc+1
 FLD3i:  ACI     "code ", 12
 
