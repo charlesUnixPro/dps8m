@@ -34,6 +34,7 @@ writeOperands(DCDstruct *i)
         doComputedAddressContinuation(i);    //, writeCY);
     else
         WriteOP(i, TPR.CA, OPERAND_STORE, i->tag);
+    modCont->bActive = false;
 }
 
 /**
@@ -695,7 +696,8 @@ t_stat executeInstruction(DCDstruct *ci)
             if (where)
               {
                 sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, where);
-                listSource (compname, compoffset);
+                if_sim_debug (DBG_TRACE, &cpu_dev)
+                  listSource (compname, compoffset);
               }
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
@@ -1984,6 +1986,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 #endif
             break;
             
+//#define DIV_TRACE
         /// Fixed-Point Division
         case 0506:  ///< div
             /// C(Q) / (Y) integer quotient → C(Q), integer remainder → C(A)
@@ -2002,16 +2005,69 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             else
             {
-                // XXX need to fix to perform signed arithmetic - done?
-                rA = SIGNEXT36(rQ) % SIGNEXT36(CY);   // remainder 1st to keep rQ
-                rQ = SIGNEXT36(rQ) / SIGNEXT36(CY);
-                
+                t_int64 dividend = (t_int64) (SIGNEXT36(rQ));
+                t_int64 divisor = (t_int64) (SIGNEXT36(CY));
+
+#ifdef DIV_TRACE
+                sim_printf("\r\n");
+                sim_printf(">>> dividend rQ %lld (%012llo)\r\n", dividend, rQ);
+                sim_printf(">>> divisor  CY %lld (%012llo)\r\n", divisor, CY);
+#endif
+
+                t_int64 quotient = dividend / divisor;
+                t_int64 remainder = dividend % divisor;
+
+#ifdef DIV_TRACE
+                sim_printf(">>> quot 1 %lld\r \n", quotient);
+                sim_printf(">>> rem 1 %lld\r\n", remainder);
+#endif
+
+// Evidence is that DPS8 rounds toward zero; if it turns out that it
+// rounds toward -inf, try this code:
+#if 0
+                // XXX C rounds toward zero; I suspect that DPS8 rounded toward
+                // -inf.
+                // If the remainder is negative, we rounded the wrong way
+                if (remainder < 0)
+                  {
+                    remainder += divisor;
+                    quotient -= 1;
+
+#ifdef DIV_TRACE
+                    sim_printf(">>> quot 2 %lld\r \n", quotient);
+                    sim_printf(">>> rem 2 %lld\r\n", remainder);
+#endif
+                  }
+#endif
+
+#ifdef DIV_TRACE
+                //  (a/b)*b + a%b is equal to a.
+                sim_printf ("dividend was                   = %lld\r\n", dividend);
+                sim_printf ("quotient * divisor + remainder = %lld\r\n", quotient * divisor + remainder);
+                if (dividend != quotient * divisor + remainder)
+                  {
+                    sim_printf ("---------------------------------^^^^^^^^^^^^^^^\r\n");
+                  }
+#endif
+
+
+                if (dividend != quotient * divisor + remainder)
+                  {
+                    // XXX make this sim_debug when we are confident in the code
+                    sim_printf ("Internal division error; rQ %012llo CY %012llo\n", rQ, CY);
+                  }
+
+                rA = remainder & DMASK;
+                rQ = quotient & DMASK;
+
+#ifdef DIV_TRACE
+                sim_printf ("rA (rem)  %012llo\n", rA);
+                sim_printf ("rQ (quot) %012llo\n", rQ);
+#endif
+
                 SCF(rQ == 0, rIR, I_ZERO);
                 SCF(rQ & SIGN, rIR, I_NEG);
             }
-            
-            rA &= DMASK;
-            rQ &= DMASK;
             
             break;
             

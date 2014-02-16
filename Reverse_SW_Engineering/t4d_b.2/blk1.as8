@@ -2185,6 +2185,14 @@ l6032:
 	ada	C_001000000000
 	sta	l6275
 
+" 7 Feb 2014 CAC New IOM code regression. The code fails when this address is
+" 01450, which is the tape drive channel LPW....
+" Okay, the new code updates the LPW after the tape data is read; since the 
+" tape data is read into memory occupied by the LPW, this means the IOM is
+" overwriting the read data....
+" Presumably the old code did this in a different order. 
+" Is this code doing a checksum???
+
 	" this instruction modified; it's address field is incremented
 l6044:	lda	l1401
 

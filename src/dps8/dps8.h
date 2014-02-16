@@ -73,6 +73,7 @@ typedef word72      float72;    // double precision float
 extern uint64 sim_deb_start;
 #undef sim_debug
 #define sim_debug(dbits, dptr, ...) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+#define if_sim_debug(dbits, dptr) if (cpuCycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits))
 
 #define PRIVATE static
 
@@ -197,7 +198,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 
 // ITP stuff ...
 #define ISITP(x)                (((x) & 077) == 041)
-#define GET_ITP_PRNUM(Ypair)    ((word3)((Ypair[0] >> 33) & 3))
+#define GET_ITP_PRNUM(Ypair)    ((word3)((Ypair[0] >> 33) & 07))
 #define GET_ITP_WORDNO(Ypair)   ((word18)((Ypair[1] >> 18) & 0777777))
 #define GET_ITP_BITNO(Ypair)    ((word3)((Ypair[1] >> 9) & 077))
 #define GET_ITP_MOD(Ypair)      (GET_TAG(Ypair[1]))

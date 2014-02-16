@@ -75,6 +75,29 @@ void doPtrReg(DCDstruct *i)
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }
 
+static void selftestPTWAM (void)
+  {
+    int usages [64];
+    for (int i = 0; i < 64; i ++)
+      usages [i] = -1;
+
+    for (int i = 0; i < 64; i ++)
+      {
+        _ptw * p = PTWAM + i;
+        if (p -> USE > 63)
+          sim_printf ("PTWAM[%d].USE is %d; > 63!\n", i, p -> USE);
+        if (usages [p -> USE] != -1)
+          sim_printf ("PTWAM[%d].USE is equal to PTWAM[%d].USE; %d\n",
+                      i, usages [p -> USE], p -> USE);
+        usages [p -> USE] = i;
+      }
+    for (int i = 0; i < 64; i ++)
+      {
+        if (usages [i] == -1)
+          sim_printf ("No PTWAM had a USE of %d\n", i);
+      }
+  }
+
 /**
  * implement ldbr instruction
  */
@@ -101,6 +124,7 @@ void do_ldbr (word36 * Ypair)
         PTWAM [i] . F = 0;
         PTWAM [i] . USE = i;
       }
+    selftestPTWAM ();
 
     // If cache is enabled, reset all cache column and level full flags
     // XXX no cache
@@ -525,10 +549,10 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
             for(int _h = 0 ; _h < 64 ; _h++)
             {
                 if (PTWAM[_h].USE > PTW->USE)
-                    PTW->USE -= 1;
+                    PTWAM[_h].USE -= 1; //PTW->USE -= 1;
             }
             PTW->USE = 63;
-            
+            selftestPTWAM ();
             return PTW;
         }
     }
@@ -578,14 +602,15 @@ static void loadPTWAM(word15 segno, word18 offset)
             {
                 _ptw *q = &PTWAM[_h];
                 //if (!q->_initialized)
-                if (!q->F)
-                    continue;
+                //if (!q->F)
+                    //continue;
                 
                 q->USE -= 1;
                 q->USE &= 077;
             }
             
             PTW = p;
+            selftestPTWAM ();
             return;
         }
     }
@@ -772,7 +797,7 @@ word24
 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.TSR=%05o\n", PPR.PRR, PPR.PSR);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH) || (thisCycle == SEQUENTIAL_INSTRUCTION_FETCH);
