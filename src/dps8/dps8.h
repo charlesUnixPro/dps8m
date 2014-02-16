@@ -153,6 +153,11 @@ extern uint64 sim_deb_start;
 #define CLRS36(x)         ((x) & ~SIGN)
 #define TSTS36(x)         ((x) & SIGN)
 
+// DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
+// Put state information into the unused high order bits.
+#define MEM_UNINITIALIZED 0x4000000000000000
+
+
 /* Instruction format */
 
 #define INST_V_TAG      0                              ///< Tag

@@ -567,7 +567,13 @@ t_stat cpu_reset (DEVICE *dptr)
     if (M == NULL)
         return SCPE_MEM;
     
-    memset (M, -1, MEMSIZE * sizeof (word36));
+    //memset (M, -1, MEMSIZE * sizeof (word36));
+
+    // Fill DPS8 memory with zeros, plus a flag only visible to the emulator
+    // marking the memory as uninitialized.
+
+    for (int i = 0; i < MEMSIZE; i ++)
+      M [i] = MEM_UNINITIALIZED;
 
     rIC = 0;
     rA = 0;
@@ -1446,6 +1452,10 @@ int32 core_read(word24 addr, word36 *data)
         *data = 0;
         return -1;
     } else {
+        if (M[addr] & MEM_UNINITIALIZED)
+        {
+            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        }
         *data = M[addr] & DMASK;
     }
     return 0;
@@ -1471,7 +1481,15 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
             sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
             addr &= ~1; /* make it an even address */
         }
+        if (M[addr] & MEM_UNINITIALIZED)
+        {
+            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        }
         *even = M[addr++] & DMASK;
+        if (M[addr] & MEM_UNINITIALIZED)
+        {
+            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        }
         *odd = M[addr] & DMASK;
         return 0;
     }
