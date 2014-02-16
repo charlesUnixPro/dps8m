@@ -1114,6 +1114,10 @@ jmpRetry:;
 
         ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct
         
+        if (currentInstruction -> IWB == 0777777777777U &&
+           switches . halt_on_unimp)
+          return STOP_UNIMP;
+
 // XXX The conditions are more rigorous: see AL39, pg 327
         if (rIC % 2 == 0 && // Even address
             ci -> i == 0) // Not inhibited
@@ -1453,6 +1457,7 @@ int core_write(word24 addr, word36 data) {
     } else {
         M[addr] = data & DMASK;
     }
+//printf ("cac %06o:%06o store %012llo @ %08o\r\n", PPR.PSR, PPR.IC, data, addr);
     return 0;
 }
 
