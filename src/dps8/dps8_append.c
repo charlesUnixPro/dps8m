@@ -70,7 +70,7 @@ void doPtrReg(DCDstruct *i)
     TPR.TRR = max3(PAR[n].RNR, TPR.TRR, PPR.PRR);
     
     TPR.CA = (PAR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
-    TPR.TBR = PAR[n].PBITNO;  // TPR.BITNO = PR[n].BITNO;
+    TPR.TBR = PAR[n].BITNO;
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }
@@ -1271,7 +1271,7 @@ N:;
     
     PR[7].RNR = TPR.TRR;
     PR[7].WORDNO = 0;
-    PR[7].PBITNO = 0;
+    PR[7].BITNO = 0;
     PPR.PRR = TPR.TRR;
     PPR.PSR = TPR.TSR;
     PPR.IC = TPR.CA;    // IC or IC+1???

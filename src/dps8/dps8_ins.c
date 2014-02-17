@@ -541,11 +541,11 @@ t_stat executeInstruction(DCDstruct *ci)
         for(int n = 0 ; n < 8 ; n++)
         {
             sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].PBITNO);
+                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
         }
         for(int n = 0 ; n < 8 ; n++)
             sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR[%d]: WORDNO=%06o CHAR:%o BITNO:%02o\n",
-                      n, AR[n].WORDNO, AR[n].CHAR, AR[n].ABITNO);
+                      n, AR[n].WORDNO, GET_AR_CHAR (n) /* AR[n].CHAR */, GET_AR_BITNO (n) /* AR[n].ABITNO */);
         sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
         sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
     }
@@ -745,11 +745,11 @@ t_stat executeInstruction(DCDstruct *ci)
         for(int n = 0 ; n < 8 ; n++)
         {
             sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR%d/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].PBITNO);
+                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
         }
         for(int n = 0 ; n < 8 ; n++)
             sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR%d: WORDNO=%06o CHAR:%o BITNO:%02o\n",
-                  n, AR[n].WORDNO, AR[n].CHAR, AR[n].ABITNO);
+                  n, AR[n].WORDNO, GET_AR_CHAR (n) /* AR[n].CHAR */, GET_AR_BITNO (n) /* AR[n].ABITNO */);
         sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
         sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
     }
@@ -3182,7 +3182,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 PPR.P = 0;
             PR[7].WORDNO = 0;
-            PR[7].PBITNO = 0;
+            PR[7].BITNO = 0;
             PPR.PRR = TPR.TRR;
             PPR.PSR = TPR.TSR;
             PPR.IC = TPR.CA;
@@ -3403,7 +3403,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[n].RNR = PPR.PRR;
             PR[n].SNR = PPR.PSR;
             PR[n].WORDNO = (PPR.IC + 1) & 0777777;
-            PR[n].PBITNO = 0;
+            PR[n].BITNO = 0;
             PPR.IC = TPR.CA;
             PPR.PSR = TPR.TSR;
             
@@ -3492,28 +3492,28 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[0].WORDNO = TPR.CA;
-            PR[0].PBITNO = TPR.TBR;
+            PR[0].BITNO = TPR.TBR;
             break;
         case 0312:  ///< eawp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[2].WORDNO = TPR.CA;
-            PR[2].PBITNO = TPR.TBR;
+            PR[2].BITNO = TPR.TBR;
             break;
         case 0330:  ///< eawp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[4].WORDNO = TPR.CA;
-            PR[4].PBITNO = TPR.TBR;
+            PR[4].BITNO = TPR.TBR;
             break;
         case 0332:  ///< eawp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[6].WORDNO = TPR.CA;
-            PR[6].PBITNO = TPR.TBR;
+            PR[6].BITNO = TPR.TBR;
             break;
         
             
@@ -3526,7 +3526,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[1].RNR = TPR.TRR;
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = 0;
-            PR[1].PBITNO = 0;
+            PR[1].BITNO = 0;
             break;
         case 0353:  ///< epbp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3537,7 +3537,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[3].RNR = TPR.TRR;
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = 0;
-            PR[3].PBITNO = 0;
+            PR[3].BITNO = 0;
             break;
         case 0371:  ///< epbp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3548,7 +3548,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[5].RNR = TPR.TRR;
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = 0;
-            PR[5].PBITNO = 0;
+            PR[5].BITNO = 0;
             break;
             
         case 0373:  ///< epbp7
@@ -3560,7 +3560,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[7].RNR = TPR.TRR;
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = 0;
-            PR[7].PBITNO = 0;
+            PR[7].BITNO = 0;
             break;
         
         case 0350:  ///< epp0
@@ -3572,7 +3572,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[0].RNR = TPR.TRR;
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = TPR.CA;
-            PR[0].PBITNO = TPR.TBR;
+            PR[0].BITNO = TPR.TBR;
             break;
         case 0352:  ///< epp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3583,7 +3583,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[2].RNR = TPR.TRR;
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = TPR.CA;
-            PR[2].PBITNO = TPR.TBR;
+            PR[2].BITNO = TPR.TBR;
             break;
         case 0370:  ///< epp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3594,7 +3594,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[4].RNR = TPR.TRR;
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = TPR.CA;
-            PR[4].PBITNO = TPR.TBR;
+            PR[4].BITNO = TPR.TBR;
             break;
         case 0372:  ///< epp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -3605,7 +3605,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             PR[6].RNR = TPR.TRR;
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = TPR.CA;
-            PR[6].PBITNO = TPR.TBR;
+            PR[6].BITNO = TPR.TBR;
             break;
 
         case 0173:  ///< lpri
@@ -3631,7 +3631,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                   PR[n].RNR = Crr;
                 PR[n].SNR = (Ypair[0] >> 18) & 077777;
                 PR[n].WORDNO = GETHI(Ypair[1]);
-                PR[n].PBITNO = (GETLO(Ypair[1]) >> 9) & 077;
+                PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
             }
             
             break;
@@ -3664,7 +3664,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 // I interpret this has meaning that only the high bits should be set here
 
             if (((CY >> 34) & 3) != 3)
-                PR[n].PBITNO = (CY >> 30) & 077;
+                PR[n].BITNO = (CY >> 30) & 077;
             else
               doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
 
@@ -3681,7 +3681,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             //C(Y)18,35 → C(PRn.WORDNO)
             PR[n].WORDNO = GETLO(CY);
 
-            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].PBITNO, PR[n].SNR, PR[n].WORDNO);
+            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
             break;
          
         case 0251:  ///< spbp1
@@ -3774,7 +3774,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 Yblock16[2 * n] |= (word36) PR[n].RNR << 15;
                 
                 Yblock16[2 * n + 1] = (word36) PR[n].WORDNO << 18;
-                Yblock16[2 * n + 1] |= (word36) PR[n].PBITNO << 9;
+                Yblock16[2 * n + 1] |= (word36) PR[n].BITNO << 9;
             }
             
             //WriteN(i, 16, TPR.CA, Yblock16, OperandWrite, rTAG);
@@ -3796,7 +3796,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[0].RNR << 15;
             
             Ypair[1] = (word36) PR[0].WORDNO << 18;
-            Ypair[1]|= (word36) PR[0].PBITNO << 9;
+            Ypair[1]|= (word36) PR[0].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3818,7 +3818,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[2].RNR << 15;
             
             Ypair[1] = (word36) PR[2].WORDNO << 18;
-            Ypair[1]|= (word36) PR[2].PBITNO << 9;
+            Ypair[1]|= (word36) PR[2].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3840,7 +3840,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PAR[4].RNR << 15;
             
             Ypair[1] = (word36) PAR[4].WORDNO << 18;
-            Ypair[1]|= (word36) PAR[4].PBITNO << 9;
+            Ypair[1]|= (word36) PAR[4].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3862,7 +3862,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[6].RNR << 15;
             
             Ypair[1] = (word36) PR[6].WORDNO << 18;
-            Ypair[1]|= (word36) PR[6].PBITNO << 9;
+            Ypair[1]|= (word36) PR[6].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -3891,13 +3891,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             if (switches . lprp_highonly)
               {
-                CY  =  ((word36) (PR[n].PBITNO & 077)) << 30;
+                CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
                 CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
                 CY |=  PR[n].WORDNO & PAMASK;
               }
             else
               {
-                CY  =  (word36) PR[n].PBITNO << 30;
+                CY  =  (word36) PR[n].BITNO << 30;
                 CY |=  (word36) (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
                 CY |=  PR[n].WORDNO;
               }
@@ -3917,7 +3917,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             n = opcode & 03;  // get n
             PR[n].WORDNO += GETHI(CY);
             PR[n].WORDNO &= 0777777;
-            PR[n].PBITNO = 0;
+            PR[n].BITNO = 0;
             break;
             
         case 0150:   ///< adwp4
@@ -3931,7 +3931,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             n = (opcode & 03) + 4;  // get n
             PR[n].WORDNO += GETHI(CY);
             PR[n].WORDNO &= 0777777;
-            PR[n].PBITNO = 0;
+            PR[n].BITNO = 0;
             break;
         
         case 0213:  ///< epaq
@@ -4095,7 +4095,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
             printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
                 for(int n = 0 ; n < 8 ; n++)
-                    printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\r\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].PBITNO);
+                    printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\r\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
 
             }
             break;
@@ -4987,28 +4987,28 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[1].WORDNO = TPR.CA;
-            PR[1].PBITNO = TPR.TBR;
+            PR[1].BITNO = TPR.TBR;
             break;
         case 0313:  ///< eawp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[3].WORDNO = TPR.CA;
-            PR[3].PBITNO = TPR.TBR;
+            PR[3].BITNO = TPR.TBR;
             break;
         case 0331:  ///< eawp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[5].WORDNO = TPR.CA;
-            PR[5].PBITNO = TPR.TBR;
+            PR[5].BITNO = TPR.TBR;
             break;
         case 0333:  ///< eawp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///  C(TPR.CA) → C(PRn.WORDNO)
             ///  C(TPR.TBR) → C(PRn.BITNO)
             PR[7].WORDNO = TPR.CA;
-            PR[7].PBITNO = TPR.TBR;
+            PR[7].BITNO = TPR.TBR;
             break;        
         case 0350:  ///< epbp0
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5019,7 +5019,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[0].RNR = TPR.TRR;
             PR[0].SNR = TPR.TSR;
             PR[0].WORDNO = 0;
-            PR[0].PBITNO = 0;
+            PR[0].BITNO = 0;
             break;
         case 0352:  ///< epbp2
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5030,7 +5030,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[2].RNR = TPR.TRR;
             PR[2].SNR = TPR.TSR;
             PR[2].WORDNO = 0;
-            PR[2].PBITNO = 0;
+            PR[2].BITNO = 0;
             break;
         case 0370:  ///< epbp4
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5041,7 +5041,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[4].RNR = TPR.TRR;
             PR[4].SNR = TPR.TSR;
             PR[4].WORDNO = 0;
-            PR[4].PBITNO = 0;
+            PR[4].BITNO = 0;
             break;
         case 0372:  ///< epbp6
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5052,7 +5052,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[6].RNR = TPR.TRR;
             PR[6].SNR = TPR.TSR;
             PR[6].WORDNO = 0;
-            PR[6].PBITNO = 0;
+            PR[6].BITNO = 0;
             break;
          
         
@@ -5065,7 +5065,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[1].RNR = TPR.TRR;
             PR[1].SNR = TPR.TSR;
             PR[1].WORDNO = TPR.CA;
-            PR[1].PBITNO = TPR.TBR;
+            PR[1].BITNO = TPR.TBR;
             break;
         case 0353:  ///< epp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5076,7 +5076,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[3].RNR = TPR.TRR;
             PR[3].SNR = TPR.TSR;
             PR[3].WORDNO = TPR.CA;
-            PR[3].PBITNO = TPR.TBR;
+            PR[3].BITNO = TPR.TBR;
             break;
         case 0371:  ///< epp5
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5087,7 +5087,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[5].RNR = TPR.TRR;
             PR[5].SNR = TPR.TSR;
             PR[5].WORDNO = TPR.CA;
-            PR[5].PBITNO = TPR.TBR;
+            PR[5].BITNO = TPR.TBR;
             break;
         case 0373:  ///< epp7
             /// For n = 0, 1, ..., or 7 as determined by operation code
@@ -5098,7 +5098,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             PR[7].RNR = TPR.TRR;
             PR[7].SNR = TPR.TSR;
             PR[7].WORDNO = TPR.CA;
-            PR[7].PBITNO = TPR.TBR;
+            PR[7].BITNO = TPR.TBR;
             break;
         
         case 0250:  ///< spbp0
@@ -5185,7 +5185,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[1].RNR << 15;
             
             Ypair[1] = (word36) PR[1].WORDNO << 18;
-            Ypair[1]|= (word36) PR[1].PBITNO << 9;
+            Ypair[1]|= (word36) PR[1].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -5207,7 +5207,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[3].RNR << 15;
             
             Ypair[1] = (word36) PR[3].WORDNO << 18;
-            Ypair[1]|= (word36) PR[3].PBITNO << 9;
+            Ypair[1]|= (word36) PR[3].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -5229,7 +5229,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[5].RNR << 15;
             
             Ypair[1] = (word36) PR[5].WORDNO << 18;
-            Ypair[1]|= (word36) PR[5].PBITNO << 9;
+            Ypair[1]|= (word36) PR[5].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -5251,7 +5251,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             Ypair[0] |= (word36) PR[7].RNR << 15;
             
             Ypair[1] = (word36) PR[7].WORDNO << 18;
-            Ypair[1]|= (word36) PR[7].PBITNO << 9;
+            Ypair[1]|= (word36) PR[7].BITNO << 9;
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
@@ -5294,24 +5294,27 @@ static t_stat DoEISInstruction(DCDstruct *i)
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         //   C(Y)18,20 / 2 → C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 → C(ARn.BITNO)
-                        AR[n].CHAR = CN / 2;
-                        AR[n].ABITNO = 4 * (CN % 2) + 1;
+                        // AR[n].CHAR = CN / 2;
+                        // AR[n].ABITNO = 4 * (CN % 2) + 1;
+                        SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
                         break;
                         
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         //   (6 * C(Y)18,20) / 9 → C(ARn.CHAR)
                         //   (6 * C(Y)18,20)mod9 → C(ARn.BITNO)
-                        AR[n].CHAR = (6 * CN) / 9;
-                        AR[n].ABITNO = (6 * CN) % 9;
+                        // AR[n].CHAR = (6 * CN) / 9;
+                        // AR[n].ABITNO = (6 * CN) % 9;
+                        SET_AR_CHAR_BIT (n, (6 * CN) / 9, (6 * CN) % 9);
                         break;
                         
                     case CTA9:  // 0
                         // If C(Y)21,22 = 00 (TA code = 0), then
                         //   C(Y)18,19 → C(ARn.CHAR)
                         //   0000 → C(ARn.BITNO)
-                        AR[n].CHAR = (CN >> 1); // remember, 9-bit CN's are funky
-                        AR[n].ABITNO = 0;
+                        // AR[n].CHAR = (CN >> 1); // remember, 9-bit CN's are funky
+                        // AR[n].ABITNO = 0;
+                        SET_AR_CHAR_BIT (n, (CN >> 1), 0); // remember, 9-bit CN's are funky
                         break;
                 }
             }
@@ -5329,8 +5332,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
             n = opcode & 07;  // get n
             AR[n].WORDNO = GETHI(CY);
-            AR[n].ABITNO = (word6)bitfieldExtract36(CY, 12, 4);
-            AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
+            //AR[n].ABITNO = (word6)bitfieldExtract36(CY, 12, 4);
+            //AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
+            SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(CY, 12, 4), (word2)bitfieldExtract36(CY, 16, 2));
             
             break;
             
@@ -5344,8 +5348,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 tmp36 = Yblock8[n];
 
                 AR[n].WORDNO = GETHI(tmp36);
-                AR[n].ABITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
-                AR[n].CHAR  = (word2)bitfieldExtract36(tmp36, 16, 2);
+                // AR[n].ABITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
+                // AR[n].CHAR  = (word2)bitfieldExtract36(tmp36, 16, 2);
+                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(tmp36, 12, 4), (word2)bitfieldExtract36(tmp36, 16, 2));
             }
             break;
             
@@ -5377,16 +5382,18 @@ static t_stat DoEISInstruction(DCDstruct *i)
                         // If C(Y)21 = 1 (TN code = 1), then
                         //   (C(Y)18,20) / 2 → C(ARn.CHAR)
                         //   4 * (C(Y)18,20)mod2 + 1 → C(ARn.BITNO)
-                        AR[n].CHAR = CN / 2;
-                        AR[n].ABITNO = 4 * (CN % 2) + 1;
+                        // AR[n].CHAR = CN / 2;
+                        // AR[n].ABITNO = 4 * (CN % 2) + 1;
+                        SET_AR_CHAR_BIT (n,  CN / 2, 4 * (CN % 2) + 1);
                         break;
                         
                     case CTN9:  // 0
                         // If C(Y)21 = 0 (TN code = 0), then
                         //   C(Y)18,20 → C(ARn.CHAR)
                         //   0000 → C(ARn.BITNO)
-                        AR[n].CHAR = CN;
-                        AR[n].ABITNO = 0;
+                        // AR[n].CHAR = CN;
+                        // AR[n].ABITNO = 0;
+                        SET_AR_CHAR_BIT (n, CN, 0); 
                         break;
                 }
             }
@@ -5421,14 +5428,14 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     case CTA4:  // 2
                         // If C(Y)21,22 = 10 (TA code = 2), then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 → C(Y)18,20
-                        CN = (9 * AR[n].CHAR + AR[n].ABITNO - 1) / 4;
+                        CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */ - 1) / 4;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
                     case CTA6:  // 1
                         // If C(Y)21,22 = 01 (TA code = 1), then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO)) / 6 → C(Y)18,20
-                        CN = (9 * AR[n].CHAR + AR[n].ABITNO) / 6;
+                        CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */) / 6;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
@@ -5437,7 +5444,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                         //   C(ARn.CHAR) → C(Y)18,19
                         //   0 → C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, AR[n].CHAR, 16, 2);
+                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
                         break;
                 }
 
@@ -5473,7 +5480,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     case CTN4:  // 1
                         // If C(Y)21 = 1 (TN code = 1) then
                         //   (9 * C(ARn.CHAR) + C(ARn.BITNO) – 1) / 4 → C(Y)18,20
-                        CN = (9 * AR[n].CHAR + AR[n].ABITNO - 1) / 4;
+                        CN = (9 * GET_AR_CHAR (n) /* AR[n].CHAR */ + GET_AR_BITNO (n) /* AR[n].ABITNO */ - 1) / 4;
                         CY = bitfieldInsert36(CY, CN, 15, 3);
                         break;
                         
@@ -5482,7 +5489,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                         //   C(ARn.CHAR) → C(Y)18,19
                         //   0 → C(Y)20
                         CY = bitfieldInsert36(CY,          0, 15, 1);
-                        CY = bitfieldInsert36(CY, AR[n].CHAR, 16, 2);
+                        CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */, 16, 2);
                         break;
                 }
                 
@@ -5507,8 +5514,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
             n = opcode & 07;  // get n
             CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
-            CY = bitfieldInsert36(CY, AR[n].ABITNO,  12,  4);
-            CY = bitfieldInsert36(CY, AR[n].CHAR,   16,  2);
+            CY = bitfieldInsert36(CY, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
+            CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
             
             break;
             
@@ -5518,8 +5525,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
             {
                 word36 arx = 0;
                 arx = bitfieldInsert36(arx, AR[n].WORDNO, 18, 18);
-                arx = bitfieldInsert36(arx, AR[n].ABITNO,  12,  4);
-                arx = bitfieldInsert36(arx, AR[n].CHAR,   16,  2);
+                arx = bitfieldInsert36(arx, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
+                arx = bitfieldInsert36(arx, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
                 
                 Yblock8[n] = arx;
             }
@@ -5552,21 +5559,25 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
                     //   C(REG)mod4 → C(ARn.CHAR)
                     AR[ARn].WORDNO = (address + r / 4);
-                    AR[ARn].CHAR = r % 4;
+                    // AR[ARn].CHAR = r % 4;
+                    SET_AR_CHAR_BIT (ARn, r % 4, 0);
                 }
                 else
                 {
                     // If A = 1, then
                     //   C(ARn.WORDNO) + ADDRESS + (C(REG) + C(ARn.CHAR)) / 4 → C(ARn.WORDNO)
                     //   (C(ARn.CHAR) + C(REG))mod4 → C(ARn.CHAR)
-                    AR[ARn].WORDNO += (address + (r + AR[ARn].CHAR) / 4);
-                    AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
+                    AR[ARn].WORDNO += (address + (r + GET_AR_CHAR (ARn)) / 4);
+                    // AR[ARn].CHAR = (AR[ARn].CHAR + r) % 4;
+                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + r) % 4, 0);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
 
                 // 0000 → C(ARn.BITNO)
-                AR[ARn].ABITNO = 0;
+                // Zero set in SET_AR_CHAR_BIT calls above
+                // AR[ARn].ABITNO = 0;
             }
             break;
             
@@ -5591,18 +5602,22 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 if (! GET_A (i -> IWB))
                 {
                     AR[ARn].WORDNO = address + r / 6;
-                    AR[ARn].CHAR = ((6 * r) % 36) / 9;
-                    AR[ARn].ABITNO = (6 * r) % 9;
+                    // AR[ARn].CHAR = ((6 * r) % 36) / 9;
+                    // AR[ARn].ABITNO = (6 * r) % 9;
+                    SET_AR_CHAR_BIT (ARn, ((6 * r) % 36) / 9, (6 * r) % 9);
                 }
                 else
                 {
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) / 36;
-                    AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) % 36) / 9;
-                    AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) % 9;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 6 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) % 36) / 9;
+                    // AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 6 * r + AR[ARn].ABITNO) % 9;
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) + 6 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     (9 * GET_AR_CHAR (ARn) + 6 * r + GET_AR_BITNO (ARn)) % 9);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
-                AR[ARn].ABITNO &= 077;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
+                // AR[ARn].ABITNO &= 077;
             }
             break;
             
@@ -5623,21 +5638,25 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   C(REG)mod4 → C(ARn.CHAR)
                     //   4 * C(REG)mod2 + 1 → C(ARn.BITNO)
                     AR[ARn].WORDNO = address + r / 4;
-                    AR[ARn].CHAR = r % 4;
-                    AR[ARn].ABITNO = 4 * r % 2 + 1;
+                    // AR[ARn].CHAR = r % 4;
+                    // AR[ARn].ABITNO = 4 * r % 2 + 1;
+                    SET_AR_CHAR_BIT (ARn, r % 4, 4 * r % 2 + 1);
                 } else
                 {
                     // If A = 1, then
                     //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
                     //   ((9 * C(ARn.CHAR) + 4 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
                     //   4 * (C(ARn.CHAR) + 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 → C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * AR[ARn].CHAR + 4 * r + AR[ARn].ABITNO) / 36;
-                    AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 4 * r + AR[ARn].ABITNO) % 36) / 9;
-                    AR[ARn].ABITNO = 4 * (AR[ARn].CHAR + 2 * r + AR[ARn].ABITNO / 4) % 2 + 1;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 4 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9;
+                    // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1;
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     4 * (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 2 * r + GET_AR_BITNO (ARn) / 4) % 2 + 1);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
-                AR[ARn].ABITNO &= 077;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
+                // AR[ARn].ABITNO &= 077;
             }
             break;
             
@@ -5658,8 +5677,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   (C(REG)mod36) / 9 → C(ARn.CHAR)
                     //   C(REG)mod9 → C(ARn.BITNO)
                     AR[ARn].WORDNO = address + r / 36;
-                    AR[ARn].CHAR = (r % 36) / 9;
-                    AR[ARn].ABITNO = r % 9;
+                    // AR[ARn].CHAR = (r % 36) / 9;
+                    // AR[ARn].ABITNO = r % 9;
+                    SET_AR_CHAR_BIT (ARn, (r % 36) / 9, r % 9);
                 }
                 else
                 {
@@ -5667,13 +5687,16 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   C(ARn.WORDNO) + ADDRESS + (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
                     //   ((9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
                     //   (9 * C(ARn.CHAR) + 36 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) / 36;
-                    AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 36) / 9;
-                    AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 9;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO + address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 36) / 9;
+                    // AR[ARn].ABITNO = (9 * AR[ARn].CHAR + 36 * r + AR[ARn].ABITNO) % 9;
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ + 36 * r + GET_AR_BITNO (ARn)) % 9);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
-                AR[ARn].ABITNO &= 077;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
+                // AR[ARn].ABITNO &= 077;
             }
             break;
             
@@ -5700,8 +5723,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     AR[ARn].WORDNO += (address + getCrAR(reg));
                 
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR = 0;
-                AR[ARn].ABITNO = 0;
+                // AR[ARn].CHAR = 0;
+                // AR[ARn].ABITNO = 0;
+                SET_AR_CHAR_BIT (ARn, 0, 0);
             }
             break;
             
@@ -5721,21 +5745,25 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
                     //   - C(REG)mod4 → C(ARn.CHAR)
                     AR[ARn].WORDNO = -(address + r / 4);
-                    AR[ARn].CHAR = - (r % 4);
+                    // AR[ARn].CHAR = - (r % 4);
+                    SET_AR_CHAR_BIT (ARn, (r % 4), 0);
                 }
                 else
                 {
                     // If A = 1, then
                     //   C(ARn.WORDNO) - ADDRESS + (C(ARn.CHAR) - C(REG)) / 4 → C(ARn.WORDNO)
                     //   (C(ARn.CHAR) - C(REG))mod4 → C(ARn.CHAR)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (AR[ARn].CHAR - r) / 4;
-                    AR[ARn].CHAR = (AR[ARn].CHAR - r) % 4;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - r) / 4;
+                    // AR[ARn].CHAR = (AR[ARn].CHAR - r) % 4;
+                    SET_AR_CHAR_BIT (ARn, (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - r) % 4, 0);
                 }
                 
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
                 // 0000 → C(ARn.BITNO)
-                AR[ARn].ABITNO = 0;
+                // Zero set above in macro call
+                // AR[ARn].ABITNO = 0;
             }
             break;
             
@@ -5756,8 +5784,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   - ((6 * C(REG))mod36) / 9 → C(ARn.CHAR)
                     //   - (6 * C(REG))mod9 → C(ARn.BITNO)
                     AR[ARn].WORDNO = -(address + r / 6);
-                    AR[ARn].CHAR = -((6 * r) % 36) / 9;
-                    AR[ARn].ABITNO = -(6 * r) % 9;
+                    // AR[ARn].CHAR = -((6 * r) % 36) / 9;
+                    // AR[ARn].ABITNO = -(6 * r) % 9;
+                    SET_AR_CHAR_BIT (ARn, -((6 * r) % 36) / 9, -(6 * r) % 9);
                 }
                 else
                 {
@@ -5765,13 +5794,16 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
                     //   ((9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
                     //   (9 * C(ARn.CHAR) - 6 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) / 36;
-                    AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 36) / 9;
-                    AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 9;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    //AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 36) / 9;
+                    //AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 6 * r + AR[ARn].ABITNO) % 9;
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 6 * r + GET_AR_BITNO (ARn)) % 9);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
-                AR[ARn].ABITNO &= 077;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
+                // AR[ARn].ABITNO &= 077;
             }
             break;
                 
@@ -5792,8 +5824,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   - C(REG)mod4 → C(ARn.CHAR)
                     //   - 4 * C(REG)mod2 + 1 → C(ARn.BITNO)
                     AR[ARn].WORDNO = -(address + r / 4);
-                    AR[ARn].CHAR = -(r % 4);
-                    AR[ARn].ABITNO = -4 * r % 2 + 1;
+                    // AR[ARn].CHAR = -(r % 4);
+                    // AR[ARn].ABITNO = -4 * r % 2 + 1;
+                    SET_AR_CHAR_BIT (ARn, -(r % 4), -4 * r % 2 + 1);
                 }
                 else
                 {
@@ -5802,13 +5835,16 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   ((9 * C(ARn.CHAR) - 4 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
                     //   4 * (C(ARn.CHAR) - 2 * C(REG) + C(ARn.BITNO) / 4)mod2 + 1 → C(ARn.BITNO)
 
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * AR[ARn].CHAR - 4 * r + AR[ARn].ABITNO) / 36;
-                    AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 4 * r + AR[ARn].ABITNO) % 36) / 9;
-                    AR[ARn].ABITNO = 4 * (AR[ARn].CHAR - 2 * r + AR[ARn].ABITNO / 4) % 2 + 1;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 4 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 4 * r + AR[ARn].ABITNO) % 36) / 9;
+                    // AR[ARn].ABITNO = 4 * (AR[ARn].CHAR - 2 * r + AR[ARn].ABITNO / 4) % 2 + 1;
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 4 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     4 * (GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 2 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */ / 4) % 2 + 1);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
-                AR[ARn].ABITNO &= 077;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
+                // AR[ARn].ABITNO &= 077;
             }
             break;
             
@@ -5829,8 +5865,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   - (C(REG)mod36) / 9 → C(ARn.CHAR)
                     //   - C(REG)mod9 → C(ARn.BITNO)
                     AR[ARn].WORDNO = -(address + r / 36);
-                    AR[ARn].CHAR = -(r %36) / 9;
-                    AR[ARn].ABITNO = -(r % 9);
+                    // AR[ARn].CHAR = -(r %36) / 9;
+                    // AR[ARn].ABITNO = -(r % 9);
+                    SET_AR_CHAR_BIT (ARn, -(r %36) / 9, -(r % 9));
                 }
                 else
                 {
@@ -5838,13 +5875,16 @@ static t_stat DoEISInstruction(DCDstruct *i)
                     //   C(ARn.WORDNO) - ADDRESS + (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO)) / 36 → C(ARn.WORDNO)
                     //  ((9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod36) / 9 → C(ARn.CHAR)
                     //  (9 * C(ARn.CHAR) - 36 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
-                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) / 36;
-                    AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 36) / 9;
-                    AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 9;
+                    AR[ARn].WORDNO = AR[ARn].WORDNO - address + (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn) /* AR[ARn].ABITNO */) / 36;
+                    // AR[ARn].CHAR = ((9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 36) / 9;
+                    // AR[ARn].ABITNO = (9 * AR[ARn].CHAR - 36 * r + AR[ARn].ABITNO) % 9;
+                    SET_AR_CHAR_BIT (ARn, ((9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn)) % 36) / 9,
+                                     (9 * GET_AR_CHAR (ARn) /* AR[ARn].CHAR */ - 36 * r + GET_AR_BITNO (ARn)) % 9);
                 }
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
-                AR[ARn].CHAR &= 03;
-                AR[ARn].ABITNO &= 077;
+                // Masking done in SET_AR_CHAR_BIT
+                // AR[ARn].CHAR &= 03;
+                // AR[ARn].ABITNO &= 077;
             }
             break;
             
@@ -5873,8 +5913,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // 00 → C(ARn.CHAR)
                 // 0000 → C(ARn.BITNO)
-                AR[ARn].CHAR = 0;
-                AR[ARn].ABITNO = 0;
+                // AR[ARn].CHAR = 0;
+                // AR[ARn].ABITNO = 0;
+                SET_AR_CHAR_BIT (ARn, 0, 0);
             }
             break;
             
@@ -6337,7 +6378,7 @@ emCall(DCDstruct *i)
             for(int n = 0 ; n < 8 ; n++)
             {
                 sim_printf("PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                          n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].PBITNO);
+                          n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
             }
             break;
             

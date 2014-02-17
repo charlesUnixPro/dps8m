@@ -460,7 +460,7 @@ extern struct _par {
     word18  WORDNO; ///< The offset in words from the base or origin of the segment to the data item.
                         // The offset in words relative to the current addressing base referent (segment origin, BAR.BASE, or absolute 0 depending on addressing mode) to the word containing the next data item element.
     word2   CHAR;   ///< The number of the 9-bit byte within ARn.WORDNO containing the first bit of the next data item element.
-#else
+#elseif 0
     word18  WORDNO; ///< The offset in words from the base or origin of the segment to the data item.
     union {
       struct {
@@ -469,12 +469,26 @@ extern struct _par {
       };
       word6 PBITNO:6;
     };
+#else
+    // To get the correct behavior, the ARn.BITNO and .CHAR need to be kept in
+    // sync. BITNO is the canonical value; access routines for AR[n].BITNO and 
+    // .CHAR are provided
+    word6   BITNO;  ///< The number of the bit within PRn.WORDNO that is the first bit of the data item. Data items aligned on word boundaries always have the value 0. Unaligned data items may have any value in the range [1,35].
+    word18  WORDNO; ///< The offset in words from the base or origin of the segment to the data item.
+
 #endif
 } PAR[8];
 
 #define AR    PAR   // XXX remember there are subtle differences between AR/PR.BITNO
 #define PR    PAR
 
+// Support code to access ARn.BITNO and CHAR
+
+#define GET_AR_BITNO(n) (PAR[n].BITNO % 9)
+#define GET_AR_CHAR(n) (PAR[n].BITNO / 9)
+#define SET_AR_BITNO(n, b) PAR[n].BITNO = (GET_AR_CHAR[n] * 9 + ((b) & 017))
+#define SET_AR_CHAR(n, c) PAR[n].BITNO = (GET_AR_BITNO[n] + ((c) & 03) * 9)
+#define SET_AR_CHAR_BIT(n, c, b) PAR[n].BITNO = (((c) & 03) * 9 + ((b) & 017))
 /////
 
 extern struct _dsbr {
