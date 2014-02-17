@@ -151,6 +151,9 @@ void doInterpass(FILE *out)
     //
     //    addr += nTotalLiteralWords;
     
+    // write out info directive(s)...
+    outas8Direct("info");
+    
     // write size of segment
     if (debug) fprintf(stderr, "!SIZE %06o\n", addr);
     outas8Direct("size", addr);
