@@ -170,10 +170,16 @@ DTB0:   call    ioa(DTBmsg)
         desc9a   FLD3i+1(1),7   " receiving field operand descriptor
         call    ioa(msg11, FLD3i, FLD3i+1, FLD3i+2) 
        
+        tra MLR0
 "
 " MLR Tests ...
 "
-        call    ioa(MLRmsg)
+
+msgMLR1:    acc     /Result: ^a^a^a (Should be 'QwErTyUiOp')\0xa/
+srcMLR1:    aci     /'QwErTyUiOp'/
+dstMLR1:    bss     3
+
+MLR0:   call    ioa(MLRmsg)
 
         MLR     (),(),fill(20)     " move with blank fill
         desc6a  FLD1j,12           " sending descriptor
@@ -221,6 +227,18 @@ DTB0:   call    ioa(DTBmsg)
         desc9a  pr2|0, 6
 
         call    ioa(msg16, FLD2n, FLD2n+1)
+
+
+        epp5    srcMLR1
+        epp6    dstMLR1
+        lda     12,dl       " 12-bytes in message
+
+        mlr     (pr,rl),(pr,rl)
+        desc9a  pr5|0,al
+        desc9a  pr6|0,al
+        
+        call    ioa(msgMLR1, dstMLR1, dstMLR1+1, dstMLR1+2)
+
 
 "
 " MRL Tests ....
