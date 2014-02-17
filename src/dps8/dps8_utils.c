@@ -68,6 +68,11 @@ struct opCode *getIWBInfo(DCDstruct *i)
     else
         p = &EISopcodes[i->opcode];
     
+    if (p->mne == 0)
+    {
+        int r = 1;
+    }
+    
     return p->mne ? p : &UnImp;
 }
 

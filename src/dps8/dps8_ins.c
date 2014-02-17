@@ -590,7 +590,14 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     p->IWB = 0;
     
 
-    Read(NULL, addr, &p->IWB, lastTRA ? INSTRUCTION_FETCH : SEQUENTIAL_INSTRUCTION_FETCH, 0);
+    //Read(NULL, addr, &p->IWB, lastTRA ? INSTRUCTION_FETCH : SEQUENTIAL_INSTRUCTION_FETCH, 0);
+    
+    // since the next memory cycle will be a instruction fetch setup TPR
+    TPR.TRR = PPR.PRR;
+    TPR.TSR = PPR.PSR;
+    
+
+    Read(NULL, addr, &p->IWB, INSTRUCTION_FETCH, 0);
     
     cpu.read_addr = addr;
     
@@ -629,6 +636,8 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
             doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
     }
 
+    // TODO: Need to add no DL restrictions?
+    
     return i;
 }
 
@@ -652,6 +661,19 @@ DCDstruct *fetchOperands(DCDstruct *i)
             ReadOP(i, TPR.CA, READ_OPERAND, 0);
     
     return i;
+}
+
+/*
+ * initializes the TPR registers.
+ */
+t_stat setupForOperandRead(DCDstruct *i)
+{
+    if (!i->a)   // if A bit set set-up TPR stuff ...
+    {
+        TPR.TRR = PPR.PRR;
+        TPR.TSR = PPR.PSR;
+    }
+    return SCPE_OK;
 }
 
 t_stat doCAF(DCDstruct *i);
@@ -707,17 +729,33 @@ t_stat executeInstruction(DCDstruct *ci)
         }
     }
 
+//    if (info->ndes > 0)
+//        for(int n = 0 ; n < info->ndes; n += 1)
+//            Read(ci, rIC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
+//    else
+//    {
+//        if (ci->a)   // if A bit set set-up TPR stuff ...
+//            doPtrReg(ci);
+//        
+//        doComputedAddressFormation(ci);
+//    }
+
+    setupForOperandRead (ci);
+
     if (info->ndes > 0)
+    {
         for(int n = 0 ; n < info->ndes; n += 1)
+        {
+            //setupForOperandRead (ci);
             Read(ci, rIC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
-    //else
+        }
+    }
+    else
     {
         if (ci->a)   // if A bit set set-up TPR stuff ...
             doPtrReg(ci);
-        
         doComputedAddressFormation(ci);
     }
-
     t_stat ret = doInstruction(ci);
     
     
