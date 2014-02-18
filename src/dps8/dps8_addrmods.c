@@ -712,7 +712,32 @@ R_MOD:;
         Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
     
         if (ISITP(indword) || ISITS(indword))
+#if 0
             goto IT_MOD;
+#else
+       {
+           if (!doITSITP(i, iCA, indword, iTAG))
+               return SCPE_UNK;    // some problem with ITS/ITP stuff
+        
+            if (operType == prepareCA)
+            {
+                return SCPE_OK;     // end the indirection chain here
+            }
+            if (operType == readCY || operType == rmwCY)
+            {
+                ReadOP(i, TPR.CA, OPERAND_READ, true);
+            }
+            if (operType == writeCY || operType == rmwCY)
+            {
+                modCont->bActive = true;    // will continue the write operatio
+                modCont->address = TPR.CA;
+                modCont->mod = iTAG;    //TM_R;
+                modCont->i = i;
+                modCont->segment = TPR.TSR;
+            }
+            return SCPE_OK;
+        }
+#endif
     
         TPR.CA = GETHI(indword);
         rY = TPR.CA;
