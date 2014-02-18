@@ -1,0 +1,9 @@
+    option  Multics
+
+    " This is to be loaded at segment o15
+
+    name    Bug_B_Gone_seg15
+    
+
+    org 0400
+    oct 12345654321

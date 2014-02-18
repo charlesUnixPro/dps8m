@@ -6,7 +6,6 @@
 
     segref	UtilsA, ioa 
     
-    segref  Bug_B_Gone_2, TRAvec2
     segdef  TRA1
 
     "
@@ -38,7 +37,7 @@ _main_BBG_1:
 
     tsx2    ORSQTest    " ORSQ + R/M/W Test ...
     
-    "tsx2    TRAtest     " tra seg|0,x0 doesn't work in 20184
+    tsx2    TRAtest     " tra seg|0,x0 doesn't work in 20184
 
     tsx2    EPPtest
 
@@ -153,10 +152,6 @@ TRA0:
     "
     " If we get here TRA test 0 worked ...
     "
-    epp0    Bug_B_Gone_2$TRAvec2
-    eax0    1
-    tra     pr0|0, x0
-    "tra     Bug_B_Gone_2$TRAvec2, x0
 
 TRA1:
     tsp2    ioa
@@ -174,17 +169,6 @@ EPPtest:
 
     tsp2    ioa
     acc     /EPP test 1 ...\r\n/
-
-    "puls2
-    epp2    EPPtest_0, N*
-    "puls1
-
-    epp2    Bug_B_Gone_2$TRAvec2
-    "puls1
-
-
-	epp2	l43170,n*
-    "puls1
 
 
     ldx2    saveX2      " restore x2

@@ -1,37 +1,45 @@
-!SIZE 000042
+!INFO date Tue Feb 18 04:36:44 2014 UTC
+!INFO src TestBugsB.as8
+!SIZE 000046
 !SEGNAME Bug_B_Gone_2
-!SEGDEF TRAvec2 000012
-!LINKAGE 000036 2
-!SEGREF UtilsA ioa 000036
-!SEGREF Bug_B_Gone_1 TRA1 000040
-000000 xxxx 000000000000 save2:      bss     ,2
-000002 xxxx 000000000000 save2p:     bss     ,2
-000004 xxxx 000000000000 L1:     bss     1
-000005 xxxx 000000000000 L2:     bss     1
-000006 xxxx 000000000000 LA:     bss     1
-000007 xxxx 000000000000 LQ:     bss     1
-000010 xxxx 000002762000 exit:   lprp2   save2p
-000011 xxxx 000000610000         rtcd    save2
-000012 xxxx 000014710000     tra     TRATest_fail
-000013 xxxx 000024710000     tra     TRATest_pass
-000014 xxxx 000033236000     ldq     =987654321
-000015 xxxx 000007756000     stq     LQ
-000016 xxxx 000000012000     puls1
-000017 xxxx 000000013000     puls2
-000020 xxxx 400002350120     epp0    Bug_B_Gone_1$TRA1
-000021 xxxx 000000012000     puls1
-000022 xxxx 000000013000     puls2
-000023 xxxx 000000710100     tra     pr0|0   " Bug_B_Gone_1$TRA1
-000024 xxxx 000034236000     ldq     =-3823867239
-000025 xxxx 000007756000     stq     LQ
-000026 xxxx 000000012000     puls1
-000027 xxxx 000000013000     puls2
-000030 xxxx 400002350120     epp0    Bug_B_Gone_1$TRA1
-000031 xxxx 000000012000     puls1
-000032 xxxx 000000710100     tra     pr0|0   "Bug_B_Gone_1$TRARet2,n*
-000033 xxxx 007267464261 decimal literal (=987654321)
-000034 xxxx 743405065231 decimal literal (=-3823867239)
-000036 xxxx 000000000043 link UtilsA$ioa
-000037 xxxx 000000000000 
-000040 xxxx 000000000043 link Bug_B_Gone_1$TRA1
-000041 xxxx 000000000000 
+!ENTRY _main_BBG_2 000006 000042
+!LINKAGE 000044 1
+!SEGREF UtilsA ioa 000044
+000000 xxxx 000000000000 L1:     bss     1
+000001 xxxx 000000000000 L2:     bss     1
+000002 xxxx 000000000000 LA:     bss     1
+000003 xxxx 000000000000 LQ:     bss     1
+000004 xxxx 000015000043 its1:   its     015, 0      " pointing to the base of seg o15
+000005 xxxx 000000000000 
+000006 xxxx 000060627000     push
+000007 xxxx 700040272120 
+000010 xxxx 400000272120     tsp2    ioa
+000011 xxxx 013102102107     acc     /BBG-2 ...\r\n/
+000012 xxxx 055062040056 
+000013 xxxx 056056015012 
+000014 xxxx 000016702000     tsx2    BBG2_Test1
+000015 xxxx 700042710120     return
+000016 xxxx 600050742100     stx2    saveX2      " save return address
+000017 xxxx 400000272120     tsp2    ioa
+000020 xxxx 020111124123     acc     /ITS test 1 ...\r\n/
+000021 xxxx 040164145163 
+000022 xxxx 164040061040 
+000023 xxxx 056056056015 
+000024 xxxx 012040040040 
+000025 xxxx 000400620000     eax0    0400        " 0400 => x0
+000026 xxxx 000004352070     epp2    its1, *x0
+000027 xxxx 000000012000     puls1
+000030 xxxx 000004235070     lda     its1, *x0
+000031 xxxx 000002755000     sta     LA
+000032 xxxx 400000272120     tsp2    ioa
+000033 xxxx 017122145163     acc     /Result is: ^o\r\n/
+000034 xxxx 165154164040 
+000035 xxxx 151163072040 
+000036 xxxx 136157015012 
+000037 xxxx 000002000100     arg     LA
+000040 xxxx 600050222100     ldx2    saveX2
+000041 xxxx 000000710012     tra     0,2
+000042 xxxx 700046272120 Entry Sequence for _main_BBG_2 (000006)
+000043 xxxx 000006710000 
+000044 xxxx 000000000043 link UtilsA$ioa
+000045 xxxx 000000000000 

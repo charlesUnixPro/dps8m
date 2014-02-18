@@ -1,0 +1,5 @@
+!INFO date Tue Feb 18 04:24:36 2014 UTC
+!INFO src TestBugs15.as8
+!SIZE 000401
+!SEGNAME Bug_B_Gone_seg15
+000400 xxxx 012345654321     oct 12345654321
