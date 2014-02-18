@@ -54,15 +54,15 @@ BBG2_Test1:
 
     eax0    0400        " 0400 => x0
 
-    epp2    its1, *x0
-    puls1
+    "epp     2, its1, *x0
+    "lda     its1, *x0
 
-
-    lda     its1, *x0
+    epp     2, =its(015,0)
+    lda     pr2|0,*x0
     sta     LA
 
     tsp2    ioa
-    acc     /Result is: ^o\r\n/
+    acc     /    Result is: ^o (Should be 12345 654321)\r\n/
     arg     LA
 
     ldx2    saveX2

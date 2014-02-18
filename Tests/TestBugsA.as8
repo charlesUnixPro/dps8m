@@ -132,7 +132,7 @@ TRATest_fail:
     stq     LQ
 
     tsp2    ioa
-    acc     /TRA test 0 ... Q=^d... (fail)\r\n/
+    acc     /    TRA test 0 ... Q=^d... (fail)\r\n/
     nop     LQ
 
     tra     TRA0
@@ -142,7 +142,7 @@ TRATest_pass:
     stq     LQ
 
     tsp2    ioa
-    acc     /TRA test 0 ... Q=^d... (pass)\r\n/
+    acc     /    TRA test 0 ... Q=^d... (pass)\r\n/
     nop     LQ
 
     tra     TRA0
@@ -155,7 +155,7 @@ TRA0:
 
 TRA1:
     tsp2    ioa
-    acc     /TRA test 1 ... back frpm TestBugsB...\r\n/
+    acc     /    TRA test 1 ... back frpm TestBugsB...\r\n/
 
     ldx2    saveX2      " restore x2
     tra     0,2         " ... and return
