@@ -75,6 +75,11 @@ void doPtrReg(DCDstruct *i)
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }
 
+// Define this to do error detection on the PTWAM table.
+// Useful if PTWAM reports an error message, but it slows the emulator
+// down 50%
+
+#ifdef do_selftestPTWAM
 static void selftestPTWAM (void)
   {
     int usages [64];
@@ -97,6 +102,7 @@ static void selftestPTWAM (void)
           sim_printf ("No PTWAM had a USE of %d\n", i);
       }
   }
+#endif
 
 /**
  * implement ldbr instruction
@@ -124,7 +130,9 @@ void do_ldbr (word36 * Ypair)
         PTWAM [i] . F = 0;
         PTWAM [i] . USE = i;
       }
+#ifdef do_selftestPTWAM
     selftestPTWAM ();
+#endif
 
     // If cache is enabled, reset all cache column and level full flags
     // XXX no cache
@@ -552,7 +560,9 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
                     PTWAM[_h].USE -= 1; //PTW->USE -= 1;
             }
             PTW->USE = 63;
+#ifdef do_selftestPTWAM
             selftestPTWAM ();
+#endif
             return PTW;
         }
     }
@@ -610,7 +620,9 @@ static void loadPTWAM(word15 segno, word18 offset)
             }
             
             PTW = p;
+#ifdef do_selftestPTWAM
             selftestPTWAM ();
+#endif
             return;
         }
     }
