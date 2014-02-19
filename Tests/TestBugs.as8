@@ -11,6 +11,7 @@
     segref  stack_0, stack_0
 
     segref  Bug_B_Gone_1, _main_BBG_1      " 1st bug regression module ...
+    segref  Bug_B_Gone_2, _main_BBG_2
 
 
     link    I, <UtilsA>|[ioa]
@@ -47,6 +48,8 @@ main:
 call_main:
 
     call    _main_BBG_1(ap|0)
+
+    call    _main_BBG_2(ap|0)
 
 allDone:
     tsp2	ioa
