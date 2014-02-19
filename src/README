@@ -1,3 +1,20 @@
+Wed Feb 19 00:08:31 PST 2014
+Latest installment of simulator.
+
+20184:       1,202,407 Cycles
+   8Feb14:   1,232,719
+  15Feb14:   1,587,430
+  16Feb14:   1,589,171
+  18Feb14:   2,681,244
+
+t4d_b.2:    33,299,676 Cycles, up from 31,360,622
+   8Feb14:  33,366,858
+
+UnitTests:              Pass
+
+t4d/faults: 30,791,956 Cycles
+
+
 Sat Feb  8 21:26:52 PST 2014
 Latest installment of simulator. Fixed undocumented feature in MVT. TALLY flag is apparently set along with the TRUNC flag.
 
