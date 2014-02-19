@@ -38,7 +38,7 @@
 010031 xxxx 036000000000 	vfd	9/console_channel,27/0
 010032 xxxx 010034020001 lpw3:	vfd	18/pcw3,6/2,12/1
 010033 xxxx 000000011000 	even "(allocating 1 nop)
-010034 xxxx 010053000014 	vfd	18/hw_msg,18/hw_len
+010034 xxxx 010053000003 	vfd	18/hw_msg,18/hw_len
 010035 xxxx 103157156163 msg1:	aci	'Console test\n\0'
 010036 xxxx 157154145040 
 010037 xxxx 164145163164 
