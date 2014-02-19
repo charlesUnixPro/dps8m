@@ -1177,6 +1177,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 
         case 0554:  ///< stc1
+            // XXX "C(Y)25 reflects the state of the tally runout indicator
+            // prior to modification.
+            sim_debug (DBG_ERR, & cpu_dev, "stc1 ignoring initial TRO\n");
             //tmp36 = 0;
             SETHI(CY, (rIC + 1) & 0777777);
             SETLO(CY, rIR & 0777760);
@@ -4172,6 +4175,35 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 TPR.CA = (rX[Xn] + nxt->address) & AMASK;
                 rX[Xn] = TPR.CA;
 
+                if (nxt->info->flags & STORE_OPERAND)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_OPERAND\n");
+                }
+                if (nxt->info->flags & STORE_YPAIR)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_YPAIR\n");
+                }
+                if (nxt->info->flags & READ_YBLOCK8)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! READ_YBLOCK8\n");
+                }
+                if (nxt->info->flags & STORE_YBLOCK8)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_YBLOCK8\n");
+                }
+                if (nxt->info->flags & READ_YBLOCK16)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! READ_YBLOCK16\n");
+                }
+                if (nxt->info->flags & STORE_YBLOCK16)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_YBLOCK16\n");
+                }
+                if (nxt->info->flags & PREPARE_CA)
+                {
+                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! PREPARE_CA\n");
+                }
+
                 bool exit = false;  // when true terminate rpt instruction
                 do 
                 {                   
@@ -4253,7 +4285,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                         // the tally runout *not* be set when both the
                         // termination condition is met and bits 0..7 of
                         // reg X[0] hits zero.
-                    } else
+                        // CAC: bootload_tape.alm doesn't have a RPT in it,
+                        // so this comment is probably related to a ,id
+                        // addressing mode issue. Commenting out the else.
+                    } //else
                     
                     //  d. If a terminate condition has been met, then set the tally runout indicator OFF and terminate
                     if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
