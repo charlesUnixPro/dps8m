@@ -394,8 +394,11 @@ void listSource (char * compname, word18 offset)
         else
           searchp += pathlen;
 
-        strcat (path, "/");
-        strcat (path, compname);
+        if (compname)
+          {
+            strcat (path, "/");
+            strcat (path, compname);
+          }
         strcat (path, ".list");
         //sim_printf ("<%s>\n", path);
         FILE * listing = fopen (path, "r");
