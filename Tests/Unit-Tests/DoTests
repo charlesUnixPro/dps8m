@@ -46,7 +46,7 @@ BASE=~/Documents/dps8m\ \(New\)/XCode/DerivedData/Build/Products/Debug
 DPS8=${BASE}/dps8
 AS8=${BASE}/as8+
 
-SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect"
+SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect TestMpy TestBugs" 
 
 
 #EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")

@@ -31,7 +31,8 @@ cc: bss     1
 
 main:
     tsx2    setupFXE
-tra tm0
+
+    "tra tm0
 
     "push
 
