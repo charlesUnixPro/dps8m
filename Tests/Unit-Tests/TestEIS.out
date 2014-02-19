@@ -1,7 +1,10 @@
-2432 (004600) words loaded
+zero-initialized segments 0 .. 7
+zero-initialized SDWAM
+Writing SDW to address 00007000 (DSBR.ADDR+2*0 offset) 
+2432 (004600) words loaded into segment 0(0) at address 000000
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestEIS ... 2/19 00:00 
+This is TestEIS ... 2/17 12:43 
 BTD Tests ...
 Result: 055065061062 (-512) (Should be 055065061062 (-512))
 Result: 000065065053 (55+) (Should be 000065065053 (55+))
@@ -111,7 +114,7 @@ CMPN Tests ...
 3. Result FLD2 > FLD1
 
 cpuCycles = 25958
-TestEIS-10> g 0
+TestEIS-14> g 0
 
 DIS instruction, IC: 003311 (000000616000)
 Goodbye

@@ -731,39 +731,30 @@ R_MOD:;
 #if 0
             goto IT_MOD;
 #else
-        {
-            if (!doITSITP(i, iCA, indword, iTAG))
-                return SCPE_UNK;    // some problem with ITS/ITP stuff
-
-            sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITS/ITP: TPR.TSR:%06o TPR.CA:%06o\n", TPR.TSR, TPR.CA);
-
+       {
+           if (!doITSITP(i, iCA, indword, iTAG))
+               return SCPE_UNK;    // some problem with ITS/ITP stuff
+        
             if (operType == prepareCA)
             {
                 return SCPE_OK;     // end the indirection chain here
             }
             if (operType == readCY || operType == rmwCY)
             {
-                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITS/ITP (%s):\n", opDescSTR(i));
-
                 ReadOP(i, TPR.CA, OPERAND_READ, true);
-                    
-                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
             }
-            
             if (operType == writeCY || operType == rmwCY)
             {
-                modCont->bActive = true;    // will continue the write operation after instruction implementation
+                modCont->bActive = true;    // will continue the write operatio
                 modCont->address = TPR.CA;
                 modCont->mod = iTAG;    //TM_R;
                 modCont->i = i;
                 modCont->segment = TPR.TSR;
-                
-                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITP/ITS): saving continuation '%s'\n", modContSTR(modCont));
             }
-                
             return SCPE_OK;
         }
 #endif
+    
         TPR.CA = GETHI(indword);
         rY = TPR.CA;
         

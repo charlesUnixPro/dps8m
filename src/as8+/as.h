@@ -27,6 +27,8 @@
 #include <stdarg.h>
 #include <libgen.h>     // for basename
 
+#include <time.h>
+
 // Not defined under C99; adding -D_GNU_SOURCE fixes
 char *strdup(const char *s);
 int fileno(FILE *stream);

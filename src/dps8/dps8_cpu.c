@@ -1116,7 +1116,8 @@ jmpRetry:;
             
         //
         // fetch instruction
-        processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
+        //processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
+        processorCycle = INSTRUCTION_FETCH;
         
 
         ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct

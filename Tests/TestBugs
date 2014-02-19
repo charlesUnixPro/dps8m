@@ -11,7 +11,7 @@ dpsinit SDWAM
 load Play/TestBugs.oct segment 0 address 0
 load Play/TestBugsA.oct deferred
 load Play/TestBugsB.oct deferred
-load Play/TestBugs15.oct as segment 015 deferred
+load Play/TestBugs15.oct as segment 13 deferred
 
 load Play/UtilsA.oct deferred
 load Play/simh_operators.oct deferred

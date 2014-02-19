@@ -753,7 +753,7 @@ char *strPCT(_processor_cycle_type t)
         case FAULT: return "FAULT";
         case INDIRECT_WORD_FETCH: return "INDIRECT_WORD_FETCH";
         case RTCD_OPERAND_FETCH: return "RTCD_OPERAND_FETCH";
-        case SEQUENTIAL_INSTRUCTION_FETCH: return "SEQUENTIAL_INSTRUCTION_FETCH";
+        //case SEQUENTIAL_INSTRUCTION_FETCH: return "SEQUENTIAL_INSTRUCTION_FETCH";
         case INSTRUCTION_FETCH: return "INSTRUCTION_FETCH";
         case APU_DATA_MOVEMENT: return "APU_DATA_MOVEMENT";
         case ABORT_CYCLE: return "ABORT_CYCLE";
@@ -784,7 +784,7 @@ char *strPCT(_processor_cycle_type t)
 //}
 
 
-_processor_cycle_type lastCycle = UNKNOWN_CYCLE;
+//_processor_cycle_type lastCycle = UNKNOWN_CYCLE;
 
 bool bPrePageMode = false;
 
@@ -796,11 +796,12 @@ bool bPrePageMode = false;
 word24
 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
 {
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
+//    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 
-    bool instructionFetch = (thisCycle == INSTRUCTION_FETCH) || (thisCycle == SEQUENTIAL_INSTRUCTION_FETCH);
+    //bool instructionFetch = (thisCycle == INSTRUCTION_FETCH) || (thisCycle == SEQUENTIAL_INSTRUCTION_FETCH);
+    bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
     int n = 0;  // # of PR
@@ -810,48 +811,34 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
     
     finalAddress = -1;  // not everything requires a final address
     
-    if (thisCycle == EIS_OPERAND_READ || thisCycle == EIS_OPERAND_STORE)
-    {
-        // TPR already setup properly
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(EIS) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
-        goto A;
-    }
+//    if (thisCycle == EIS_OPERAND_READ || thisCycle == EIS_OPERAND_STORE)
+//    {
+//        // TPR already setup properly
+//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(EIS) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
+//        goto A;
+//    }
     
-    if (lastCycle == INDIRECT_WORD_FETCH)
-        goto A;
+//    if (lastCycle == INDIRECT_WORD_FETCH)
+//        goto A;
+//    
+//    if (lastCycle == RTCD_OPERAND_FETCH)
+//        goto A;
     
-    if (lastCycle == RTCD_OPERAND_FETCH)
-        goto A;
-    
-    if (lastCycle == SEQUENTIAL_INSTRUCTION_FETCH || instructionFetch)
-    {
-        if (i && i->a)   // bit 29 on?
-        {
-//            n = GET_PRN(i->IWB);
-//
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(1): bit-29 (a) detected.\n");
-////            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(1): bit-29 (a) detected\n");
-//            
-//            // C(PRn .RNR) > C(PPR.PRR)?
-//            if (PR[n].RNR > PPR.PRR)
-//                TPR.TRR = PR[n].RNR;    // C(PRn .RNR) → C(TPR.TRR)
-//            else
-//                TPR.TRR = PPR.PRR;      // C(PPR.PRR) → C(TPR.TRR)
-//           
-//            TPR.TSR = PR[n].SNR;       // C(PRn .SNR) → C(TPR.TSR)
-//            
-//                doPtrReg(i);
-//            
-            sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(2) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
-
-            goto A;
-        }
-        
-        TPR.TRR = PPR.PRR;
-        TPR.TSR = PPR.PSR;
-        
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(3) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
-    }
+    //if (lastCycle == SEQUENTIAL_INSTRUCTION_FETCH || instructionFetch)
+//    if (instructionFetch)
+//    {
+//        if (i && i->a)   // bit 29 on?
+//        {
+//              sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(1): bit-29 (a) detected\n");
+//              sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(2) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
+//            goto A;
+//        }
+//        
+//        TPR.TRR = PPR.PRR;
+//        TPR.TSR = PPR.PSR;
+//        
+//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(3) instructionfetch - TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
+//    }
 
 A:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
@@ -909,8 +896,8 @@ B:;
     // No
     
     // Was last cycle an rtcd operand fetch?
-    if (lastCycle == RTCD_OPERAND_FETCH)
-        goto C;
+//    if (lastCycle == RTCD_OPERAND_FETCH)
+//        goto C;
     
     // Is OPCODE call6?
     if (!instructionFetch && i->info->flags & CALL6_INS)
@@ -1338,10 +1325,10 @@ P:;
     }
    
 Exit:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
+//    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
 
     
-    lastCycle = thisCycle;
+//    lastCycle = thisCycle;
     return finalAddress;    // or 0 or -1???
 }
 
