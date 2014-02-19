@@ -62,7 +62,7 @@ BBG2_Test1:
     sta     LA
 
     tsp2    ioa
-    acc     /    Result is: ^o (Should be 12345 654321)\r\n/
+    acc     /    Result is: ^o (Should be  5 00000 7641 01)\r\n/
     arg     LA
 
     ldx2    saveX2
