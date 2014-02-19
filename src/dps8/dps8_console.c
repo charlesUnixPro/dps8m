@@ -555,7 +555,10 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
                     if (isprint (ch))
                       sim_printf ("%c", ch);
                     else
-                      sim_printf ("\\%03o", ch);
+                      {
+                        if (ch)
+                          sim_printf ("\\%03o", ch);
+                      }
                     //if (ch == '\r')
                       //sim_printf ("\n");
                   }
