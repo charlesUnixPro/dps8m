@@ -1307,9 +1307,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     {
         char s[1024], *end_ptr, sn[1024], def[1024];
         
-#ifndef QUIET_UNUSED
-        long n = sscanf(cptr, "%*s %s %s %s", s, sn, def);
-#endif
+        sscanf(cptr, "%*s %s %s %s", s, sn, def);
 
         if (!strmask(s, "seg*"))
         {
