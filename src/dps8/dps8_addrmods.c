@@ -471,7 +471,14 @@ static void doITP(word4 Tag)
     TPR.TSR = PR[n].SNR;
     TPR.TRR = max3(PR[n].RNR, SDW->R1, TPR.TRR);
     TPR.TBR = GET_ITP_BITNO(itxPair);
-    TPR.CA = PAR[n].WORDNO + GET_ITP_WORDNO(itxPair) + getCr(GET_TD(Tag));
+    TPR.CA = PAR[n].WORDNO + GET_ITP_WORDNO(itxPair);
+    if (GET_TM (Tag) == TM_IR)
+        TPR.CA += getCr(cu.CT_HOLD);
+    else if (GET_TM (Tag) == TM_RI)
+    {
+        if (GET_ITP_MOD (itxPair) == TM_R || GET_ITP_MOD (itxPair) == TM_RI)
+            TPR.CA += getCr(GET_TAG (GET_ITP_MOD (itxPair)));
+    }
     rY = TPR.CA;
     
     rTAG = GET_ITP_MOD(itxPair);
@@ -497,7 +504,16 @@ static void doITS(word4 Tag)
     TPR.TSR = GET_ITS_SEGNO(itxPair);
     TPR.TRR = max3(GET_ITS_RN(itxPair), SDW->R1, TPR.TRR);
     TPR.TBR = GET_ITS_BITNO(itxPair);
-    TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(Tag));
+    //TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(Tag));
+    TPR.CA = GET_ITS_WORDNO(itxPair);
+    if (GET_TM (Tag) == TM_IR)
+        TPR.CA += getCr(cu.CT_HOLD);
+    else if (GET_TM (Tag) == TM_RI)
+    {
+        if (GET_ITS_MOD (itxPair) == TM_R || GET_ITS_MOD (itxPair) == TM_RI)
+            TPR.CA += getCr(GET_TAG (GET_ITS_MOD (itxPair)));
+    }
+
     rY = TPR.CA;
     
     rTAG = GET_ITS_MOD(itxPair);
@@ -712,8 +728,42 @@ R_MOD:;
         Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
     
         if (ISITP(indword) || ISITS(indword))
+#if 0
             goto IT_MOD;
-    
+#else
+        {
+            if (!doITSITP(i, iCA, indword, iTAG))
+                return SCPE_UNK;    // some problem with ITS/ITP stuff
+
+            sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITS/ITP: TPR.TSR:%06o TPR.CA:%06o\n", TPR.TSR, TPR.CA);
+
+            if (operType == prepareCA)
+            {
+                return SCPE_OK;     // end the indirection chain here
+            }
+            if (operType == readCY || operType == rmwCY)
+            {
+                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITS/ITP (%s):\n", opDescSTR(i));
+
+                ReadOP(i, TPR.CA, OPERAND_READ, true);
+                    
+                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
+            }
+            
+            if (operType == writeCY || operType == rmwCY)
+            {
+                modCont->bActive = true;    // will continue the write operation after instruction implementation
+                modCont->address = TPR.CA;
+                modCont->mod = iTAG;    //TM_R;
+                modCont->i = i;
+                modCont->segment = TPR.TSR;
+                
+                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IR_MOD_1 ITP/ITS): saving continuation '%s'\n", modContSTR(modCont));
+            }
+                
+            return SCPE_OK;
+        }
+#endif
         TPR.CA = GETHI(indword);
         rY = TPR.CA;
         
