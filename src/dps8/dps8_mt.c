@@ -104,23 +104,26 @@ UNIT mt_unit [N_MT_UNITS_MAX] = {
     // CAC: Looking at SIMH source, the only place UNIT_SEQ is used
     // by the "run" command's reset sequence; units that have UNIT_SEQ
     // set will be issued a rewind on reset.
+    // Looking at the sim source again... It is used on several of the
+    // run commands, including CONTINUE.
+    // Turning UNIT_SEQ off.
     // XXX Should we rewind on reset? What is the actual behavior?
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | UNIT_SEQ | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)}
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)}
 };
 
 static DEBTAB mt_dt [] =
