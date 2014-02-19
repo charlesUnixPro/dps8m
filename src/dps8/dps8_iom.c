@@ -1744,13 +1744,24 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 //
 // Or until a IOTD (do IO and disconnect is done.
 
+// From AN70, System Initialization PLM May 84
+// "[The CSU6001] requires all it's device commands to be specified in the
+// PCW, and ignores IDCWS."
+//
+// However, the DDCWs need to be processed by the list service.
+// Assuming the CSU6001 is representative of CPI devices, adding code
+// to break out of the list service after a single need_data loop if
+// channel is a CPI; this should fix the console multiple command issue.
+
     int ret;
     int chan = pcwp -> chan;
     bool need_data = false; // this is how a device asks for list service to continue
     bool is_read = false;
+    bool is_cpi = iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI;
+    word12 stati = 0;
 
 #if 0
-    if (iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI)
+    if (is_cpi)
       {
         // 3. The connect channel PCW is treated differently by the CPI channel
         // and the PSI channel. The CPI channel does a store status, The
@@ -1784,7 +1795,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
       // and the PSI channel. The CPI channel does a store status, The
       // PSI channel goes into startup.
 
-      word12 stati = 0;
+      //word12 stati = 0;
 
       ret = dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, pcwp,
                            & stati, & need_data, & is_read);
@@ -1813,7 +1824,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
     //int disconnect = 0;
 
     // for idcw
-    word12 stati = 0;
+    //word12 stati = 0;
 
     uint chanloc = mbx_loc (iom_unit_num, chan);
 
@@ -1821,6 +1832,8 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 
     do // while (!ptro)
       {
+        if (is_cpi && ! need_data)
+          break;
         need_data = false; // This resets the CPI need_data, but that's okay,
                            // because we will process at least one DCW
 
